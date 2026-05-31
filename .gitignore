@@ -1,6 +1,8 @@
 node_modules/
 dist/
 src-tauri/target/
+target/
+debug/
 
 .voice_ime/
 models/
@@ -17,3 +19,7 @@ llama.cpp/
 *.pdb
 
 work_*.log
+**/*.rs.bk
+
+**/mutants.out*/
+#.idea/
