@@ -1,0 +1,24 @@
+# Changelog
+
+## 2.0.1 - 2026-05-31
+
+- Bumped app, Tauri, Cargo, window, and portable package version from 2.0.0 to 2.0.1.
+- Added explicit launch, build, packaging, test-status, and known-risk documentation.
+- Added a 100-point optimization backlog for the next hardening pass.
+- Changed portable packaging output to `D:\voice-ime-build-release\voice-ime-2.0.1-rust-portable` so the user's backed-up 2.0.0 package is not overwritten.
+- Added clickable ASR model download, mirror-page, official-page, and model-folder actions in Settings.
+- Model downloads try `hf-mirror.com` first and then fall back to `huggingface.co`.
+- Normalized legacy ASR model paths to the current Hugging Face file names.
+- Fixed portable packaging so it runs the Tauri production build instead of copying a cargo-only exe that could open `127.0.0.1:1420`.
+- Moved ASR decoding into a worker subprocess so native sherpa-onnx failures cannot close the GUI.
+- Stopped passing the personal prompt as sherpa-onnx hotwords by default, and added the required whisper tokens path to fallback readiness checks.
+- Added an in-settings status notice and clearer model action buttons so download progress/failure is visible in the GUI.
+- Fixed smart correction calling MiniCPM on empty ASR output, which could leak the internal prompt as "please confirm" text.
+- Added prompt-leak filtering so MiniCPM responses containing personal prompt/correction table/ASR prompt markers fall back to raw ASR text.
+- Built release as a Windows GUI subsystem executable so double-click launch no longer opens a black console window.
+- Tightened translation prompts and discard prompt-like translation outputs instead of inserting personal-wordlist/confirmation text.
+- Patched the bundled MiniCPM startup script to launch llama-server hidden instead of minimized.
+
+## 2.0.0 - 2026-05-31
+
+- Initial Rust/Tauri rewrite scaffold with Rust audio, sherpa-onnx ASR path, local LLM correction/translation path, cursor overlay, confirmation paste, settings, and history.

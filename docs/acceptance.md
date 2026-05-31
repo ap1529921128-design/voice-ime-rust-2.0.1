@@ -1,0 +1,44 @@
+# Voice IME 2.0.1 Acceptance
+
+## Basic Input
+
+1. Run `启动语音输入.bat` from the portable root.
+2. The main GUI window appears.
+3. Click the large microphone button or press `Alt+R` to start recording.
+4. Speak a short Chinese sentence.
+5. Click the stop button or press `Alt+R` again to stop.
+6. Text appears in the overlay or main confirmation editor.
+7. Confirm input pastes into the focused target and does not send.
+
+## Smart Edit
+
+1. Put `这个判断很准，输入法的边界就是不要替我说话。` in the editor.
+2. Record `帮我改得更正式一点`.
+3. If MiniCPM is reachable, the existing text is rewritten.
+4. If MiniCPM is unavailable, the original editor text is retained.
+
+## Long Transcript
+
+1. Record longer than `long_transcript_seconds`.
+2. Audio is copied to `.voice_ime/recordings`.
+3. Status shows segmented long transcription progress.
+4. Clear cancels the current session and stale results cannot overwrite the next session.
+
+## Package
+
+1. Portable root visibly contains one user-facing file: `启动语音输入.bat`.
+2. Runtime `.voice_ime` data is not included in the release.
+3. Hidden `app` folder contains `VoiceIME.exe`, README, acceptance notes, 2.0.1 roadmap, optional local model/runtime folders, and bundled Tauri frontend resources inside the exe.
+
+## Current 2.0.1 Test Boundary
+
+- Automated regression covers Rust unit tests, Rust compile, clippy, frontend build, release build, and portable packaging.
+- Startup smoke test covers that `VoiceIME.exe` stays alive for 5 seconds after launch instead of panicking before GUI startup. Smoke tests must use a temporary `VOICE_IME_APP_DIR` so they do not write `.voice_ime` into the portable package.
+- ASR smoke now covers `balanced`, `fast`, and `fallback` as worker subprocesses. If sherpa-onnx exits badly, the GUI should show an error instead of closing.
+- Empty ASR output must not call MiniCPM; prompt-like MiniCPM output containing "个人词表", "纠错表", or "ASR 文本" must be discarded.
+- Translation must translate the current editor text only; prompt-like translation output must be discarded.
+- Portable release must not open a console window for `VoiceIME.exe`; local llama-server is launched hidden.
+- Manual Windows integration still needs a real pass on Notepad, WeChat/Feishu, Chrome, Word/document editors, and IDE input boxes.
+- Real ASR acceptance requires sherpa-onnx model files matching the 2.0.1 default config. The copied 1.1.5 `faster-whisper-small` folder is reference material only and does not satisfy the new sherpa-onnx model paths.
+- Each missing model row in Settings has clickable download, mirror page, official page, and model-folder actions. The downloader tries `hf-mirror.com` first, then `huggingface.co`.
+- Settings shows download progress/failure in an in-panel notice, not only in the title status chip.

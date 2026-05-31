@@ -1,0 +1,630 @@
+use crate::config::{AppConfig, Paths};
+use crate::text;
+use anyhow::{anyhow, Context, Result};
+use reqwest::blocking::Client;
+use serde::Serialize;
+use sherpa_onnx::{
+    OfflineRecognizer, OfflineRecognizerConfig, OfflineSenseVoiceModelConfig,
+    OfflineWhisperModelConfig, OfflineZipformerCtcModelConfig,
+};
+use std::env;
+use std::fs;
+use std::io;
+use std::path::{Path, PathBuf};
+use std::process::{self, Command};
+use std::time::Instant;
+
+#[cfg(target_os = "windows")]
+use std::os::windows::process::CommandExt;
+
+#[derive(Debug, Clone, Serialize)]
+pub struct AsrModelStatus {
+    pub engine: String,
+    pub profile: String,
+    pub ready: bool,
+    pub download_url: String,
+    pub mirror_url: String,
+    pub target_dir: String,
+    pub required_files: Vec<String>,
+    pub missing_files: Vec<String>,
+}
+
+#[derive(Debug, Clone, Serialize, serde::Deserialize)]
+pub struct AsrOutcome {
+    pub text: String,
+    pub backend: String,
+    pub model: String,
+    pub elapsed_seconds: f32,
+}
+
+#[derive(Debug, Clone)]
+pub struct AsrInput {
+    pub samples: Vec<f32>,
+    pub sample_rate: u32,
+    pub language: String,
+    pub prompt: String,
+}
+
+#[derive(Debug, Clone)]
+pub struct ModelDownloadFile {
+    pub urls: Vec<String>,
+    pub filename: String,
+}
+
+#[derive(Debug, Clone)]
+pub struct ModelDownloadSpec {
+    pub profile: String,
+    pub target_dir: PathBuf,
+    pub files: Vec<ModelDownloadFile>,
+}
+
+pub fn transcribe(input: &AsrInput, config: &AppConfig, paths: &Paths) -> Result<AsrOutcome> {
+    let started = Instant::now();
+    let profiles = profile_order(&config.asr.profile);
+    let mut last_error: Option<anyhow::Error> = None;
+    for profile in profiles {
+        match transcribe_profile_in_worker(input, config, paths, profile) {
+            Ok(mut outcome) => {
+                outcome.elapsed_seconds = started.elapsed().as_secs_f32();
+                return Ok(outcome);
+            }
+            Err(err) => last_error = Some(err),
+        }
+    }
+    Err(last_error.unwrap_or_else(|| anyhow!("没有可用 ASR 后端")))
+}
+
+pub fn run_worker_cli_if_requested() -> bool {
+    let mut args = env::args_os().skip(1);
+    let Some(mode) = args.next() else {
+        return false;
+    };
+    if mode != "--asr-worker" {
+        return false;
+    }
+    let result = (|| -> Result<()> {
+        let request_path = args
+            .next()
+            .map(PathBuf::from)
+            .ok_or_else(|| anyhow!("缺少 ASR worker request 路径"))?;
+        let request: AsrWorkerRequest =
+            serde_json::from_slice(&fs::read(&request_path).context("读取 ASR worker request")?)?;
+        let (sample_rate, samples) = read_wav_file(&request.wav_path)?;
+        let paths = Paths {
+            root_dir: request.root_dir.clone(),
+            app_dir: request.app_dir.clone(),
+            config_path: request.app_dir.join("config.json"),
+            history_path: request.app_dir.join("history.json"),
+            prompt_path: request.app_dir.join("personal_prompt.txt"),
+            corrections_path: request.app_dir.join("corrections.json"),
+            recordings_dir: request.app_dir.join("recordings"),
+        };
+        let input = AsrInput {
+            samples,
+            sample_rate,
+            language: request.language,
+            prompt: request.prompt,
+        };
+        let started = Instant::now();
+        let mut outcome = transcribe_profile(&input, &request.config, &paths, &request.profile)?;
+        outcome.elapsed_seconds = started.elapsed().as_secs_f32();
+        outcome.text = text::clean_asr_text(&outcome.text, &paths.corrections_path);
+        fs::write(
+            &request.output_path,
+            serde_json::to_vec_pretty(&outcome).context("序列化 ASR worker output")?,
+        )?;
+        Ok(())
+    })();
+    if let Err(err) = result {
+        eprintln!("{err:?}");
+        process::exit(2);
+    }
+    true
+}
+
+#[derive(Debug, serde::Serialize, serde::Deserialize)]
+struct AsrWorkerRequest {
+    wav_path: PathBuf,
+    output_path: PathBuf,
+    root_dir: PathBuf,
+    app_dir: PathBuf,
+    config: AppConfig,
+    profile: String,
+    language: String,
+    prompt: String,
+}
+
+fn transcribe_profile_in_worker(
+    input: &AsrInput,
+    config: &AppConfig,
+    paths: &Paths,
+    profile: &str,
+) -> Result<AsrOutcome> {
+    let request_file = tempfile::Builder::new()
+        .prefix("voice_ime_asr_request_")
+        .suffix(".json")
+        .tempfile()?
+        .into_temp_path()
+        .keep()?;
+    let wav_file = tempfile::Builder::new()
+        .prefix("voice_ime_asr_audio_")
+        .suffix(".wav")
+        .tempfile()?
+        .into_temp_path()
+        .keep()?;
+    let output_file = tempfile::Builder::new()
+        .prefix("voice_ime_asr_output_")
+        .suffix(".json")
+        .tempfile()?
+        .into_temp_path()
+        .keep()?;
+
+    let result = (|| -> Result<AsrOutcome> {
+        write_wav_file(&wav_file, &input.samples, input.sample_rate)?;
+        let request = AsrWorkerRequest {
+            wav_path: wav_file.clone(),
+            output_path: output_file.clone(),
+            root_dir: paths.root_dir.clone(),
+            app_dir: paths.app_dir.clone(),
+            config: config.clone(),
+            profile: profile.into(),
+            language: input.language.clone(),
+            prompt: input.prompt.clone(),
+        };
+        fs::write(&request_file, serde_json::to_vec_pretty(&request)?)?;
+        let exe = env::current_exe().context("定位 ASR worker exe 失败")?;
+        let mut command = Command::new(exe);
+        command
+            .arg("--asr-worker")
+            .arg(&request_file)
+            .current_dir(&paths.root_dir)
+            .env("VOICE_IME_ROOT", &paths.root_dir)
+            .env("VOICE_IME_APP_DIR", &paths.app_dir);
+        #[cfg(target_os = "windows")]
+        {
+            command.creation_flags(0x08000000);
+        }
+        let output = command.output().context("启动 ASR 子进程失败")?;
+        if !output.status.success() {
+            return Err(anyhow!(
+                "ASR 子进程退出：{}{}",
+                output
+                    .status
+                    .code()
+                    .map(|code| format!("code={code}"))
+                    .unwrap_or_else(|| "进程被终止".into()),
+                output_tail(&output.stderr, &output.stdout)
+            ));
+        }
+        let body = fs::read(&output_file).context("读取 ASR 子进程结果失败")?;
+        serde_json::from_slice(&body).context("解析 ASR 子进程结果失败")
+    })();
+
+    let _ = fs::remove_file(&request_file);
+    let _ = fs::remove_file(&wav_file);
+    let _ = fs::remove_file(&output_file);
+    result
+}
+
+pub fn model_status(config: &AppConfig, paths: &Paths) -> Vec<AsrModelStatus> {
+    ["fast", "balanced", "fallback"]
+        .into_iter()
+        .map(|profile| {
+            let required_files = required_files_for_profile(config, paths, profile);
+            let target_dir = model_target_dir(config, paths, profile)
+                .map(|path| path.to_string_lossy().to_string())
+                .unwrap_or_default();
+            let missing_files = required_files
+                .iter()
+                .filter(|path| !Path::new(path).exists())
+                .cloned()
+                .collect::<Vec<_>>();
+            AsrModelStatus {
+                engine: if profile == "fallback" {
+                    "sherpa-onnx-whisper".into()
+                } else {
+                    "sherpa-onnx".into()
+                },
+                profile: profile.into(),
+                ready: missing_files.is_empty(),
+                download_url: download_url_for_profile(profile).into(),
+                mirror_url: mirror_url_for_profile(profile).into(),
+                target_dir,
+                required_files,
+                missing_files,
+            }
+        })
+        .collect()
+}
+
+pub fn download_model<F>(
+    profile: &str,
+    config: &AppConfig,
+    paths: &Paths,
+    mut progress: F,
+) -> Result<()>
+where
+    F: FnMut(String),
+{
+    let spec = download_spec(profile, config, paths)?;
+    fs::create_dir_all(&spec.target_dir)?;
+    let client = Client::builder().build()?;
+    let total = spec.files.len().max(1);
+    for (index, file) in spec.files.iter().enumerate() {
+        let target = spec.target_dir.join(&file.filename);
+        if target.exists() {
+            continue;
+        }
+        progress(format!(
+            "{} 下载中：{}/{} {}",
+            spec.profile,
+            index + 1,
+            total,
+            file.filename
+        ));
+        let mut last_error = None;
+        let mut response = None;
+        for url in &file.urls {
+            match client
+                .get(url)
+                .send()
+                .and_then(|res| res.error_for_status())
+            {
+                Ok(res) => {
+                    response = Some(res);
+                    break;
+                }
+                Err(err) => last_error = Some(err),
+            }
+        }
+        let mut response = response.ok_or_else(|| {
+            anyhow!(
+                "{} 下载失败：{}",
+                file.filename,
+                last_error
+                    .map(|err| err.to_string())
+                    .unwrap_or_else(|| "无可用下载地址".into())
+            )
+        })?;
+        let tmp = target.with_extension("download");
+        let mut out = fs::File::create(&tmp)?;
+        io::copy(&mut response, &mut out)?;
+        fs::rename(&tmp, &target)?;
+    }
+    Ok(())
+}
+
+pub fn download_spec(
+    profile: &str,
+    config: &AppConfig,
+    paths: &Paths,
+) -> Result<ModelDownloadSpec> {
+    let target_dir = model_target_dir(config, paths, profile)
+        .ok_or_else(|| anyhow!("未知 ASR profile：{profile}"))?;
+    let (repo, files): (&str, &[&str]) = match profile {
+        "fast" => (
+            "csukuangfj/sherpa-onnx-zipformer-ctc-zh-int8-2025-07-03",
+            &["model.int8.onnx", "tokens.txt", "bbpe.model"],
+        ),
+        "balanced" => (
+            "chris-cao/sherpa-onnx-sense-voice-zh-en-ja-ko-yue-int8-2024-07-17",
+            &["model.int8.onnx", "tokens.txt"],
+        ),
+        "fallback" => (
+            "csukuangfj/sherpa-onnx-whisper-tiny",
+            &[
+                "tiny-encoder.int8.onnx",
+                "tiny-decoder.int8.onnx",
+                "tiny-tokens.txt",
+            ],
+        ),
+        other => return Err(anyhow!("未知 ASR profile：{other}")),
+    };
+    let mirror_base = format!("https://hf-mirror.com/{repo}/resolve/main");
+    let official_base = format!("https://huggingface.co/{repo}/resolve/main");
+    Ok(ModelDownloadSpec {
+        profile: profile.into(),
+        target_dir,
+        files: files
+            .iter()
+            .map(|filename| ModelDownloadFile {
+                urls: vec![
+                    format!("{mirror_base}/{filename}"),
+                    format!("{official_base}/{filename}"),
+                ],
+                filename: (*filename).into(),
+            })
+            .collect(),
+    })
+}
+
+fn transcribe_profile(
+    input: &AsrInput,
+    config: &AppConfig,
+    paths: &Paths,
+    profile: &str,
+) -> Result<AsrOutcome> {
+    let mut recognizer_config = OfflineRecognizerConfig::default();
+    recognizer_config.feat_config.sample_rate = input.sample_rate as i32;
+    recognizer_config.model_config.num_threads = config.asr.num_threads.max(1);
+    recognizer_config.model_config.provider = Some("cpu".into());
+
+    let (backend, model_label) = match profile {
+        "fast" => {
+            let model = resolve_existing(paths, &config.asr.models.zipformer_ctc_model)?;
+            let tokens = resolve_existing(paths, &config.asr.models.zipformer_ctc_tokens)?;
+            recognizer_config.model_config.zipformer_ctc = OfflineZipformerCtcModelConfig {
+                model: Some(model.to_string_lossy().to_string()),
+            };
+            recognizer_config.model_config.tokens = Some(tokens.to_string_lossy().to_string());
+            recognizer_config.model_config.modeling_unit = Some("cjkchar".into());
+            recognizer_config.decoding_method = Some("greedy_search".into());
+            ("sherpa-onnx/zipformer-ctc".to_string(), model)
+        }
+        "balanced" => {
+            let model = resolve_existing(paths, &config.asr.models.sense_voice_model)?;
+            let tokens = resolve_existing(paths, &config.asr.models.sense_voice_tokens)?;
+            recognizer_config.model_config.sense_voice = OfflineSenseVoiceModelConfig {
+                model: Some(model.to_string_lossy().to_string()),
+                language: Some(sense_voice_language(&input.language)),
+                use_itn: true,
+            };
+            recognizer_config.model_config.tokens = Some(tokens.to_string_lossy().to_string());
+            ("sherpa-onnx/sense-voice".to_string(), model)
+        }
+        "fallback" => {
+            let encoder = resolve_existing(paths, &config.asr.models.whisper_encoder)?;
+            let decoder = resolve_existing(paths, &config.asr.models.whisper_decoder)?;
+            let tokens = resolve_existing(paths, &config.asr.models.whisper_tokens)?;
+            recognizer_config.model_config.whisper = OfflineWhisperModelConfig {
+                encoder: Some(encoder.to_string_lossy().to_string()),
+                decoder: Some(decoder.to_string_lossy().to_string()),
+                language: Some(whisper_language(&input.language)),
+                task: Some("transcribe".into()),
+                tail_paddings: -1,
+                enable_token_timestamps: false,
+                enable_segment_timestamps: false,
+            };
+            recognizer_config.model_config.tokens = Some(tokens.to_string_lossy().to_string());
+            ("sherpa-onnx/whisper".to_string(), encoder)
+        }
+        other => return Err(anyhow!("未知 ASR profile：{other}")),
+    };
+
+    let recognizer = OfflineRecognizer::create(&recognizer_config)
+        .ok_or_else(|| anyhow!("ASR 初始化失败：{backend}"))?;
+    let stream = recognizer.create_stream();
+    stream.accept_waveform(input.sample_rate as i32, &input.samples);
+    recognizer.decode(&stream);
+    let result = stream.get_result().context("ASR 没有返回结果")?;
+    Ok(AsrOutcome {
+        text: result.text,
+        backend,
+        model: display_path(paths, &model_label),
+        elapsed_seconds: 0.0,
+    })
+}
+
+pub fn split_samples(samples: &[f32], sample_rate: u32, chunk_seconds: u32) -> Vec<Vec<f32>> {
+    let chunk_len = (sample_rate * chunk_seconds.max(1)) as usize;
+    samples
+        .chunks(chunk_len)
+        .map(|chunk| chunk.to_vec())
+        .collect()
+}
+
+fn profile_order(profile: &str) -> Vec<&'static str> {
+    match profile {
+        "fast" => vec!["fast", "balanced", "fallback"],
+        "fallback" => vec!["fallback", "balanced", "fast"],
+        _ => vec!["balanced", "fast", "fallback"],
+    }
+}
+
+fn required_files_for_profile(config: &AppConfig, paths: &Paths, profile: &str) -> Vec<String> {
+    let candidates = match profile {
+        "fast" => vec![
+            &config.asr.models.zipformer_ctc_model,
+            &config.asr.models.zipformer_ctc_tokens,
+        ],
+        "balanced" => vec![
+            &config.asr.models.sense_voice_model,
+            &config.asr.models.sense_voice_tokens,
+        ],
+        "fallback" => vec![
+            &config.asr.models.whisper_encoder,
+            &config.asr.models.whisper_decoder,
+            &config.asr.models.whisper_tokens,
+        ],
+        _ => vec![],
+    };
+    candidates
+        .into_iter()
+        .map(|item| resolve_path(paths, item).to_string_lossy().to_string())
+        .collect()
+}
+
+fn model_target_dir(config: &AppConfig, paths: &Paths, profile: &str) -> Option<PathBuf> {
+    let first = match profile {
+        "fast" => &config.asr.models.zipformer_ctc_model,
+        "balanced" => &config.asr.models.sense_voice_model,
+        "fallback" => &config.asr.models.whisper_encoder,
+        _ => return None,
+    };
+    resolve_path(paths, first).parent().map(Path::to_path_buf)
+}
+
+pub fn download_url_for_profile(profile: &str) -> &'static str {
+    match profile {
+        "fast" => "https://huggingface.co/csukuangfj/sherpa-onnx-zipformer-ctc-zh-int8-2025-07-03/tree/main",
+        "balanced" => "https://huggingface.co/chris-cao/sherpa-onnx-sense-voice-zh-en-ja-ko-yue-int8-2024-07-17/tree/main",
+        "fallback" => "https://huggingface.co/csukuangfj/sherpa-onnx-whisper-tiny/tree/main",
+        _ => "https://k2-fsa.github.io/sherpa/onnx/index.html",
+    }
+}
+
+pub fn mirror_url_for_profile(profile: &str) -> &'static str {
+    match profile {
+        "fast" => "https://hf-mirror.com/csukuangfj/sherpa-onnx-zipformer-ctc-zh-int8-2025-07-03/tree/main",
+        "balanced" => "https://hf-mirror.com/chris-cao/sherpa-onnx-sense-voice-zh-en-ja-ko-yue-int8-2024-07-17/tree/main",
+        "fallback" => "https://hf-mirror.com/csukuangfj/sherpa-onnx-whisper-tiny/tree/main",
+        _ => "https://hf-mirror.com/",
+    }
+}
+
+fn resolve_existing(paths: &Paths, configured: &str) -> Result<PathBuf> {
+    let path = resolve_path(paths, configured);
+    if path.exists() {
+        Ok(path)
+    } else {
+        Err(anyhow!("缺少 ASR 模型文件：{}", path.display()))
+    }
+}
+
+fn resolve_path(paths: &Paths, configured: &str) -> PathBuf {
+    let path = PathBuf::from(configured);
+    if path.is_absolute() {
+        path
+    } else {
+        paths.root_dir.join(path)
+    }
+}
+
+fn display_path(paths: &Paths, path: &Path) -> String {
+    path.strip_prefix(&paths.root_dir)
+        .unwrap_or(path)
+        .to_string_lossy()
+        .replace('\\', "/")
+}
+
+fn sense_voice_language(language: &str) -> String {
+    match language {
+        "zh" | "en" | "ja" | "ko" | "yue" => language.into(),
+        _ => "auto".into(),
+    }
+}
+
+fn whisper_language(language: &str) -> String {
+    match language {
+        "zh" => "zh",
+        "ja" => "ja",
+        "en" => "en",
+        _ => "auto",
+    }
+    .into()
+}
+
+fn write_wav_file(path: &Path, samples: &[f32], sample_rate: u32) -> Result<()> {
+    let spec = hound::WavSpec {
+        channels: 1,
+        sample_rate,
+        bits_per_sample: 16,
+        sample_format: hound::SampleFormat::Int,
+    };
+    let mut writer = hound::WavWriter::create(path, spec)?;
+    for sample in samples {
+        let clamped = sample.clamp(-1.0, 1.0);
+        writer.write_sample((clamped * i16::MAX as f32) as i16)?;
+    }
+    writer.finalize()?;
+    Ok(())
+}
+
+fn read_wav_file(path: &Path) -> Result<(u32, Vec<f32>)> {
+    let mut reader = hound::WavReader::open(path)?;
+    let spec = reader.spec();
+    let channels = spec.channels.max(1) as usize;
+    let samples = match spec.sample_format {
+        hound::SampleFormat::Float => reader.samples::<f32>().collect::<Result<Vec<_>, _>>()?,
+        hound::SampleFormat::Int if spec.bits_per_sample <= 16 => reader
+            .samples::<i16>()
+            .map(|sample| sample.map(|value| value as f32 / i16::MAX as f32))
+            .collect::<Result<Vec<_>, _>>()?,
+        hound::SampleFormat::Int => {
+            let denom = ((1_i64 << (spec.bits_per_sample - 1).min(31)) - 1) as f32;
+            reader
+                .samples::<i32>()
+                .map(|sample| sample.map(|value| value as f32 / denom))
+                .collect::<Result<Vec<_>, _>>()?
+        }
+    };
+    Ok((spec.sample_rate, mix_to_mono(&samples, channels)))
+}
+
+fn mix_to_mono(samples: &[f32], channels: usize) -> Vec<f32> {
+    if channels <= 1 {
+        return samples.to_vec();
+    }
+    samples
+        .chunks(channels)
+        .map(|frame| frame.iter().copied().sum::<f32>() / frame.len() as f32)
+        .collect()
+}
+
+fn output_tail(stderr: &[u8], stdout: &[u8]) -> String {
+    let mut text = String::new();
+    text.push_str(&String::from_utf8_lossy(stderr));
+    if !stdout.is_empty() {
+        if !text.is_empty() {
+            text.push('\n');
+        }
+        text.push_str(&String::from_utf8_lossy(stdout));
+    }
+    let text = text.trim();
+    if text.is_empty() {
+        return String::new();
+    }
+    let mut tail = text.chars().rev().take(1200).collect::<Vec<_>>();
+    tail.reverse();
+    format!("：{}", tail.into_iter().collect::<String>().trim())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn profile_order_falls_back() {
+        assert_eq!(
+            profile_order("balanced"),
+            vec!["balanced", "fast", "fallback"]
+        );
+        assert_eq!(profile_order("fast")[0], "fast");
+    }
+
+    #[test]
+    fn splits_samples() {
+        let samples = vec![0.0; 16_000 * 25];
+        let chunks = split_samples(&samples, 16_000, 10);
+        assert_eq!(chunks.len(), 3);
+    }
+
+    #[test]
+    fn download_specs_match_configured_files() {
+        let temp = tempfile::tempdir().unwrap();
+        let paths = Paths {
+            root_dir: temp.path().to_path_buf(),
+            app_dir: temp.path().join(".voice_ime"),
+            config_path: temp.path().join(".voice_ime/config.json"),
+            history_path: temp.path().join(".voice_ime/history.json"),
+            prompt_path: temp.path().join(".voice_ime/personal_prompt.txt"),
+            corrections_path: temp.path().join(".voice_ime/corrections.json"),
+            recordings_dir: temp.path().join(".voice_ime/recordings"),
+        };
+        let config = AppConfig::default();
+        let balanced = download_spec("balanced", &config, &paths).unwrap();
+        let fallback = download_spec("fallback", &config, &paths).unwrap();
+        assert!(balanced
+            .files
+            .iter()
+            .any(|file| file.filename == "model.int8.onnx"));
+        assert!(fallback
+            .files
+            .iter()
+            .any(|file| file.filename == "tiny-encoder.int8.onnx"));
+        assert_eq!(
+            fallback.target_dir,
+            temp.path().join("models/sherpa-onnx-whisper-tiny")
+        );
+    }
+}
