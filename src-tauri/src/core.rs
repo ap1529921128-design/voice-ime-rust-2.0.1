@@ -224,6 +224,7 @@ impl AppState {
         };
         let target = target.unwrap_or_else(InputTarget::capture);
         target.paste_text(&text, delay)?;
+        hide_overlay(app);
         {
             let mut inner = self.inner.lock();
             inner.status = "已粘贴到当前焦点位置".into();
@@ -564,7 +565,6 @@ pub fn position_overlay(app: &AppHandle, rect: OverlayRect) {
             rect.height as u32,
         ));
         let _ = window.show();
-        let _ = window.set_focus();
     }
 }
 

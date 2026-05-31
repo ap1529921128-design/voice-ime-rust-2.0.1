@@ -99,6 +99,7 @@ const isOverlay = currentWindow.label === "overlay";
 let snapshot: Snapshot | null = null;
 let statusRows: AsrModelStatus[] = [];
 let activeView: "compose" | "settings" | "history" = "compose";
+let pendingTextSync: number | undefined;
 
 type IconName = keyof typeof icons;
 
@@ -242,6 +243,9 @@ function settingsView(data: Snapshot) {
       <label>长文阈值秒数
         <input type="number" min="10" max="600" value="${cfg.asr.long_transcript_seconds}" data-config="asr.long_transcript_seconds" />
       </label>
+      <label>ASR 线程
+        <input type="number" min="1" max="4" value="${cfg.asr.num_threads}" data-config="asr.num_threads" />
+      </label>
       <label>智能纠错
         <select data-config="smart.enabled">
           ${option("true", String(cfg.smart.enabled), "开启")}
@@ -303,11 +307,17 @@ function historyView(data: Snapshot) {
 
 function wireCommon() {
   app.querySelectorAll<HTMLTextAreaElement>("[data-field='text']").forEach((field) => {
-    field.addEventListener("input", () => run("set_text", { text: field.value }));
+    field.addEventListener("input", () => scheduleTextSync(field.value));
+    field.addEventListener("blur", () => {
+      void flushTextSync(field.value);
+    });
   });
   app.querySelectorAll<HTMLElement>("[data-action]").forEach((button) => {
     button.addEventListener("click", async () => {
       const action = button.dataset.action!;
+      if (["confirm", "copy", "translate-en", "translate-ja", "translate-zh"].includes(action)) {
+        await flushActiveTextField();
+      }
       if (action === "start") await run("start_recording");
       if (action === "stop") await run("stop_recording");
       if (action === "confirm") await run("confirm_input");
@@ -325,6 +335,43 @@ function wireCommon() {
       if (action === "open-model-dir") await invoke("open_models_dir");
     });
   });
+}
+
+function scheduleTextSync(text: string) {
+  if (snapshot) {
+    snapshot.text = text;
+    snapshot.word_count = Array.from(text).length;
+  }
+  if (pendingTextSync !== undefined) {
+    window.clearTimeout(pendingTextSync);
+  }
+  pendingTextSync = window.setTimeout(() => {
+    void flushTextSync(text);
+  }, 180);
+}
+
+async function flushActiveTextField() {
+  const active = document.activeElement;
+  if (active instanceof HTMLTextAreaElement && active.dataset.field === "text") {
+    await flushTextSync(active.value);
+  }
+}
+
+async function flushTextSync(text: string) {
+  if (pendingTextSync !== undefined) {
+    window.clearTimeout(pendingTextSync);
+    pendingTextSync = undefined;
+  }
+  try {
+    const result = await invoke<Snapshot>("set_text", { text });
+    snapshot = result;
+  } catch (error) {
+    if (snapshot) {
+      snapshot.status = "出错";
+      snapshot.meta = String(error);
+      render();
+    }
+  }
 }
 
 function wireMain() {
@@ -420,7 +467,16 @@ function shortPath(value: string) {
 async function bootstrap() {
   snapshot = await invoke<Snapshot>("get_snapshot");
   await listen<Snapshot>("voice-ime://snapshot", async (event) => {
+    const active = document.activeElement;
+    const isEditing =
+      active instanceof HTMLTextAreaElement &&
+      active.dataset.field === "text" &&
+      event.payload.text === active.value &&
+      event.payload.state === snapshot?.state;
     snapshot = event.payload;
+    if (isEditing) {
+      return;
+    }
     if (!isOverlay && activeView === "settings") {
       await refreshModelStatus();
     }

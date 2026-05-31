@@ -18,7 +18,11 @@ pub fn smart_correct(
     let base_text = text::normalize_text(base_text);
     let edit_existing = !base_text.is_empty() && text::is_confirmation_edit_command(&corrected);
     if corrected.trim().is_empty() {
-        return if edit_existing { base_text } else { String::new() };
+        return if edit_existing {
+            base_text
+        } else {
+            String::new()
+        };
     }
     if !config.smart.enabled {
         return if edit_existing { base_text } else { corrected };

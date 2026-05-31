@@ -18,6 +18,8 @@
 - Built release as a Windows GUI subsystem executable so double-click launch no longer opens a black console window.
 - Tightened translation prompts and discard prompt-like translation outputs instead of inserting personal-wordlist/confirmation text.
 - Patched the bundled MiniCPM startup script to launch llama-server hidden instead of minimized.
+- Stopped the cursor overlay from stealing focus, hides it after confirm paste, and debounced text sync so mouse selection and typing no longer trigger full UI redraws.
+- Lowered the default ASR thread count to 2 and exposed the thread setting for weaker PCs.
 
 ## 2.0.0 - 2026-05-31
 

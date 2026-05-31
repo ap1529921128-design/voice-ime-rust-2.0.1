@@ -313,6 +313,7 @@ fn migrate_legacy_config(value: Value) -> AppConfig {
 }
 
 fn normalize_config(config: &mut AppConfig) {
+    config.asr.num_threads = config.asr.num_threads.clamp(1, 4);
     config.input.hotkey_record = normalize_hotkey(&config.input.hotkey_record);
     config.input.hotkey_english = normalize_hotkey(&config.input.hotkey_english);
     config.input.hotkey_japanese = normalize_hotkey(&config.input.hotkey_japanese);
@@ -413,7 +414,7 @@ fn default_long_chunk_seconds() -> u32 {
     10
 }
 fn default_num_threads() -> i32 {
-    4
+    2
 }
 fn default_history_limit() -> usize {
     50
