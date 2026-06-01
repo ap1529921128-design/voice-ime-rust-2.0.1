@@ -19,6 +19,7 @@ llama.cpp/
 *.pdb
 
 work_*.log
+work/
 **/*.rs.bk
 
 **/mutants.out*/
