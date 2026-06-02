@@ -41,7 +41,7 @@ button {
 .app-shell {
   width: 100vw;
   height: 100vh;
-  padding: 18px;
+  padding: 0;
   overflow: hidden;
   background: transparent;
 }
@@ -51,7 +51,9 @@ button {
   border: 1px solid rgba(255, 255, 255, 0.72);
   background: rgba(245, 248, 252, 0.72);
   backdrop-filter: blur(28px) saturate(150%);
-  box-shadow: 0 24px 80px rgba(10, 31, 61, 0.2), inset 0 1px 0 rgba(255, 255, 255, 0.72);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.72),
+    inset 0 -22px 48px rgba(10, 31, 61, 0.08);
 }
 
 .window {
@@ -62,8 +64,8 @@ button {
   flex-direction: column;
   gap: 16px;
   overflow: hidden;
-  border-radius: 32px;
-  padding: 22px;
+  border-radius: 30px;
+  padding: 24px;
 }
 
 .titlebar,

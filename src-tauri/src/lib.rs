@@ -6,6 +6,7 @@ mod history;
 mod llm;
 mod text;
 mod win_bridge;
+mod window_shape;
 
 use crate::config::AppConfig;
 use crate::core::{AppState, UiSnapshot};
@@ -144,6 +145,7 @@ pub fn run() {
         .plugin(tauri_plugin_global_shortcut::Builder::new().build())
         .manage(app_state)
         .setup(|app| {
+            window_shape::install(app);
             let state = app.state::<AppState>();
             register_hotkeys(app.handle(), &state);
             core::emit_snapshot(app.handle(), &state);

@@ -23,6 +23,8 @@
 - Removed outer WebView scrolling and the default browser scrollbar from the main UI, keeping scrolling contained inside settings/history only.
 - Shows raw ASR text immediately after decoding, then runs smart correction as a post-processing update so local LLM startup cannot make transcription appear blank.
 - Fixed the packaged MiniCPM launcher root path so the script copied under `app/tools` still resolves models from the portable `app` directory.
+- Removed clipped outer CSS shadows and added a native rounded Windows region so the UI no longer shows a faint rectangular WebView edge; native shadows stay enabled for Windows startup stability.
+- Hardened translation cleanup so labels like "翻译结果：" and explanation sections are stripped or rejected, and translating already-Chinese text to Chinese returns the original text.
 
 ## 2.0.0 - 2026-05-31
 

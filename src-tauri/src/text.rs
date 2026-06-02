@@ -9,6 +9,30 @@ static THINK_RE: Lazy<Regex> = Lazy::new(|| Regex::new(r"(?is)<think>.*?</think>
 static PUNCT_ONLY_RE: Lazy<Regex> = Lazy::new(|| {
     Regex::new(r#"^[\s,.;:!?，。！？；：、…~～\-_'"“”‘’()\[\]{}【】<>《》「」『』]+$"#).unwrap()
 });
+static LIST_PREFIX_RE: Lazy<Regex> =
+    Lazy::new(|| Regex::new(r"^\s*(?:[-*•]\s*|\d+[.)、]\s*)").unwrap());
+static TRANSLATION_LABEL_RE: Lazy<Regex> = Lazy::new(|| {
+    Regex::new(
+        r"(?i)^\s*(?:翻译结果|翻译|译文|中文译文|英文译文|英语译文|日文译文|日语译文|简体中文|中文|英文|英语|日文|日语|chinese|english|japanese|translation|translated text|result)\s*(?:如下|如下所示)?\s*[:：]?\s*",
+    )
+    .unwrap()
+});
+static TRANSLATION_TAIL_RE: Lazy<Regex> = Lazy::new(|| {
+    Regex::new(r"(?i)^(?:以下是|下面是)?[^：:\n]*(?:翻译为|翻译成|译为|译成|可译为|可以翻译为|可以翻译成|translated as|translation is|translate to)\s*[:：]\s*(.+)$")
+        .unwrap()
+});
+static EXPLANATION_HEADING_RE: Lazy<Regex> = Lazy::new(|| {
+    Regex::new(
+        r"(?i)^\s*(?:解释|说明|注释|备注|原因|分析|note|notes|explanation|commentary)\s*[:：]",
+    )
+    .unwrap()
+});
+static TRANSLATION_META_LINE_RE: Lazy<Regex> = Lazy::new(|| {
+    Regex::new(
+        r"(?i)^\s*(?:这个|这句|这句话|这段|该句|该短语|以上|如果|根据|可根据|由于|because|depending on|if you|this translation|the translation)\b?.*(?:翻译|译文|语境|含义|意思|意译|直译|保留|translation|context|meaning)",
+    )
+    .unwrap()
+});
 
 pub fn default_corrections() -> BTreeMap<String, String> {
     BTreeMap::from([
@@ -121,6 +145,112 @@ pub fn clean_llm_output(text: &str) -> String {
     }
 }
 
+pub fn clean_translation_output(text: &str) -> String {
+    let cleaned = clean_llm_output(text);
+    let mut lines = Vec::new();
+    for raw_line in cleaned.lines() {
+        let mut line = LIST_PREFIX_RE
+            .replace(raw_line.trim(), "")
+            .trim()
+            .to_string();
+        line = strip_wrapping_quotes(&line);
+        if line.is_empty() {
+            continue;
+        }
+        if EXPLANATION_HEADING_RE.is_match(&line) {
+            break;
+        }
+        if let Some(captures) = TRANSLATION_TAIL_RE.captures(&line) {
+            line = captures
+                .get(1)
+                .map(|item| item.as_str())
+                .unwrap_or("")
+                .trim()
+                .to_string();
+        } else if TRANSLATION_LABEL_RE.is_match(&line) {
+            line = TRANSLATION_LABEL_RE.replace(&line, "").trim().to_string();
+        }
+        line = strip_wrapping_quotes(&line);
+        if line.is_empty()
+            || looks_like_translation_preamble(&line)
+            || TRANSLATION_META_LINE_RE.is_match(&line)
+            || line.starts_with("原文")
+            || line.starts_with("目标语言")
+        {
+            continue;
+        }
+        lines.push(line);
+    }
+    let result = normalize_text(&lines.join("\n"));
+    if PUNCT_ONLY_RE.is_match(&result) {
+        String::new()
+    } else {
+        result
+    }
+}
+
+pub fn looks_like_translation_chatter(text: &str) -> bool {
+    normalize_text(text).lines().any(|line| {
+        let compact = line
+            .chars()
+            .filter(|c| !c.is_whitespace())
+            .collect::<String>()
+            .to_lowercase();
+        compact.starts_with("翻译结果")
+            || compact.starts_with("译文如下")
+            || compact.starts_with("以下是")
+            || compact.starts_with("下面是")
+            || compact.starts_with("解释:")
+            || compact.starts_with("解释：")
+            || compact.starts_with("说明:")
+            || compact.starts_with("说明：")
+            || compact.starts_with("注释:")
+            || compact.starts_with("注释：")
+            || compact.starts_with("备注:")
+            || compact.starts_with("备注：")
+            || compact.starts_with("候选")
+            || compact.starts_with("这个翻译")
+            || compact.starts_with("这句话可以")
+            || compact.starts_with("这句可以")
+            || compact.starts_with("该短语可以")
+            || compact.starts_with("可以根据语境")
+            || compact.starts_with("如果需要")
+            || compact.starts_with("根据语境")
+            || compact.starts_with("translation:")
+            || compact.starts_with("translatedtext:")
+            || compact.starts_with("explanation:")
+            || compact.starts_with("note:")
+    })
+}
+
+pub fn has_translation_markup(text: &str) -> bool {
+    normalize_text(text).lines().any(|line| {
+        let line = LIST_PREFIX_RE.replace(line.trim(), "").trim().to_string();
+        let line = strip_wrapping_quotes(&line);
+        TRANSLATION_LABEL_RE.is_match(&line)
+            || TRANSLATION_TAIL_RE.is_match(&line)
+            || EXPLANATION_HEADING_RE.is_match(&line)
+            || looks_like_translation_preamble(&line)
+            || TRANSLATION_META_LINE_RE.is_match(&line)
+    })
+}
+
+pub fn is_likely_chinese_text(text: &str) -> bool {
+    let mut han = 0usize;
+    let mut kana = 0usize;
+    let mut latin = 0usize;
+    for ch in text.chars() {
+        if ('\u{4E00}'..='\u{9FFF}').contains(&ch) {
+            han += 1;
+        } else if ('\u{3040}'..='\u{30FF}').contains(&ch) {
+            kana += 1;
+        } else if ch.is_ascii_alphabetic() {
+            latin += 1;
+        }
+    }
+    han >= 2 && kana == 0 && han >= latin
+}
+
 pub fn join_transcript_chunks(chunks: &[String], corrections_path: &Path) -> String {
     let mut result = String::new();
     for chunk in chunks {
@@ -142,6 +272,41 @@ pub fn join_transcript_chunks(chunks: &[String], corrections_path: &Path) -> Str
         result.push_str(&chunk);
     }
     normalize_text(&result)
+}
+
+fn looks_like_translation_preamble(text: &str) -> bool {
+    let compact = normalize_text(text)
+        .chars()
+        .filter(|c| !c.is_whitespace())
+        .collect::<String>()
+        .to_lowercase();
+    compact.is_empty()
+        || [
+            "翻译结果如下",
+            "翻译结果:",
+            "翻译结果：",
+            "译文如下",
+            "如下:",
+            "如下：",
+            "以下是翻译",
+            "下面是翻译",
+            "thetranslationis",
+            "hereisthetranslation",
+        ]
+        .iter()
+        .any(|marker| compact.contains(marker))
+}
+
+fn strip_wrapping_quotes(text: &str) -> String {
+    text.trim()
+        .trim_matches('"')
+        .trim_matches('\'')
+        .trim_matches('“')
+        .trim_matches('”')
+        .trim_matches('‘')
+        .trim_matches('’')
+        .trim()
+        .to_string()
 }
 
 pub fn is_confirmation_edit_command(text: &str) -> bool {
@@ -273,5 +438,52 @@ mod tests {
             "好的，我将按照您的要求进行处理。请确认以下内容：1. 是否需要我整理个人词表。2. 是否需要我处理 ASR 文本。"
         ));
         assert!(!looks_like_prompt_leak("今天下午三点开会，记得带电脑。"));
+    }
+
+    #[test]
+    fn cleans_translation_labels_and_explanations() {
+        assert_eq!(
+            clean_translation_output("翻译结果：非洲之星和海洋之泪\n解释：这是意译。"),
+            "非洲之星和海洋之泪"
+        );
+        assert_eq!(
+            clean_translation_output("以下是翻译结果：\n1. The Star of Africa and the Tear of the Ocean\n说明：保留诗意。"),
+            "The Star of Africa and the Tear of the Ocean"
+        );
+        assert_eq!(
+            clean_translation_output("翻译结果如下：\n非洲之星和海洋之泪"),
+            "非洲之星和海洋之泪"
+        );
+        assert_eq!(
+            clean_translation_output("\"翻译结果：非洲之星和海洋之泪\""),
+            "非洲之星和海洋之泪"
+        );
+        assert_eq!(
+            clean_translation_output("中文：非洲之星和海洋之泪\n如果需要更诗意的翻译，可以调整。"),
+            "非洲之星和海洋之泪"
+        );
+        assert_eq!(
+            clean_translation_output(
+                "The phrase can be translated as: The Star of Africa and the Tear of the Ocean"
+            ),
+            "The Star of Africa and the Tear of the Ocean"
+        );
+        assert!(!looks_like_translation_chatter("这是一本说明书。"));
+        assert!(looks_like_translation_chatter("说明：这是意译。"));
+        assert!(looks_like_translation_chatter(
+            "如果需要，我可以根据语境继续调整翻译。"
+        ));
+        assert!(has_translation_markup("翻译结果：非洲之星和海洋之泪"));
+        assert!(has_translation_markup(
+            "中文：非洲之星和海洋之泪\n说明：这是意译。"
+        ));
+        assert!(!has_translation_markup("这是一本说明书。"));
+    }
+
+    #[test]
+    fn detects_likely_chinese_text() {
+        assert!(is_likely_chinese_text("非洲之星和海洋之泪"));
+        assert!(!is_likely_chinese_text("アフリカの星と海の涙"));
+        assert!(!is_likely_chinese_text("The Star of Africa"));
     }
 }

@@ -84,12 +84,28 @@ pub fn translate(
     paths: &Paths,
     _personal_prompt: &str,
 ) -> Result<String> {
-    let source = text::normalize_text(source);
+    let mut source = text::normalize_text(source);
     if source.trim().is_empty() {
         return Err(anyhow!("没有可翻译的文本"));
     }
+    if text::has_translation_markup(&source) {
+        let cleaned_source = text::clean_translation_output(&source);
+        if !cleaned_source.is_empty() {
+            source = cleaned_source;
+        }
+    }
     if text::looks_like_prompt_leak(&source) {
         return Err(anyhow!("当前文本像内部提示泄漏，已拒绝翻译"));
+    }
+    if target_language == "zh" && text::is_likely_chinese_text(&source) {
+        let cleaned = text::clean_translation_output(&source);
+        if !cleaned.is_empty() {
+            return Ok(cleaned);
+        }
+        if text::looks_like_translation_chatter(&source) {
+            return Err(anyhow!("当前文本像翻译说明文字，已拒绝继续套娃"));
+        }
+        return Ok(source);
     }
     if config.translation.endpoint.trim().is_empty() {
         return Err(anyhow!("未配置翻译端点"));
@@ -107,25 +123,27 @@ pub fn translate(
     let payload = json!({
         "model": config.translation.model,
         "messages": [
-            { "role": "system", "content": "你是翻译引擎。只翻译用户提供的原文，保留产品名、文件名、代码、命令和数字。不解释，不提要求，不列清单，不询问确认。" },
-            { "role": "user", "content": format!("目标语言：{language_name}\n\n原文：\n{source}\n\n只输出译文。") }
+            { "role": "system", "content": "你是翻译引擎。只翻译用户提供的原文，保留产品名、文件名、代码、命令和数字。输出只能是译文本身；禁止标题、禁止“翻译结果”、禁止解释、禁止候选、禁止列表、禁止询问确认。" },
+            { "role": "user", "content": format!("把下面原文翻译为{language_name}。只输出译文正文，不要加任何标签。\n\n{source}") }
         ],
         "temperature": 0,
         "max_tokens": max_tokens,
         "stream": false,
-        "stop": ["\n原文：", "[原文]", "[/原文]", "【原文】", "【/原文】"]
+        "stop": ["\n原文：", "\n解释", "\n说明", "\n备注", "\nNote", "\nExplanation", "[原文]", "[/原文]", "【原文】", "【/原文】"]
     });
-    let translated = text::clean_llm_output(&chat_completion(
+    let raw_translated = chat_completion(
         &config.translation.endpoint,
         &payload,
         config.translation.timeout_seconds,
-    )?);
+    )?;
+    let translated = text::clean_translation_output(&raw_translated);
     if translated.is_empty() {
         Err(anyhow!("翻译结果为空"))
     } else if text::looks_like_prompt_leak(&translated)
         || text::looks_like_missing_edit_target(&translated)
+        || text::looks_like_translation_chatter(&translated)
     {
-        Err(anyhow!("翻译模型输出了提示词/确认清单，已丢弃"))
+        Err(anyhow!("翻译模型输出了说明文字，已丢弃"))
     } else {
         Ok(translated)
     }
