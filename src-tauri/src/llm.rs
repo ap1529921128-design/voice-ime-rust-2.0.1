@@ -31,7 +31,7 @@ pub fn smart_correct(
         return if edit_existing { base_text } else { corrected };
     }
     if is_local_endpoint(&config.smart.endpoint)
-        && ensure_local_service(&config.smart.endpoint, paths).is_err()
+        && !http_ok(&models_endpoint(&config.smart.endpoint))
     {
         return if edit_existing { base_text } else { corrected };
     }

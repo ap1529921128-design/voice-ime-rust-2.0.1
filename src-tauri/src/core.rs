@@ -410,18 +410,30 @@ impl WorkerState {
                 }
             }
             let combined = text::join_transcript_chunks(&texts, &self.paths.corrections_path);
+            let raw_finished = FinishedTranscript {
+                session_id,
+                text: combined.clone(),
+                duration_seconds: recording.duration_seconds,
+                transcribe_seconds: started.elapsed().as_secs_f32(),
+                backend: config.asr.default_engine.clone(),
+                model: config.asr.profile.clone(),
+            };
+            app_state.finish_transcription(app, raw_finished)?;
+            if combined.trim().is_empty() {
+                return Ok(());
+            }
+            if !app_state.is_current(session_id) {
+                return Ok(());
+            }
+            app_state.set_postprocess_status(app, session_id, "智能纠错中".into());
             let final_text =
                 llm::smart_correct(&combined, &base_text, &config, &self.paths, &prompt);
-            app_state.finish_transcription(
+            app_state.update_finished_text(
                 app,
-                FinishedTranscript {
-                    session_id,
-                    text: final_text,
-                    duration_seconds: recording.duration_seconds,
-                    transcribe_seconds: started.elapsed().as_secs_f32(),
-                    backend: config.asr.default_engine,
-                    model: config.asr.profile,
-                },
+                session_id,
+                final_text,
+                recording.duration_seconds,
+                started.elapsed().as_secs_f32(),
             )?;
         } else {
             let input = AsrInput {
@@ -431,18 +443,31 @@ impl WorkerState {
                 prompt: prompt.clone(),
             };
             let outcome = asr::transcribe(&input, &config, &self.paths)?;
+            let raw_text = outcome.text.clone();
+            let raw_finished = FinishedTranscript {
+                session_id,
+                text: raw_text.clone(),
+                duration_seconds: recording.duration_seconds,
+                transcribe_seconds: outcome.elapsed_seconds,
+                backend: outcome.backend,
+                model: outcome.model,
+            };
+            app_state.finish_transcription(app, raw_finished)?;
+            if raw_text.trim().is_empty() {
+                return Ok(());
+            }
+            if !app_state.is_current(session_id) {
+                return Ok(());
+            }
+            app_state.set_postprocess_status(app, session_id, "智能纠错中".into());
             let final_text =
-                llm::smart_correct(&outcome.text, &base_text, &config, &self.paths, &prompt);
-            app_state.finish_transcription(
+                llm::smart_correct(&raw_text, &base_text, &config, &self.paths, &prompt);
+            app_state.update_finished_text(
                 app,
-                FinishedTranscript {
-                    session_id,
-                    text: final_text,
-                    duration_seconds: recording.duration_seconds,
-                    transcribe_seconds: outcome.elapsed_seconds,
-                    backend: outcome.backend,
-                    model: outcome.model,
-                },
+                session_id,
+                final_text,
+                recording.duration_seconds,
+                started.elapsed().as_secs_f32(),
             )?;
         }
         let _ = fs::remove_file(recording.wav_path);
@@ -507,6 +532,19 @@ impl AppState {
         emit_snapshot(app, self);
     }
 
+    fn set_postprocess_status(&self, app: &AppHandle, session_id: u64, status: String) {
+        {
+            let mut inner = self.inner.lock();
+            if inner.session_id != session_id {
+                return;
+            }
+            inner.state = SessionState::Idle;
+            inner.status = status;
+            inner.meta = "ASR 原文已显示，可直接确认".into();
+        }
+        emit_snapshot(app, self);
+    }
+
     fn finish_transcription(&self, app: &AppHandle, finished: FinishedTranscript) -> Result<()> {
         {
             let mut inner = self.inner.lock();
@@ -537,6 +575,33 @@ impl AppState {
                 let history_path = self.paths.history_path.clone();
                 inner.history.add(record, &history_path)?;
             }
+        }
+        emit_snapshot(app, self);
+        Ok(())
+    }
+
+    fn update_finished_text(
+        &self,
+        app: &AppHandle,
+        session_id: u64,
+        text: String,
+        duration_seconds: f32,
+        transcribe_seconds: f32,
+    ) -> Result<()> {
+        {
+            let mut inner = self.inner.lock();
+            if inner.session_id != session_id || text.trim().is_empty() {
+                return Ok(());
+            }
+            inner.state = SessionState::Idle;
+            inner.status = "等待确认".into();
+            inner.meta = format!(
+                "录音 {:.1}s / 处理 {:.1}s / {} 字",
+                duration_seconds,
+                transcribe_seconds,
+                text.chars().count()
+            );
+            inner.text = text;
         }
         emit_snapshot(app, self);
         Ok(())

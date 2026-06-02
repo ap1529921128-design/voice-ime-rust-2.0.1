@@ -20,6 +20,9 @@
 - Patched the bundled MiniCPM startup script to launch llama-server hidden instead of minimized.
 - Stopped the cursor overlay from stealing focus, hides it after confirm paste, and debounced text sync so mouse selection and typing no longer trigger full UI redraws.
 - Lowered the default ASR thread count to 2 and exposed the thread setting for weaker PCs.
+- Removed outer WebView scrolling and the default browser scrollbar from the main UI, keeping scrolling contained inside settings/history only.
+- Shows raw ASR text immediately after decoding, then runs smart correction as a post-processing update so local LLM startup cannot make transcription appear blank.
+- Fixed the packaged MiniCPM launcher root path so the script copied under `app/tools` still resolves models from the portable `app` directory.
 
 ## 2.0.0 - 2026-05-31
 

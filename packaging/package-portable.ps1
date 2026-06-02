@@ -121,6 +121,7 @@ if (Test-Path -LiteralPath $miniCpmScript) {
     $targetMiniCpmScript = Join-Path $toolsDir "Start-MiniCPM-Translate.ps1"
     Copy-Item -LiteralPath $miniCpmScript -Destination $targetMiniCpmScript
     $scriptBody = Get-Content -LiteralPath $targetMiniCpmScript -Raw
+    $scriptBody = $scriptBody.Replace('$Root = $PSScriptRoot', '$Root = (Resolve-Path (Join-Path $PSScriptRoot "..")).Path')
     $scriptBody = $scriptBody.Replace("-WindowStyle Minimized", "-WindowStyle Hidden")
     Set-Content -LiteralPath $targetMiniCpmScript -Value $scriptBody -Encoding UTF8
 }
