@@ -123,6 +123,7 @@ if (Test-Path -LiteralPath $miniCpmScript) {
     $scriptBody = Get-Content -LiteralPath $targetMiniCpmScript -Raw
     $scriptBody = $scriptBody.Replace('$Root = $PSScriptRoot', '$Root = (Resolve-Path (Join-Path $PSScriptRoot "..")).Path')
     $scriptBody = $scriptBody.Replace("-WindowStyle Minimized", "-WindowStyle Hidden")
+    $scriptBody = $scriptBody.Replace('NoteProperty translation_timeout 30', 'NoteProperty translation_timeout 8')
     Set-Content -LiteralPath $targetMiniCpmScript -Value $scriptBody -Encoding UTF8
 }
 

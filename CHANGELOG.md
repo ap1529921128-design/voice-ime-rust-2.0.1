@@ -25,6 +25,7 @@
 - Fixed the packaged MiniCPM launcher root path so the script copied under `app/tools` still resolves models from the portable `app` directory.
 - Removed clipped outer CSS shadows and added a native rounded Windows region so the UI no longer shows a faint rectangular WebView edge; native shadows stay enabled for Windows startup stability.
 - Hardened translation cleanup so labels like "翻译结果：" and explanation sections are stripped or rejected, and translating already-Chinese text to Chinese returns the original text.
+- Made translation non-blocking, capped the default translation timeout to 8 seconds, reduced short-phrase token budgets, and starts MiniCPM in the background so a cold local model cannot freeze the UI.
 
 ## 2.0.0 - 2026-05-31
 

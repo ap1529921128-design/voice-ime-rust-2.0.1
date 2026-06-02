@@ -268,24 +268,27 @@ impl AppState {
         app: &AppHandle,
         target_language: String,
     ) -> Result<UiSnapshot> {
-        let (text, config) = {
+        let (session_id, text, config) = {
             let mut inner = self.inner.lock();
             if inner.text.trim().is_empty() {
                 return Err(anyhow!("没有可翻译的文本"));
             }
-            inner.status = "翻译中".into();
-            (inner.text.clone(), inner.config.clone())
+            let session_id = self.session_counter.fetch_add(1, Ordering::Relaxed);
+            inner.session_id = session_id;
+            inner.state = SessionState::Idle;
+            inner.status = format!("转{}中", target_label(&target_language));
+            inner.meta = format!(
+                "本地翻译最多等待 {}s；原文会保留",
+                inner.config.translation.timeout_seconds
+            );
+            (session_id, inner.text.clone(), inner.config.clone())
         };
         emit_snapshot(app, self);
-        let prompt = read_prompt(&self.paths);
-        let translated = llm::translate(&text, &target_language, &config, &self.paths, &prompt)?;
-        {
-            let mut inner = self.inner.lock();
-            inner.text = translated;
-            inner.status = format!("已转为{}", target_label(&target_language));
-            inner.meta = "等待确认".into();
-        }
-        emit_snapshot(app, self);
+        let state = Arc::new(self.clone_for_worker());
+        let app_handle = app.clone();
+        std::thread::spawn(move || {
+            state.process_translation(&app_handle, session_id, text, target_language, config);
+        });
         Ok(self.snapshot())
     }
 
@@ -485,6 +488,41 @@ impl WorkerState {
         let target = self.paths.recordings_dir.join(filename);
         fs::copy(&recording.wav_path, &target)?;
         Ok(target)
+    }
+
+    fn process_translation(
+        &self,
+        app: &AppHandle,
+        session_id: u64,
+        source: String,
+        target_language: String,
+        config: AppConfig,
+    ) {
+        let started = Instant::now();
+        let prompt = read_prompt(&self.paths);
+        let result = llm::translate(&source, &target_language, &config, &self.paths, &prompt);
+        let elapsed = started.elapsed().as_secs_f32();
+        let state = self.app_state();
+        {
+            let mut inner = state.inner.lock();
+            if inner.session_id != session_id {
+                return;
+            }
+            inner.state = SessionState::Idle;
+            match result {
+                Ok(translated) => {
+                    inner.text = translated;
+                    inner.status = format!("已转为{}", target_label(&target_language));
+                    inner.meta =
+                        format!("翻译 {:.1}s / {} 字", elapsed, inner.text.chars().count());
+                }
+                Err(err) => {
+                    inner.status = "翻译未完成".into();
+                    inner.meta = format!("{err}；耗时 {:.1}s，原文已保留", elapsed);
+                }
+            }
+        }
+        emit_snapshot(app, state);
     }
 
     fn set_error(&self, app: &AppHandle, session_id: u64, message: String) {

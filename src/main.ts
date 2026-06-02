@@ -261,6 +261,9 @@ function settingsView(data: Snapshot) {
       <label>翻译模型
         <input value="${escapeAttr(cfg.translation.model)}" data-config="translation.model" />
       </label>
+      <label>翻译超时
+        <input type="number" min="3" max="8" value="${cfg.translation.timeout_seconds}" data-config="translation.timeout_seconds" />
+      </label>
       <div class="model-status">
         ${statusRows
           .map(

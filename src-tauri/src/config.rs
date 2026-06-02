@@ -314,6 +314,7 @@ fn migrate_legacy_config(value: Value) -> AppConfig {
 
 fn normalize_config(config: &mut AppConfig) {
     config.asr.num_threads = config.asr.num_threads.clamp(1, 4);
+    config.translation.timeout_seconds = config.translation.timeout_seconds.clamp(3, 8);
     config.input.hotkey_record = normalize_hotkey(&config.input.hotkey_record);
     config.input.hotkey_english = normalize_hotkey(&config.input.hotkey_english);
     config.input.hotkey_japanese = normalize_hotkey(&config.input.hotkey_japanese);
@@ -453,7 +454,7 @@ fn default_smart_timeout() -> u64 {
     10
 }
 fn default_translation_timeout() -> u64 {
-    30
+    8
 }
 fn default_theme() -> String {
     "indigo-porcelain-glass".into()
@@ -538,5 +539,17 @@ mod tests {
             cfg.asr.models.whisper_tokens,
             "models/sherpa-onnx-whisper-tiny/tiny-tokens.txt"
         );
+    }
+
+    #[test]
+    fn clamps_translation_timeout_for_responsive_ui() {
+        let mut cfg = AppConfig::default();
+        cfg.translation.timeout_seconds = 30;
+        normalize_config(&mut cfg);
+        assert_eq!(cfg.translation.timeout_seconds, 8);
+
+        cfg.translation.timeout_seconds = 1;
+        normalize_config(&mut cfg);
+        assert_eq!(cfg.translation.timeout_seconds, 3);
     }
 }

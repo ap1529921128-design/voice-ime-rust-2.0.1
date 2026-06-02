@@ -2,10 +2,16 @@ use crate::{config::AppConfig, config::Paths, text};
 use anyhow::{anyhow, Result};
 use reqwest::blocking::Client;
 use serde_json::{json, Value};
-use std::{process::Command, time::Duration};
+use std::{
+    process::{Command, Stdio},
+    sync::{Mutex, OnceLock},
+    time::{Duration, Instant},
+};
 
 #[cfg(target_os = "windows")]
 use std::os::windows::process::CommandExt;
+
+static LAST_SERVICE_START: OnceLock<Mutex<Option<Instant>>> = OnceLock::new();
 
 pub fn smart_correct(
     raw_text: &str,
@@ -119,7 +125,7 @@ pub fn translate(
         "zh" => "简体中文",
         other => other,
     };
-    let max_tokens = (source.chars().count() * 3 + 48).clamp(64, 1024);
+    let max_tokens = (source.chars().count() * 2 + 24).clamp(24, 256);
     let payload = json!({
         "model": config.translation.model,
         "messages": [
@@ -150,8 +156,10 @@ pub fn translate(
 }
 
 fn chat_completion(endpoint: &str, payload: &Value, timeout_seconds: u64) -> Result<String> {
+    let timeout = Duration::from_secs(timeout_seconds.clamp(1, 30));
     let client = Client::builder()
-        .timeout(Duration::from_secs(timeout_seconds.max(1)))
+        .timeout(timeout)
+        .connect_timeout(Duration::from_millis(800))
         .build()?;
     let value: Value = client
         .post(endpoint)
@@ -176,6 +184,27 @@ fn ensure_local_service(endpoint: &str, paths: &Paths) -> Result<()> {
     if http_ok(&models_endpoint(endpoint)) {
         return Ok(());
     }
+    spawn_local_service_once(paths)?;
+    for _ in 0..8 {
+        std::thread::sleep(Duration::from_millis(400));
+        if http_ok(&models_endpoint(endpoint)) {
+            return Ok(());
+        }
+    }
+    Err(anyhow!(
+        "本地 MiniCPM/llama-server 正在启动，请 3-5 秒后再点翻译"
+    ))
+}
+
+fn spawn_local_service_once(paths: &Paths) -> Result<()> {
+    let guard = LAST_SERVICE_START.get_or_init(|| Mutex::new(None));
+    let mut last_start = guard.lock().map_err(|_| anyhow!("翻译服务启动锁异常"))?;
+    if last_start
+        .as_ref()
+        .is_some_and(|started| started.elapsed() < Duration::from_secs(20))
+    {
+        return Ok(());
+    }
     let script = local_service_script(paths).ok_or_else(|| {
         anyhow!("翻译/纠错服务未启动，且缺少启动脚本：Start-MiniCPM-Translate.ps1")
     })?;
@@ -186,17 +215,17 @@ fn ensure_local_service(endpoint: &str, paths: &Paths) -> Result<()> {
         .arg("Bypass")
         .arg("-File")
         .arg(&script)
-        .current_dir(&paths.root_dir);
+        .current_dir(&paths.root_dir)
+        .stdin(Stdio::null())
+        .stdout(Stdio::null())
+        .stderr(Stdio::null());
     #[cfg(target_os = "windows")]
     {
         command.creation_flags(0x08000000);
     }
-    let _ = command.output()?;
-    if http_ok(&models_endpoint(endpoint)) {
-        Ok(())
-    } else {
-        Err(anyhow!("本地 MiniCPM/llama-server 未响应"))
-    }
+    let _child = command.spawn()?;
+    *last_start = Some(Instant::now());
+    Ok(())
 }
 
 fn local_service_script(paths: &Paths) -> Option<std::path::PathBuf> {
@@ -221,7 +250,8 @@ fn correction_hint(paths: &Paths) -> String {
 
 fn http_ok(url: &str) -> bool {
     Client::builder()
-        .timeout(Duration::from_secs(1))
+        .timeout(Duration::from_millis(700))
+        .connect_timeout(Duration::from_millis(300))
         .build()
         .and_then(|client| client.get(url).send())
         .map(|response| response.status().is_success() || response.status().as_u16() < 500)
