@@ -45,7 +45,9 @@
 
 1. Portable root visibly contains one user-facing file: `启动语音输入.bat`.
 2. Runtime `.voice_ime` data is not included in the release.
-3. Hidden `app` folder contains `VoiceIME.exe`, README, acceptance notes, 2.0.1 roadmap, optional local model/runtime folders, and bundled Tauri frontend resources inside the exe.
+3. Hidden `app` folder contains `VoiceIME.exe`, `BUILD.txt`, README, acceptance notes, 2.0.1 roadmap, optional local model/runtime folders, and bundled Tauri frontend resources inside the exe.
+4. Packaging fails if the portable root contains unexpected visible files, `.voice_ime`, `recordings`, `backup`, or `backups` directories.
+5. Core package `app/models` contains only `MODELS.json` and `MODELS.md`.
 
 ## History Export
 
@@ -70,3 +72,4 @@
 - Settings / Voice now exposes microphone selection and the main input view shows a pre-recording input meter; real multi-device manual coverage is still required on the target machines.
 - History CSV export is automated and unit-tested for escaping; real spreadsheet review still depends on manual sample data from target machines.
 - Long recording retention can be disabled and existing long recordings can be cleared from Settings / Data; short recordings remain non-retained by design.
+- Portable packaging now includes an automated layout/release gate and `BUILD.txt`; manual smoke is still useful after packaging because it proves WebView startup on this machine.

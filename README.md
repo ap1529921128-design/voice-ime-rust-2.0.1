@@ -193,6 +193,7 @@ powershell -ExecutionPolicy Bypass -File .\packaging\package-portable.ps1
 ```
 
 不要直接拿 `cargo build --release` 生成的 exe 打包；它可能仍然指向开发地址 `127.0.0.1:1420`。
+打包脚本会生成 `app/BUILD.txt`，记录版本、构建时间、Git commit、Rust/Node/Tauri 版本，并在出包时检查根目录只暴露 `启动语音输入.bat`、隐藏 `app`、不包含 `.voice_ime`/`recordings`/备份目录。
 
 ## 当前边界
 

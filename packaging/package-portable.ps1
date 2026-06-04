@@ -13,6 +13,7 @@ $PreserveRoot = Join-Path ([System.IO.Path]::GetTempPath()) ("voice-ime-preserve
 $PreservedModels = Join-Path $PreserveRoot "models"
 $ModelCache = "D:\voice-ime-build-release\voice-ime-2.0.1-model-cache\models"
 $ModelManifestSource = Join-Path $Root "packaging\model-manifest.json"
+$LauncherName = ([string][char]21551 + [string][char]21160 + [string][char]35821 + [string][char]38899 + [string][char]36755 + [string][char]20837 + ".bat")
 
 function Copy-DirectoryContents {
     param(
@@ -67,10 +68,128 @@ function Install-ModelManifest {
     Set-Content -LiteralPath (Join-Path $ModelsDir "MODELS.md") -Value ($lines -join [Environment]::NewLine) -Encoding UTF8
 }
 
+function Get-OptionalCommandOutput {
+    param(
+        [Parameter(Mandatory = $true)][string]$Command,
+        [string[]]$Arguments = @(),
+        [switch]$AllowEmpty
+    )
+    try {
+        $output = & $Command @Arguments 2>$null
+        if ($LASTEXITCODE -ne 0) {
+            return "unknown"
+        }
+        $value = ($output -join " ").Trim()
+        if ([string]::IsNullOrWhiteSpace($value)) {
+            if ($AllowEmpty) {
+                return ""
+            }
+            return "unknown"
+        }
+        return $value
+    }
+    catch {
+        return "unknown"
+    }
+}
+
+function Write-BuildStamp {
+    param(
+        [Parameter(Mandatory = $true)][string]$DestinationApp,
+        [Parameter(Mandatory = $true)][string]$PackageName
+    )
+    $tauriConfig = Get-Content -LiteralPath (Join-Path $Root "src-tauri\tauri.conf.json") -Raw | ConvertFrom-Json
+    $packageJson = Get-Content -LiteralPath (Join-Path $Root "package.json") -Raw | ConvertFrom-Json
+
+    Push-Location $Root
+    try {
+        $commit = Get-OptionalCommandOutput -Command "git" -Arguments @("rev-parse", "--short", "HEAD")
+        $branch = Get-OptionalCommandOutput -Command "git" -Arguments @("rev-parse", "--abbrev-ref", "HEAD")
+        $status = Get-OptionalCommandOutput -Command "git" -Arguments @("status", "--short") -AllowEmpty
+        if ($status -eq "unknown") {
+            $status = "unknown"
+        }
+        elseif ([string]::IsNullOrWhiteSpace($status)) {
+            $status = "clean"
+        }
+    }
+    finally {
+        Pop-Location
+    }
+
+    $lines = @(
+        "Voice IME Build",
+        "package=$PackageName",
+        "product=$($tauriConfig.productName)",
+        "version=$($tauriConfig.version)",
+        "npm_package_version=$($packageJson.version)",
+        "built_at=$((Get-Date).ToString("o"))",
+        "source_root=$Root",
+        "git_branch=$branch",
+        "git_commit=$commit",
+        "git_status=$status",
+        "rustc=$(Get-OptionalCommandOutput -Command "rustc" -Arguments @("--version"))",
+        "node=$(Get-OptionalCommandOutput -Command "node" -Arguments @("--version"))",
+        "tauri_cli=$(Get-OptionalCommandOutput -Command "npx.cmd" -Arguments @("tauri", "--version"))"
+    )
+    Set-Content -LiteralPath (Join-Path $DestinationApp "BUILD.txt") -Value ($lines -join [Environment]::NewLine) -Encoding UTF8
+}
+
+function Assert-PortableLayout {
+    param(
+        [Parameter(Mandatory = $true)][string]$DestinationRoot,
+        [switch]$CorePackage
+    )
+    $launcher = Join-Path $DestinationRoot $LauncherName
+    $destinationApp = Join-Path $DestinationRoot "app"
+    if (-not (Test-Path -LiteralPath $launcher -PathType Leaf)) {
+        throw "Portable gate failed: launcher missing at $launcher"
+    }
+    if (-not (Test-Path -LiteralPath $destinationApp -PathType Container)) {
+        throw "Portable gate failed: hidden app directory missing at $destinationApp"
+    }
+    $appItem = Get-Item -LiteralPath $destinationApp -Force
+    if (-not (($appItem.Attributes -band [System.IO.FileAttributes]::Hidden) -eq [System.IO.FileAttributes]::Hidden)) {
+        throw "Portable gate failed: app directory is not hidden"
+    }
+    $rootItems = @(Get-ChildItem -LiteralPath $DestinationRoot -Force)
+    $unexpectedRootItems = @($rootItems | Where-Object { $_.Name -notin @("app", $LauncherName) })
+    if ($unexpectedRootItems.Count -gt 0) {
+        throw "Portable gate failed: unexpected root items: $($unexpectedRootItems.Name -join ', ')"
+    }
+    $visibleRootItems = @(Get-ChildItem -LiteralPath $DestinationRoot)
+    if ($visibleRootItems.Count -ne 1 -or $visibleRootItems[0].Name -ne $LauncherName) {
+        throw "Portable gate failed: root must visibly expose only $LauncherName"
+    }
+
+    foreach ($required in @("VoiceIME.exe", "README.md", "BUILD.txt", "models\MODELS.json", "models\MODELS.md")) {
+        $requiredPath = Join-Path $destinationApp $required
+        if (-not (Test-Path -LiteralPath $requiredPath -PathType Leaf)) {
+            throw "Portable gate failed: required app file missing: $required"
+        }
+    }
+
+    $forbidden = @(Get-ChildItem -LiteralPath $DestinationRoot -Force -Recurse -Directory |
+        Where-Object { $_.Name -in @(".voice_ime", "recordings", "backup", "backups") })
+    if ($forbidden.Count -gt 0) {
+        throw "Portable gate failed: forbidden runtime directories found: $($forbidden.FullName -join '; ')"
+    }
+
+    if ($CorePackage) {
+        $modelsDir = Join-Path $destinationApp "models"
+        $modelItems = @(Get-ChildItem -LiteralPath $modelsDir -Force)
+        $unexpectedModels = @($modelItems | Where-Object { $_.Name -notin @("MODELS.json", "MODELS.md") })
+        if ($unexpectedModels.Count -gt 0) {
+            throw "Portable gate failed: core package models directory contains binaries or extra files: $($unexpectedModels.Name -join ', ')"
+        }
+    }
+}
+
 function Copy-PortableBody {
     param(
         [Parameter(Mandatory = $true)][string]$DestinationRoot,
-        [Parameter(Mandatory = $true)][string]$LauncherText
+        [Parameter(Mandatory = $true)][string]$LauncherText,
+        [switch]$CorePackage
     )
     $destinationApp = Join-Path $DestinationRoot "app"
     if (Test-Path -LiteralPath $DestinationRoot) {
@@ -99,7 +218,8 @@ function Copy-PortableBody {
     }
 
     Install-ModelManifest -ModelsDir (Join-Path $destinationApp "models")
-    Set-Content -LiteralPath (Join-Path $DestinationRoot ([string][char]21551 + [string][char]21160 + [string][char]35821 + [string][char]38899 + [string][char]36755 + [string][char]20837 + ".bat")) -Value $LauncherText -Encoding Default
+    Write-BuildStamp -DestinationApp $destinationApp -PackageName $(if ($CorePackage) { "core" } else { "full" })
+    Set-Content -LiteralPath (Join-Path $DestinationRoot $LauncherName) -Value $LauncherText -Encoding Default
 
     $runtimeData = Join-Path $destinationApp ".voice_ime"
     if (Test-Path -LiteralPath $runtimeData) {
@@ -107,6 +227,7 @@ function Copy-PortableBody {
     }
     $appItem = Get-Item -LiteralPath $destinationApp
     $appItem.Attributes = $appItem.Attributes -bor [System.IO.FileAttributes]::Hidden
+    Assert-PortableLayout -DestinationRoot $DestinationRoot -CorePackage:$CorePackage
 }
 
 function Stop-PortableRuntimeProcesses {
@@ -189,7 +310,7 @@ if not exist "%~dp0app\VoiceIME.exe" (
 )
 start "" "%~dp0app\VoiceIME.exe"
 '@
-Set-Content -LiteralPath (Join-Path $ReleaseRoot ([string][char]21551 + [string][char]21160 + [string][char]35821 + [string][char]38899 + [string][char]36755 + [string][char]20837 + ".bat")) -Value $launcherText -Encoding Default
+Set-Content -LiteralPath (Join-Path $ReleaseRoot $LauncherName) -Value $launcherText -Encoding Default
 
 foreach ($optional in @("models", "llama.cpp", "模型放置说明.md")) {
     $source = Join-Path "D:\voice-ime-build-release\voice-ime-1.1.5-portable" $optional
@@ -209,6 +330,7 @@ if (Test-Path -LiteralPath $PreservedModels) {
 }
 
 Install-ModelManifest -ModelsDir (Join-Path $AppRoot "models")
+Write-BuildStamp -DestinationApp $AppRoot -PackageName "full"
 
 $toolsDir = Join-Path $AppRoot "tools"
 $miniCpmScript = Join-Path "D:\voice-ime-build-release\voice-ime-1.1.5-portable" "Start-MiniCPM-Translate.ps1"
@@ -234,9 +356,10 @@ foreach ($runtimeData in @(
 
 $appItem = Get-Item -LiteralPath $AppRoot
 $appItem.Attributes = $appItem.Attributes -bor [System.IO.FileAttributes]::Hidden
+Assert-PortableLayout -DestinationRoot $ReleaseRoot
 
 Write-Host "Portable release created: $ReleaseRoot"
-Copy-PortableBody -DestinationRoot $CoreReleaseRoot -LauncherText $launcherText
+Copy-PortableBody -DestinationRoot $CoreReleaseRoot -LauncherText $launcherText -CorePackage
 Write-Host "Core portable release created: $CoreReleaseRoot"
 }
 finally {
