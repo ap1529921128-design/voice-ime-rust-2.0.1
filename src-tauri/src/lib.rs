@@ -8,6 +8,7 @@ mod history;
 mod input_smoke;
 mod itn;
 mod llm;
+mod model_pack;
 mod ptt;
 mod retention;
 mod support_bundle;
@@ -22,7 +23,7 @@ use crate::core::{AppState, SessionState, UiSnapshot};
 use anyhow::Result;
 use once_cell::sync::Lazy;
 use serde::Serialize;
-use std::{collections::HashSet, fs, time::Duration};
+use std::{collections::HashSet, fs, path::PathBuf, time::Duration};
 use tauri::{AppHandle, Manager, State};
 use tauri_plugin_global_shortcut::{GlobalShortcutExt, ShortcutState};
 use tauri_plugin_opener::OpenerExt;
@@ -177,6 +178,23 @@ fn download_asr_model(
     profile: String,
 ) -> Result<UiSnapshot, String> {
     state.download_asr_model(&app, profile).map_err(to_string)
+}
+
+#[tauri::command]
+fn install_model_pack(
+    app: AppHandle,
+    state: State<'_, AppState>,
+    pack_path: String,
+) -> Result<UiSnapshot, String> {
+    let report = model_pack::install(&PathBuf::from(pack_path), &state.paths).map_err(to_string)?;
+    Ok(state.set_runtime_notice(
+        &app,
+        "模型包已导入",
+        format!(
+            "{} 个文件，覆盖 {} 个，忽略 {} 个；{}",
+            report.files_written, report.files_replaced, report.files_ignored, report.output_dir
+        ),
+    ))
 }
 
 #[tauri::command]
@@ -404,6 +422,7 @@ pub fn run() {
             audio_level,
             asr_status,
             download_asr_model,
+            install_model_pack,
             prewarm_asr,
             open_model_download_page,
             open_model_mirror_page,

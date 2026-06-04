@@ -41,6 +41,13 @@ function qaInvoke(command: string, args?: Record<string, unknown>) {
   if (command === "hotkey_status") return qaHotkeys();
   if (command === "doctor_report") return qaDoctorReport();
   if (command === "repair_doctor") return qaRepairReport();
+  if (command === "install_model_pack") {
+    return {
+      ...qaSnapshot,
+      status: "模型包已导入",
+      meta: String(args?.packPath || "QA model pack"),
+    };
+  }
   if (command === "set_text") {
     const text = String(args?.text || "");
     qaSnapshot = { ...qaSnapshot, text, word_count: Array.from(text).length };

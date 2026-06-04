@@ -605,6 +605,7 @@ function modelSettingsPanel(cfg: AppConfig) {
       ${modelPathField("fallback tokens", "asr.models.whisper_tokens", cfg.asr.models.whisper_tokens)}
       <div class="settings-tools">
         <button class="tool-btn" data-action="open-model-dir">${icon("FolderOpen", "打开模型目录")}<span>模型目录</span></button>
+        <button class="tool-btn" data-action="install-model-pack">${icon("PackageOpen", "导入模型包")}<span>导入包</span></button>
         <button class="tool-btn" data-action="prewarm-asr">${icon("Flame", "预热 ASR")}<span>预热</span></button>
       </div>
     </div>
@@ -859,6 +860,7 @@ function wireCommon() {
       if (action === "download-model") await downloadModel(button.dataset.profile || "");
       if (action === "pick-model-file") await pickModelFile(button.dataset.configPath || "");
       if (action === "pick-model-dir") await pickModelDirectory(button.dataset.profile || "");
+      if (action === "install-model-pack") await installModelPack();
       if (action === "prewarm-asr") await run("prewarm_asr");
       if (action === "open-model-mirror") await invoke("open_model_mirror_page", { profile: button.dataset.profile || "" });
       if (action === "open-model-page") await invoke("open_model_download_page", { profile: button.dataset.profile || "" });
@@ -1035,6 +1037,20 @@ async function pickModelDirectory(profile: string) {
   const next = collectConfigDraft();
   applyModelDirectory(next, profile, selected);
   await saveConfigDraft(next);
+}
+
+async function installModelPack() {
+  if (!snapshot) return;
+  const selected = await openDialog({
+    multiple: false,
+    directory: false,
+    title: "选择模型包",
+    filters: [{ name: "Voice IME 模型包", extensions: ["zip"] }],
+  });
+  if (typeof selected !== "string") return;
+  await run("install_model_pack", { packPath: selected });
+  await refreshModelStatus();
+  render();
 }
 
 function isModelProfile(value: string): value is ModelProfile {

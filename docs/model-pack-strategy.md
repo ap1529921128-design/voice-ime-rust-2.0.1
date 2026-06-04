@@ -4,7 +4,7 @@ Date: 2026-06-04
 
 Voice IME 从 2.0.1 后续热修开始采用“主体程序 + 可插拔模型包”发布方式。主体包只负责 GUI、录音、输入、下载、诊断和模型清单；ASR、LLM、翻译模型按 pack 放入 `app/models`。这样多台电脑测试时可以只复制轻主体包，模型放在移动硬盘或按需单独拷贝。
 
-设置页的“模型”分组支持两种接入方式：按 profile 选择一个模型目录并自动填入默认文件名，或逐个文件选择 `onnx` / `tokens.txt`。因此模型包既可以放在便携包 `app/models` 内，也可以放在移动硬盘上的绝对路径。
+设置页的“模型”分组支持三种接入方式：直接导入 `voice-ime-model-pack-*.zip`，按 profile 选择一个模型目录并自动填入默认文件名，或逐个文件选择 `onnx` / `tokens.txt`。因此模型包既可以放在便携包 `app/models` 内，也可以放在移动硬盘上的绝对路径。
 
 ## 包类型
 
@@ -79,4 +79,4 @@ powershell -NoProfile -ExecutionPolicy Bypass -File .\packaging\package-model-pa
   -OutputRoot D:\voice-ime-build-release
 ```
 
-生成的 zip 根目录包含 `app/models/...` 和 `MODEL_PACK.txt`。把它解压到 portable 根目录即可合并模型。
+生成的 zip 根目录包含 `app/models/...` 和 `MODEL_PACK.txt`。把它解压到 portable 根目录即可合并模型，也可以在 Settings / Models 里点击 `导入包` 选择该 zip。GUI 导入只会写入 `app/models` 对应目录，并拒绝绝对路径、盘符路径和 `..` 路径。

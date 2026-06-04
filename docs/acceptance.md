@@ -122,6 +122,14 @@
 4. The zip contains `app/models/...`, `app/models/MODELS.json`, and `MODEL_PACK.txt`.
 5. Missing required files fail the script before a model pack is produced.
 
+## Model Pack Import
+
+1. Open Settings / Models and click `导入包`.
+2. Select a `voice-ime-model-pack-*.zip`.
+3. Only zip entries under `app/models/`, `models/`, or root `MODEL_PACK.txt` are extracted.
+4. Entries with absolute paths, drive prefixes, or `..` are rejected and cannot write outside `app/models`.
+5. Model status refreshes after import, and the status line reports written, replaced, and ignored files.
+
 ## UI Smoke
 
 1. Run `npm run ui:smoke`.
