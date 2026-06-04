@@ -458,6 +458,7 @@ function modelSettingsPanel(cfg: AppConfig) {
       </label>
       <div class="settings-tools">
         <button class="tool-btn" data-action="open-model-dir">${icon("FolderOpen", "打开模型目录")}<span>模型目录</span></button>
+        <button class="tool-btn" data-action="prewarm-asr">${icon("Flame", "预热 ASR")}<span>预热</span></button>
       </div>
     </div>
   `;
@@ -555,6 +556,7 @@ function wireCommon() {
       if (action === "clear-history") await run("clear_history");
       if (action === "save-config") await saveConfig();
       if (action === "download-model") await downloadModel(button.dataset.profile || "");
+      if (action === "prewarm-asr") await run("prewarm_asr");
       if (action === "open-model-mirror") await invoke("open_model_mirror_page", { profile: button.dataset.profile || "" });
       if (action === "open-model-page") await invoke("open_model_download_page", { profile: button.dataset.profile || "" });
       if (action === "open-model-dir") await invoke("open_models_dir");

@@ -14,10 +14,10 @@ mod tray;
 mod win_bridge;
 mod window_shape;
 
-use crate::config::AppConfig;
-use crate::core::{AppState, UiSnapshot};
+use crate::config::{AppConfig, Paths};
+use crate::core::{AppState, SessionState, UiSnapshot};
 use anyhow::Result;
-use std::fs;
+use std::{fs, time::Duration};
 use tauri::{AppHandle, Manager, State};
 use tauri_plugin_global_shortcut::{GlobalShortcutExt, ShortcutState};
 use tauri_plugin_opener::OpenerExt;
@@ -116,6 +116,33 @@ fn download_asr_model(
     profile: String,
 ) -> Result<UiSnapshot, String> {
     state.download_asr_model(&app, profile).map_err(to_string)
+}
+
+#[tauri::command]
+fn prewarm_asr(app: AppHandle, state: State<'_, AppState>) -> UiSnapshot {
+    let snapshot = state.set_runtime_notice(&app, "ASR 预热中", "正在后台加载当前模型");
+    let config = snapshot.config.clone();
+    let paths = state.paths.clone();
+    let app_handle = app.clone();
+    std::thread::spawn(move || {
+        let result = asr::prewarm(&config, &paths);
+        let Some(state) = app_handle.try_state::<AppState>() else {
+            return;
+        };
+        match result {
+            Ok(status) => {
+                state.set_runtime_notice(
+                    &app_handle,
+                    "ASR 已预热",
+                    format!("{} / {:.1}s", status.profile, status.elapsed_seconds),
+                );
+            }
+            Err(err) => {
+                state.set_runtime_notice(&app_handle, "ASR 预热跳过", err.to_string());
+            }
+        };
+    });
+    snapshot
 }
 
 #[tauri::command]
@@ -226,11 +253,13 @@ pub fn run() {
             let tray_error = tray::install(app).err().map(to_string);
             let state = app.state::<AppState>();
             register_hotkeys(app.handle(), &state);
-            ptt::install(app.handle(), &state.snapshot().config);
+            let snapshot = state.snapshot();
+            ptt::install(app.handle(), &snapshot.config);
             if let Some(err) = tray_error {
                 state.set_runtime_notice(app.handle(), "托盘不可用", err);
             }
             core::emit_snapshot(app.handle(), &state);
+            schedule_idle_asr_prewarm(app.handle().clone(), state.paths.clone(), snapshot.config);
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
@@ -249,6 +278,7 @@ pub fn run() {
             audio_devices,
             asr_status,
             download_asr_model,
+            prewarm_asr,
             open_model_download_page,
             open_model_mirror_page,
             open_models_dir,
@@ -289,6 +319,32 @@ fn ensure_text_file(path: &std::path::Path, default_body: &str) -> Result<()> {
         fs::write(path, default_body)?;
     }
     Ok(())
+}
+
+fn schedule_idle_asr_prewarm(app: AppHandle, paths: Paths, config: AppConfig) {
+    if config.asr.worker_mode != "persistent" {
+        return;
+    }
+    std::thread::spawn(move || {
+        std::thread::sleep(Duration::from_millis(1800));
+        let Some(state) = app.try_state::<AppState>() else {
+            return;
+        };
+        let snapshot = state.snapshot();
+        if snapshot.state != SessionState::Idle || state.recorder.is_recording() {
+            return;
+        }
+        let Ok(status) = asr::prewarm(&config, &paths) else {
+            return;
+        };
+        if state.snapshot().state == SessionState::Idle {
+            state.set_runtime_notice(
+                &app,
+                "ASR 已预热",
+                format!("{} / {:.1}s", status.profile, status.elapsed_seconds),
+            );
+        }
+    });
 }
 
 fn register_hotkeys(app: &AppHandle, state: &State<'_, AppState>) {

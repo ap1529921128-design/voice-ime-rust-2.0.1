@@ -46,6 +46,14 @@ pub struct AsrOutcome {
     pub elapsed_seconds: f32,
 }
 
+#[derive(Debug, Clone, Serialize)]
+pub struct AsrPrewarmStatus {
+    pub profile: String,
+    pub backend: String,
+    pub model: String,
+    pub elapsed_seconds: f32,
+}
+
 #[derive(Debug, Clone)]
 pub struct AsrInput {
     pub samples: Vec<f32>,
@@ -81,6 +89,40 @@ pub fn transcribe(input: &AsrInput, config: &AppConfig, paths: &Paths) -> Result
         }
     }
     Err(last_error.unwrap_or_else(|| anyhow!("没有可用 ASR 后端")))
+}
+
+pub fn prewarm(config: &AppConfig, paths: &Paths) -> Result<AsrPrewarmStatus> {
+    if config.asr.worker_mode != "persistent" {
+        return Err(anyhow!("ASR 进程不是常驻模式"));
+    }
+    let profile = prewarm_profile(config, paths)
+        .ok_or_else(|| anyhow!("没有可预热的 ASR 模型，请先下载模型"))?;
+    let started = Instant::now();
+    let sample_rate = config.asr.sample_rate;
+    let samples = vec![0.0; (sample_rate as usize / 10).max(800)];
+    let input = AsrInput {
+        samples,
+        sample_rate,
+        language: config.asr.language.clone(),
+        prompt: String::new(),
+    };
+    let outcome = transcribe_profile_in_daemon(&input, config, paths, &profile)?;
+    Ok(AsrPrewarmStatus {
+        profile,
+        backend: outcome.backend,
+        model: outcome.model,
+        elapsed_seconds: started.elapsed().as_secs_f32(),
+    })
+}
+
+fn prewarm_profile(config: &AppConfig, paths: &Paths) -> Option<String> {
+    profile_order(&config.asr.profile)
+        .into_iter()
+        .find(|profile| {
+            let files = required_files_for_profile(config, paths, profile);
+            !files.is_empty() && files.iter().all(|path| Path::new(path).is_file())
+        })
+        .map(str::to_string)
 }
 
 fn transcribe_profile_with_configured_worker(
@@ -963,6 +1005,21 @@ fn output_tail(stderr: &[u8], stdout: &[u8]) -> String {
 mod tests {
     use super::*;
 
+    fn test_paths(root: &Path) -> Paths {
+        Paths {
+            root_dir: root.to_path_buf(),
+            app_dir: root.join(".voice_ime"),
+            config_path: root.join(".voice_ime/config.json"),
+            history_path: root.join(".voice_ime/history.json"),
+            prompt_path: root.join(".voice_ime/personal_prompt.txt"),
+            corrections_path: root.join(".voice_ime/corrections.json"),
+            hotwords_path: root.join(".voice_ime/hot.txt"),
+            hot_rules_path: root.join(".voice_ime/hot-rule.txt"),
+            recordings_dir: root.join(".voice_ime/recordings"),
+            logs_dir: root.join(".voice_ime/logs"),
+        }
+    }
+
     #[test]
     fn profile_order_falls_back() {
         assert_eq!(
@@ -982,18 +1039,7 @@ mod tests {
     #[test]
     fn download_specs_match_configured_files() {
         let temp = tempfile::tempdir().unwrap();
-        let paths = Paths {
-            root_dir: temp.path().to_path_buf(),
-            app_dir: temp.path().join(".voice_ime"),
-            config_path: temp.path().join(".voice_ime/config.json"),
-            history_path: temp.path().join(".voice_ime/history.json"),
-            prompt_path: temp.path().join(".voice_ime/personal_prompt.txt"),
-            corrections_path: temp.path().join(".voice_ime/corrections.json"),
-            hotwords_path: temp.path().join(".voice_ime/hot.txt"),
-            hot_rules_path: temp.path().join(".voice_ime/hot-rule.txt"),
-            recordings_dir: temp.path().join(".voice_ime/recordings"),
-            logs_dir: temp.path().join(".voice_ime/logs"),
-        };
+        let paths = test_paths(temp.path());
         let config = AppConfig::default();
         let balanced = download_spec("balanced", &config, &paths).unwrap();
         let fallback = download_spec("fallback", &config, &paths).unwrap();
@@ -1009,5 +1055,25 @@ mod tests {
             fallback.target_dir,
             temp.path().join("models/sherpa-onnx-whisper-tiny")
         );
+    }
+
+    #[test]
+    fn prewarm_selects_first_ready_profile() {
+        let temp = tempfile::tempdir().unwrap();
+        let paths = test_paths(temp.path());
+        let config = AppConfig::default();
+        for file in required_files_for_profile(&config, &paths, "fast") {
+            let path = PathBuf::from(file);
+            fs::create_dir_all(path.parent().unwrap()).unwrap();
+            fs::write(path, "placeholder").unwrap();
+        }
+        assert_eq!(prewarm_profile(&config, &paths), Some("fast".into()));
+    }
+
+    #[test]
+    fn prewarm_skips_when_no_profile_is_ready() {
+        let temp = tempfile::tempdir().unwrap();
+        let paths = test_paths(temp.path());
+        assert_eq!(prewarm_profile(&AppConfig::default(), &paths), None);
     }
 }
