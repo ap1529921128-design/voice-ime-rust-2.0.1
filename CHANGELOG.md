@@ -30,6 +30,7 @@
 - Added a CLI ASR benchmark harness that scans wav samples and writes timing, realtime factor, model, transcript, expected text, and errors to CSV.
 - Added a model-pack packaging script that creates standalone `voice-ime-model-pack-*.zip` archives from the manifest and an existing models directory.
 - Confirm paste now checks `SendInput` delivery, restores the previous text clipboard where feasible, and logs clipboard restoration fields in input-target logs.
+- Added a conservative direct Unicode typing fallback for short single-line text when clipboard paste fails.
 
 ## 2.0.1 - 2026-05-31
 

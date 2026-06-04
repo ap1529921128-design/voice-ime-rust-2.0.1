@@ -281,6 +281,7 @@ impl AppState {
             input_profile: profile_name.as_deref(),
             text_chars: text.chars().count(),
             paste_delay_ms: delay,
+            input_method: paste_outcome.map(|outcome| outcome.method),
             send_input_events: paste_outcome.map(|outcome| outcome.send_input_events),
             clipboard_restored: paste_outcome.map(|outcome| outcome.clipboard_restored),
             clipboard_restore_error: paste_outcome
@@ -807,6 +808,7 @@ struct InputTargetLogEntry<'a> {
     input_profile: Option<&'a str>,
     text_chars: usize,
     paste_delay_ms: u64,
+    input_method: Option<&'a str>,
     send_input_events: Option<u32>,
     clipboard_restored: Option<bool>,
     clipboard_restore_error: Option<&'a str>,

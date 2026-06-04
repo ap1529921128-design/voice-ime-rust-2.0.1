@@ -17,7 +17,14 @@
 2. Confirm Voice IME text into Notepad or another focused text field.
 3. The recognized text is pasted into the target without sending Enter.
 4. The original text clipboard is restored after paste where Windows allows it.
-5. `input-target-YYYYMMDD.log` records `send_input_events`, `clipboard_restored`, and `clipboard_restore_error`.
+5. `input-target-YYYYMMDD.log` records `input_method`, `send_input_events`, `clipboard_restored`, and `clipboard_restore_error`.
+
+## Direct Input Fallback
+
+1. If clipboard paste fails and the text is short single-line plain text, Voice IME attempts Unicode direct typing.
+2. Multi-line text, tabbed text, empty text, and long text do not use direct typing fallback.
+3. Direct typing fallback does not send Enter.
+4. `input-target-YYYYMMDD.log` records `input_method=direct-type-fallback` when this path is used.
 
 ## Audio Device
 
@@ -126,3 +133,4 @@
 - Settings / Shortcuts now shows global-hotkey registration status and re-registers after save; manual conflict coverage is still required with real third-party apps.
 - `--benchmark-asr` now provides a repeatable timing CSV harness; real quality scoring still depends on recorded sample audio.
 - Confirm paste now restores previous text clipboard where feasible and logs restore status; manual image/file clipboard preservation is still future work.
+- Clipboard failure can now fall back to direct Unicode typing for short single-line text; broad app coverage still needs manual acceptance.

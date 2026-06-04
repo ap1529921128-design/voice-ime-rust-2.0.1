@@ -11,8 +11,8 @@ use windows_sys::Win32::System::Threading::{
     GetCurrentThreadId, OpenProcess, QueryFullProcessImageNameW, PROCESS_QUERY_LIMITED_INFORMATION,
 };
 use windows_sys::Win32::UI::Input::KeyboardAndMouse::{
-    SendInput, INPUT, INPUT_0, INPUT_KEYBOARD, KEYBDINPUT, KEYEVENTF_KEYUP, VIRTUAL_KEY,
-    VK_CONTROL, VK_V,
+    SendInput, INPUT, INPUT_0, INPUT_KEYBOARD, KEYBDINPUT, KEYEVENTF_KEYUP, KEYEVENTF_UNICODE,
+    VIRTUAL_KEY, VK_CONTROL, VK_V,
 };
 use windows_sys::Win32::UI::WindowsAndMessaging::{
     GetClassNameW, GetForegroundWindow, GetGUIThreadInfo, GetWindowTextLengthW, GetWindowTextW,
@@ -48,6 +48,7 @@ pub struct InputTarget {
 
 #[derive(Debug, Clone)]
 pub struct PasteOutcome {
+    pub method: &'static str,
     pub send_input_events: u32,
     pub clipboard_restored: bool,
     pub clipboard_restore_error: Option<String>,
@@ -79,6 +80,23 @@ impl InputTarget {
     }
 
     pub fn paste_text(&self, text: &str, delay_ms: u64) -> Result<PasteOutcome> {
+        match self.paste_via_clipboard(text, delay_ms) {
+            Ok(outcome) => Ok(outcome),
+            Err(err) if can_direct_type(text) => {
+                self.focus();
+                let send_input_events = send_unicode_text(text)?;
+                Ok(PasteOutcome {
+                    method: "direct-type-fallback",
+                    send_input_events,
+                    clipboard_restored: false,
+                    clipboard_restore_error: Some(format!("剪贴板粘贴失败，已直接输入：{err}")),
+                })
+            }
+            Err(err) => Err(err),
+        }
+    }
+
+    fn paste_via_clipboard(&self, text: &str, delay_ms: u64) -> Result<PasteOutcome> {
         let mut clipboard = Clipboard::new().map_err(|err| anyhow!("剪贴板不可用：{err}"))?;
         let previous_text = clipboard.get_text().ok();
         clipboard
@@ -87,21 +105,33 @@ impl InputTarget {
         if delay_ms > 0 {
             thread::sleep(Duration::from_millis(delay_ms));
         }
-        if !self.hwnd.is_null() {
-            unsafe {
-                SetForegroundWindow(self.hwnd);
+        self.focus();
+        let send_input_events = match send_ctrl_v() {
+            Ok(events) => events,
+            Err(err) => {
+                let _ = restore_clipboard_text(&mut clipboard, previous_text.as_deref(), text);
+                return Err(err);
             }
-            thread::sleep(Duration::from_millis(80));
-        }
-        let send_input_events = send_ctrl_v()?;
+        };
         thread::sleep(Duration::from_millis(160));
         let (clipboard_restored, clipboard_restore_error) =
             restore_clipboard_text(&mut clipboard, previous_text.as_deref(), text);
         Ok(PasteOutcome {
+            method: "clipboard-paste",
             send_input_events,
             clipboard_restored,
             clipboard_restore_error,
         })
+    }
+
+    fn focus(&self) {
+        if self.hwnd.is_null() {
+            return;
+        }
+        unsafe {
+            SetForegroundWindow(self.hwnd);
+        }
+        thread::sleep(Duration::from_millis(80));
     }
 }
 
@@ -322,6 +352,51 @@ fn send_ctrl_v() -> Result<u32> {
     }
 }
 
+fn can_direct_type(text: &str) -> bool {
+    let text = text.trim();
+    !text.is_empty()
+        && text.chars().count() <= 160
+        && !text.chars().any(|ch| matches!(ch, '\r' | '\n' | '\t'))
+}
+
+fn send_unicode_text(text: &str) -> Result<u32> {
+    let mut inputs = Vec::new();
+    for unit in text.encode_utf16() {
+        inputs.push(unicode_input(unit, false));
+        inputs.push(unicode_input(unit, true));
+    }
+    let sent = unsafe {
+        SendInput(
+            inputs.len() as u32,
+            inputs.as_ptr(),
+            std::mem::size_of::<INPUT>() as i32,
+        )
+    };
+    if sent != inputs.len() as u32 {
+        return Err(anyhow!(
+            "直接输入失败：{} / {} 个输入事件",
+            sent,
+            inputs.len()
+        ));
+    }
+    Ok(sent)
+}
+
+fn unicode_input(unit: u16, key_up: bool) -> INPUT {
+    INPUT {
+        r#type: INPUT_KEYBOARD,
+        Anonymous: INPUT_0 {
+            ki: KEYBDINPUT {
+                wVk: 0,
+                wScan: unit,
+                dwFlags: KEYEVENTF_UNICODE | if key_up { KEYEVENTF_KEYUP } else { 0 },
+                time: 0,
+                dwExtraInfo: 0,
+            },
+        },
+    }
+}
+
 fn keyboard_input(vk: VIRTUAL_KEY, key_up: bool) -> INPUT {
     INPUT {
         r#type: INPUT_KEYBOARD,
@@ -334,5 +409,23 @@ fn keyboard_input(vk: VIRTUAL_KEY, key_up: bool) -> INPUT {
                 dwExtraInfo: 0,
             },
         },
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn direct_type_allows_short_plain_text() {
+        assert!(can_direct_type("非洲之星和海洋之泪"));
+        assert!(can_direct_type("hello 123"));
+    }
+
+    #[test]
+    fn direct_type_rejects_multiline_or_long_text() {
+        assert!(!can_direct_type("第一行\n第二行"));
+        assert!(!can_direct_type(&"长".repeat(161)));
+        assert!(!can_direct_type("   "));
     }
 }
