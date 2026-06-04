@@ -332,6 +332,7 @@ try {
         "--no-first-run",
         "--disable-default-apps",
         "--disable-session-crashed-bubble",
+        "--force-renderer-accessibility",
         "--new-window",
         (Quote-ProcessArgument (ConvertTo-FileUri $htmlPath))
     ) -join " "

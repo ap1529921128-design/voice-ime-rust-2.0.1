@@ -3,7 +3,7 @@ use arboard::Clipboard;
 use serde::Serialize;
 use std::{path::Path, thread, time::Duration};
 use uiautomation::patterns::{UITextPattern, UITextRange};
-use uiautomation::types::Rect as UiRect;
+use uiautomation::types::{ControlType, Rect as UiRect};
 use uiautomation::UIAutomation;
 use windows::Win32::System::{
     Com::SAFEARRAY,
@@ -40,6 +40,7 @@ pub struct InputTargetInfo {
     pub hwnd: usize,
     pub thread_id: u32,
     pub process_id: u32,
+    pub rect: Option<OverlayRect>,
     pub process_name: String,
     pub process_path: String,
     pub class_name: String,
@@ -75,7 +76,7 @@ impl InputTarget {
                 None => (None, "fallback"),
             },
         };
-        let info = target_info(hwnd, caret_source);
+        let info = target_info(hwnd, caret_source, rect);
         Self { hwnd, rect, info }
     }
 
@@ -160,7 +161,7 @@ fn restore_clipboard_text(
     }
 }
 
-fn target_info(hwnd: HWND, caret_source: &str) -> InputTargetInfo {
+fn target_info(hwnd: HWND, caret_source: &str, rect: Option<OverlayRect>) -> InputTargetInfo {
     let mut process_id = 0;
     let thread_id = if hwnd.is_null() {
         0
@@ -172,6 +173,7 @@ fn target_info(hwnd: HWND, caret_source: &str) -> InputTargetInfo {
         hwnd: hwnd as usize,
         thread_id,
         process_id,
+        rect,
         process_name: process_name(&process_path),
         process_path,
         class_name: window_class_name(hwnd),
@@ -265,14 +267,27 @@ pub fn overlay_position_from_rect(rect: Option<OverlayRect>) -> OverlayRect {
 fn caret_rect_uia() -> Option<(OverlayRect, &'static str)> {
     let automation = UIAutomation::new().ok()?;
     let element = automation.get_focused_element().ok()?;
-    let text_pattern: UITextPattern = element.get_pattern().ok()?;
-    let (_active, range) = text_pattern.get_caret_range().ok()?;
-    if let Some(rect) = caret_rect_from_text_range(&range) {
-        return Some((rect, "uia-caret"));
+    let focused_rect = focused_element_rect(
+        element.get_control_type().ok(),
+        element.get_bounding_rectangle().ok(),
+    );
+    if let Ok(text_pattern) = element.get_pattern::<UITextPattern>() {
+        if let Ok((_active, range)) = text_pattern.get_caret_range() {
+            if let Some(rect) = caret_rect_from_text_range(&range) {
+                return Some((rect, "uia-caret"));
+            }
+            if let Ok(enclosing) = range.get_enclosing_element() {
+                if let Some(rect) = enclosing
+                    .get_bounding_rectangle()
+                    .ok()
+                    .and_then(valid_ui_rect)
+                {
+                    return Some((rect, "uia-element"));
+                }
+            }
+        }
     }
-    let enclosing = range.get_enclosing_element().ok()?;
-    let rect = enclosing.get_bounding_rectangle().ok()?;
-    valid_ui_rect(rect).map(|rect| (rect, "uia-element"))
+    focused_rect.map(|rect| (rect, "uia-focused"))
 }
 
 fn valid_ui_rect(rect: UiRect) -> Option<OverlayRect> {
@@ -290,6 +305,29 @@ fn valid_ui_rect(rect: UiRect) -> Option<OverlayRect> {
             height: height.min(48),
         })
     }
+}
+
+fn focused_element_rect(
+    control_type: Option<ControlType>,
+    rect: Option<UiRect>,
+) -> Option<OverlayRect> {
+    let control_type = control_type?;
+    if !matches!(
+        control_type,
+        ControlType::Edit | ControlType::Document | ControlType::Custom
+    ) {
+        return None;
+    }
+    valid_focused_ui_rect(rect?)
+}
+
+fn valid_focused_ui_rect(rect: UiRect) -> Option<OverlayRect> {
+    let width = rect.get_width();
+    let height = rect.get_height();
+    if width > 1200 || height > 700 {
+        return None;
+    }
+    valid_ui_rect(rect)
 }
 
 fn caret_rect_from_text_range(range: &UITextRange) -> Option<OverlayRect> {
@@ -528,5 +566,26 @@ mod tests {
         assert!(caret_rect_from_bounding_values(&[]).is_none());
         assert!(caret_rect_from_bounding_values(&[-40_000.0, 10.0, 2.0, 18.0]).is_none());
         assert!(caret_rect_from_bounding_values(&[10.0, 10.0, 2.0, 0.5]).is_none());
+    }
+
+    #[test]
+    fn focused_rect_accepts_edit_document_and_custom_controls() {
+        let rect = Some(UiRect::new(20, 30, 320, 160));
+        assert!(focused_element_rect(Some(ControlType::Edit), rect).is_some());
+        assert!(focused_element_rect(Some(ControlType::Document), rect).is_some());
+        assert!(focused_element_rect(Some(ControlType::Custom), rect).is_some());
+    }
+
+    #[test]
+    fn focused_rect_rejects_non_text_or_large_controls() {
+        assert!(focused_element_rect(
+            Some(ControlType::Window),
+            Some(UiRect::new(20, 30, 320, 160))
+        )
+        .is_none());
+        assert!(
+            focused_element_rect(Some(ControlType::Edit), Some(UiRect::new(0, 0, 1800, 900)))
+                .is_none()
+        );
     }
 }

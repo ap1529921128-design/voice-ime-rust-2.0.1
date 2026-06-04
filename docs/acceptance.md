@@ -127,7 +127,7 @@
 2. From the package root, run `powershell -NoProfile -ExecutionPolicy Bypass -File .\app\tools\Notepad-Input-Acceptance.ps1`.
 3. The script opens Notepad, focuses it, runs `VoiceIME.exe --paste-foreground <text> 80`, copies Notepad content back, and compares it with the expected text.
 4. A `notepad-acceptance-YYYYMMDD-HHMMSS.txt` report appears under `app/.voice_ime/logs`.
-5. The same run also appends an `input-target-YYYYMMDD.log` row with the captured target process, window class, paste method, `SendInput` count, clipboard restore status, and `caret_source`.
+5. The same run also appends an `input-target-YYYYMMDD.log` row with the captured target process, window class, paste method, `SendInput` count, clipboard restore status, `caret_source`, and captured `rect`.
 6. The report must show `target_ok=True` and `target_process=Notepad.exe`; otherwise the script fails because another foreground app received the paste.
 7. This is an automated smoke for Notepad only; WeChat/Feishu, Word/document editors, and IDE input boxes still need manual target-machine acceptance.
 
@@ -135,7 +135,7 @@
 
 1. Build or unpack a portable package.
 2. From the package root, run `powershell -NoProfile -ExecutionPolicy Bypass -File .\app\tools\Browser-Input-Acceptance.ps1`.
-3. The script launches Microsoft Edge or Google Chrome with an isolated temporary user profile and opens a local textarea page.
+3. The script launches Microsoft Edge or Google Chrome with an isolated temporary user profile, forces renderer accessibility for the test browser, and opens a local textarea page.
 4. It focuses the browser text area, runs `VoiceIME.exe --paste-foreground <text> 80`, and verifies the pasted value through the page window title.
 5. A `browser-acceptance-YYYYMMDD-HHMMSS.txt` report appears under `app/.voice_ime/logs`.
 6. The report must show `target_ok=True` and `target_process=msedge.exe` or `chrome.exe`; otherwise the script fails because another foreground app received the paste.
@@ -162,7 +162,7 @@
 - Settings / Shortcuts now shows global-hotkey registration status and re-registers after save; manual conflict coverage is still required with real third-party apps.
 - `--benchmark-asr` now provides a repeatable timing CSV harness; real quality scoring still depends on recorded sample audio.
 - Confirm paste now restores previous text clipboard where feasible and logs restore status; manual image/file clipboard preservation is still future work.
-- Cursor positioning now logs `uia-caret` when UI Automation exposes text-range caret rectangles, then falls back to `uia-element`, `gui-thread`, or `fallback`; real overlay placement still needs visual target-machine coverage.
+- Cursor positioning now logs `uia-caret` when UI Automation exposes text-range caret rectangles, then falls back to `uia-element`, guarded `uia-focused`, `gui-thread`, or `fallback`; real overlay placement still needs visual target-machine coverage.
 - Clipboard failure can now fall back to direct Unicode typing for short single-line text; broad app coverage still needs manual acceptance.
 - `npm run ui:smoke` now covers main/settings/history/overlay layout with QA mock data; true OS DPI and WebView screenshots still need manual release checks.
 - Packaged builds now include `app/tools/启动语音输入-诊断.bat`; portable root layout still visibly exposes only the main launcher.

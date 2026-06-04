@@ -36,7 +36,10 @@
 - Added a packaged `app/tools/Notepad-Input-Acceptance.ps1` smoke test that exercises the same foreground-window paste path as confirm input.
 - Added a packaged `app/tools/Browser-Input-Acceptance.ps1` smoke test for Edge/Chrome text areas using an isolated temporary browser profile.
 - Improved cursor overlay placement by using UI Automation text-range bounding rectangles before falling back to enclosing element bounds or `GetGUIThreadInfo`.
+- Added a guarded `uia-focused` cursor-position fallback for focused UIA text-like elements when Chromium/Electron controls do not expose a text pattern.
+- Added captured cursor rectangle data to input-target logs for overlay placement diagnostics.
 - Hardened packaged input acceptance scripts so they fail if the captured foreground target process is not the expected Notepad or Edge/Chrome process.
+- Browser input acceptance now launches its temporary Edge/Chrome profile with renderer accessibility forced so Chromium UIA fallback paths can be verified.
 
 ## 2.0.1 - 2026-05-31
 
