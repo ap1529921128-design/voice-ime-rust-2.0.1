@@ -124,6 +124,8 @@ pub struct Paths {
     pub history_path: PathBuf,
     pub prompt_path: PathBuf,
     pub corrections_path: PathBuf,
+    pub hotwords_path: PathBuf,
+    pub hot_rules_path: PathBuf,
     pub recordings_dir: PathBuf,
 }
 
@@ -228,6 +230,8 @@ impl Paths {
             history_path: app_dir.join("history.json"),
             prompt_path: app_dir.join("personal_prompt.txt"),
             corrections_path: app_dir.join("corrections.json"),
+            hotwords_path: app_dir.join("hot.txt"),
+            hot_rules_path: app_dir.join("hot-rule.txt"),
             recordings_dir: app_dir.join("recordings"),
             root_dir,
             app_dir,
@@ -368,6 +372,12 @@ fn ensure_text_files(paths: &Paths) -> Result<()> {
             serde_json::to_string_pretty(&crate::text::default_corrections())?,
         )?;
     }
+    if !paths.hotwords_path.exists() {
+        fs::write(&paths.hotwords_path, DEFAULT_HOTWORDS)?;
+    }
+    if !paths.hot_rules_path.exists() {
+        fs::write(&paths.hot_rules_path, DEFAULT_HOT_RULES)?;
+    }
     Ok(())
 }
 
@@ -395,6 +405,8 @@ fn discover_root_dir() -> PathBuf {
 }
 
 const DEFAULT_PERSONAL_PROMPT: &str = "请优先识别为简体中文，保留常见英文工具名和技术名词。\n常用词：Codex, Claude Code, ChatGPT, OpenAI, GitHub, Python, PowerShell, Windows, macOS, ASR, GUI, MVP, PRD, faster-whisper, FunASR, SenseVoice, sherpa-onnx, whisper.cpp, llama-server, MiniCPM, Rust, Tauri。\n常用表达：不要自动发送，放到输入框等我确认；帮我整理需求；帮我判断有没有搞头；问问老金；先做最小验证；移动硬盘环境；最小化到托盘。\n";
+const DEFAULT_HOTWORDS: &str = "# hot.txt\n# One entry per line. Use the first item as output and aliases after |.\n# Example:\n# Voice IME | voice ime | 语音输入法\n# GitHub | git hub | 机特哈布\n";
+const DEFAULT_HOT_RULES: &str = "# hot-rule.txt\n# One rule per line: regex = replacement\n# Example:\n# 毫安时 = mAh\n# 艾特\\s*(\\w+)\\s*点\\s*(\\w+) = @\\1.\\2\n";
 
 fn default_asr_engine() -> String {
     "sherpa-onnx".into()

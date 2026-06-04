@@ -131,6 +131,8 @@ pub fn run_worker_cli_if_requested() -> bool {
             history_path: request.app_dir.join("history.json"),
             prompt_path: request.app_dir.join("personal_prompt.txt"),
             corrections_path: request.app_dir.join("corrections.json"),
+            hotwords_path: request.app_dir.join("hot.txt"),
+            hot_rules_path: request.app_dir.join("hot-rule.txt"),
             recordings_dir: request.app_dir.join("recordings"),
         };
         let input = AsrInput {
@@ -376,6 +378,8 @@ fn paths_from_worker_request(request: &AsrWorkerRequest) -> Paths {
         history_path: request.app_dir.join("history.json"),
         prompt_path: request.app_dir.join("personal_prompt.txt"),
         corrections_path: request.app_dir.join("corrections.json"),
+        hotwords_path: request.app_dir.join("hot.txt"),
+        hot_rules_path: request.app_dir.join("hot-rule.txt"),
         recordings_dir: request.app_dir.join("recordings"),
     }
 }
@@ -974,6 +978,8 @@ mod tests {
             history_path: temp.path().join(".voice_ime/history.json"),
             prompt_path: temp.path().join(".voice_ime/personal_prompt.txt"),
             corrections_path: temp.path().join(".voice_ime/corrections.json"),
+            hotwords_path: temp.path().join(".voice_ime/hot.txt"),
+            hot_rules_path: temp.path().join(".voice_ime/hot-rule.txt"),
             recordings_dir: temp.path().join(".voice_ime/recordings"),
         };
         let config = AppConfig::default();

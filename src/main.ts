@@ -296,6 +296,8 @@ function settingsView(data: Snapshot) {
       </div>
       <footer class="settings-actions">
         <button class="tool-btn" data-action="open-model-dir">${icon("FolderOpen", "打开模型目录")}<span>模型目录</span></button>
+        <button class="tool-btn" data-action="open-hotwords">${icon("BookOpen", "打开热词")}<span>热词</span></button>
+        <button class="tool-btn" data-action="open-hot-rules">${icon("ListChecks", "打开规则")}<span>规则</span></button>
         <button class="tool-btn primary" data-action="save-config">${icon("Check", "保存")}<span>保存设置</span></button>
       </footer>
     </section>
@@ -347,6 +349,8 @@ function wireCommon() {
       if (action === "open-model-mirror") await invoke("open_model_mirror_page", { profile: button.dataset.profile || "" });
       if (action === "open-model-page") await invoke("open_model_download_page", { profile: button.dataset.profile || "" });
       if (action === "open-model-dir") await invoke("open_models_dir");
+      if (action === "open-hotwords") await invoke("open_hotwords_file");
+      if (action === "open-hot-rules") await invoke("open_hot_rules_file");
     });
   });
 }

@@ -1,0 +1,47 @@
+# Hotwords And Rules
+
+Date: 2026-06-04
+
+Voice IME supports two local text files for user-controlled replacements:
+
+```text
+app/.voice_ime/hot.txt
+app/.voice_ime/hot-rule.txt
+```
+
+Open them from Settings with the `热词` and `规则` buttons. Changes apply on the next transcription.
+
+## hot.txt
+
+Use `hot.txt` for exact alias replacement. The first item is the final output, and aliases follow after `|`.
+
+```text
+Voice IME | voice ime | 语音 IME
+CapsWriter | caps writer | Caps Rider
+非洲之星 | 非州之星
+OpenAI | open ai | 欧盆 AI
+```
+
+If ASR outputs `voice ime`, Voice IME changes it to `Voice IME`.
+
+## hot-rule.txt
+
+Use `hot-rule.txt` for regex replacement:
+
+```text
+pattern = replacement
+```
+
+Examples:
+
+```text
+毫安时 = mAh
+赫兹 = Hz
+艾特\s*(\w+)\s*点\s*(\w+) = @\1.\2
+```
+
+The replacement side supports `\1`, `\2`, and other capture references. Invalid regex rules are skipped.
+
+## Boundary
+
+This is exact alias replacement plus regex replacement. Phoneme/RAG-style fuzzy hotword matching is a later enhancement.

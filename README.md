@@ -93,6 +93,10 @@ app/tools/Start-MiniCPM-Translate.ps1
 
 如果本地服务不可用，语音转写仍可使用；智能纠错会退回到确定性词表修正，翻译会提示服务不可用。
 
+## 热词和规则
+
+设置页提供“热词”和“规则”按钮，可直接打开 `app/.voice_ime/hot.txt` 与 `app/.voice_ime/hot-rule.txt`。`hot.txt` 用 `目标词 | 别名` 做专名替换，`hot-rule.txt` 用正则做格式替换。详细格式见 [docs/hotwords.md](docs/hotwords.md)。
+
 ## 设置建议
 
 - 普通电脑：ASR 档位选 `balanced`。
@@ -145,5 +149,6 @@ powershell -ExecutionPolicy Bypass -File .\packaging\package-portable.ps1
 2.0.1 的验收、风险和 100 项优化 backlog 见 [docs/2.0.1-roadmap.md](docs/2.0.1-roadmap.md)。
 CapsWriter-Offline v2.6 的对照落地计划见 [docs/capswriter-adaptation-plan.md](docs/capswriter-adaptation-plan.md)。
 模型与主体分离策略见 [docs/model-pack-strategy.md](docs/model-pack-strategy.md)。
+热词和规则词表见 [docs/hotwords.md](docs/hotwords.md)。
 
 英文说明保留在 [README.en.md](README.en.md)。

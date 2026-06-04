@@ -5,6 +5,7 @@ use std::{collections::BTreeMap, fs, path::Path};
 
 static SPACE_RE: Lazy<Regex> = Lazy::new(|| Regex::new(r"[ \t]+").unwrap());
 static MANY_NEWLINES_RE: Lazy<Regex> = Lazy::new(|| Regex::new(r"\n{3,}").unwrap());
+static REGEX_BACKREF_RE: Lazy<Regex> = Lazy::new(|| Regex::new(r"\\([1-9][0-9]?)").unwrap());
 static THINK_RE: Lazy<Regex> = Lazy::new(|| Regex::new(r"(?is)<think>.*?</think>\s*").unwrap());
 static PUNCT_ONLY_RE: Lazy<Regex> = Lazy::new(|| {
     Regex::new(r#"^[\s,.;:!?，。！？；：、…~～\-_'"“”‘’()\[\]{}【】<>《》「」『』]+$"#).unwrap()
@@ -109,7 +110,93 @@ pub fn apply_corrections(text: &str, corrections_path: &Path) -> String {
     for (wrong, right) in load_corrections(corrections_path) {
         text = text.replace(&wrong, &right);
     }
+    for (wrong, right) in load_hotword_replacements(&hotwords_path_for(corrections_path)) {
+        text = text.replace(&wrong, &right);
+    }
+    text = apply_hot_rules(&text, &hot_rules_path_for(corrections_path));
     normalize_text(&text)
+}
+
+pub fn load_hotword_replacements(path: &Path) -> Vec<(String, String)> {
+    let mut replacements = Vec::new();
+    let Ok(body) = fs::read_to_string(path) else {
+        return replacements;
+    };
+    for line in body.lines() {
+        let line = strip_inline_comment(line).trim();
+        if line.is_empty() {
+            continue;
+        }
+        let parts = line
+            .split('|')
+            .map(str::trim)
+            .filter(|item| !item.is_empty())
+            .collect::<Vec<_>>();
+        let Some(target) = parts.first() else {
+            continue;
+        };
+        for alias in parts.iter().skip(1) {
+            if alias != target {
+                replacements.push(((*alias).to_string(), (*target).to_string()));
+            }
+        }
+    }
+    replacements.sort_by_key(|item| std::cmp::Reverse(item.0.chars().count()));
+    replacements
+}
+
+pub fn apply_hot_rules(text: &str, path: &Path) -> String {
+    let Ok(body) = fs::read_to_string(path) else {
+        return text.to_string();
+    };
+    let mut text = text.to_string();
+    for line in body.lines() {
+        let line = strip_inline_comment(line).trim();
+        if line.is_empty() {
+            continue;
+        }
+        let Some((pattern, replacement)) = line.split_once('=') else {
+            continue;
+        };
+        let pattern = pattern.trim();
+        if pattern.is_empty() {
+            continue;
+        }
+        let replacement = normalize_rule_replacement(replacement.trim());
+        if let Ok(regex) = Regex::new(pattern) {
+            text = regex.replace_all(&text, replacement.as_str()).to_string();
+        }
+    }
+    text
+}
+
+fn strip_inline_comment(line: &str) -> &str {
+    let line = line.trim();
+    if line.starts_with('#') {
+        ""
+    } else {
+        line
+    }
+}
+
+fn normalize_rule_replacement(replacement: &str) -> String {
+    REGEX_BACKREF_RE
+        .replace_all(replacement, "$$$1")
+        .to_string()
+}
+
+fn hotwords_path_for(corrections_path: &Path) -> std::path::PathBuf {
+    corrections_path
+        .parent()
+        .unwrap_or_else(|| Path::new("."))
+        .join("hot.txt")
+}
+
+fn hot_rules_path_for(corrections_path: &Path) -> std::path::PathBuf {
+    corrections_path
+        .parent()
+        .unwrap_or_else(|| Path::new("."))
+        .join("hot-rule.txt")
 }
 
 pub fn clean_asr_text(text: &str, corrections_path: &Path) -> String {
@@ -430,6 +517,36 @@ mod tests {
         let joined =
             join_transcript_chunks(&["hello".into(), "world".into()], Path::new("missing.json"));
         assert_eq!(joined, "hello world");
+    }
+
+    #[test]
+    fn applies_hotword_aliases_and_rules() {
+        let temp = tempfile::tempdir().unwrap();
+        let corrections = temp.path().join("corrections.json");
+        let hotwords = temp.path().join("hot.txt");
+        let rules = temp.path().join("hot-rule.txt");
+        fs::write(&corrections, "{}").unwrap();
+        fs::write(
+            &hotwords,
+            "# aliases\nVoice IME | voice ime | 语音 IME\n非洲之星 | 非州之星\n",
+        )
+        .unwrap();
+        fs::write(
+            &rules,
+            r"# regex rules
+毫安时 = mAh
+艾特\s*(\w+)\s*点\s*(\w+) = @\1.\2
+",
+        )
+        .unwrap();
+
+        assert_eq!(
+            apply_corrections(
+                "打开 voice ime，非州之星，一千毫安时，艾特qq点com",
+                &corrections
+            ),
+            "打开 Voice IME，非洲之星，一千mAh，@qq.com"
+        );
     }
 
     #[test]
