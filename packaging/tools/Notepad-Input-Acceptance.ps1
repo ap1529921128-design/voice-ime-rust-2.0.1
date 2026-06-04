@@ -21,6 +21,22 @@ using System.Runtime.InteropServices;
 public static class VoiceImeWin32 {
   [DllImport("user32.dll")]
   public static extern bool SetForegroundWindow(IntPtr hWnd);
+  [DllImport("user32.dll")]
+  public static extern IntPtr GetForegroundWindow();
+  [DllImport("user32.dll")]
+  public static extern bool GetWindowRect(IntPtr hWnd, out RECT lpRect);
+  [DllImport("user32.dll")]
+  public static extern bool SetCursorPos(int X, int Y);
+  [DllImport("user32.dll")]
+  public static extern void mouse_event(uint dwFlags, uint dx, uint dy, uint dwData, UIntPtr dwExtraInfo);
+  [DllImport("user32.dll")]
+  public static extern void keybd_event(byte bVk, byte bScan, uint dwFlags, UIntPtr dwExtraInfo);
+}
+public struct RECT {
+  public int Left;
+  public int Top;
+  public int Right;
+  public int Bottom;
 }
 "@
 }
@@ -96,9 +112,65 @@ function Focus-Window {
     param([System.Diagnostics.Process]$Process)
     $Process.Refresh()
     $shell = New-Object -ComObject WScript.Shell
-    $shell.AppActivate($Process.Id) | Out-Null
-    [VoiceImeWin32]::SetForegroundWindow($Process.MainWindowHandle) | Out-Null
-    Start-Sleep -Milliseconds 450
+    for ($attempt = 0; $attempt -lt 4; $attempt += 1) {
+        $shell.AppActivate($Process.Id) | Out-Null
+        [VoiceImeWin32]::SetForegroundWindow($Process.MainWindowHandle) | Out-Null
+        Start-Sleep -Milliseconds 250
+        $rect = New-Object RECT
+        if ([VoiceImeWin32]::GetWindowRect($Process.MainWindowHandle, [ref]$rect)) {
+            $x = [int](($rect.Left + $rect.Right) / 2)
+            $y = [int](($rect.Top + $rect.Bottom) / 2)
+            [VoiceImeWin32]::SetCursorPos($x, $y) | Out-Null
+            Start-Sleep -Milliseconds 80
+            [VoiceImeWin32]::mouse_event(0x0002, 0, 0, 0, [UIntPtr]::Zero)
+            [VoiceImeWin32]::mouse_event(0x0004, 0, 0, 0, [UIntPtr]::Zero)
+        }
+        Start-Sleep -Milliseconds 250
+        if ([VoiceImeWin32]::GetForegroundWindow() -eq $Process.MainWindowHandle) {
+            return
+        }
+    }
+}
+
+function Send-Key {
+    param([byte]$VirtualKey)
+    [VoiceImeWin32]::keybd_event($VirtualKey, 0, 0, [UIntPtr]::Zero)
+    Start-Sleep -Milliseconds 40
+    [VoiceImeWin32]::keybd_event($VirtualKey, 0, 0x0002, [UIntPtr]::Zero)
+    Start-Sleep -Milliseconds 80
+}
+
+function Send-CtrlKey {
+    param([byte]$VirtualKey)
+    [VoiceImeWin32]::keybd_event(0x11, 0, 0, [UIntPtr]::Zero)
+    Start-Sleep -Milliseconds 40
+    [VoiceImeWin32]::keybd_event($VirtualKey, 0, 0, [UIntPtr]::Zero)
+    Start-Sleep -Milliseconds 40
+    [VoiceImeWin32]::keybd_event($VirtualKey, 0, 0x0002, [UIntPtr]::Zero)
+    Start-Sleep -Milliseconds 40
+    [VoiceImeWin32]::keybd_event(0x11, 0, 0x0002, [UIntPtr]::Zero)
+    Start-Sleep -Milliseconds 120
+}
+
+function Get-LatestInputTarget {
+    $targetLog = Get-ChildItem -LiteralPath $LogsDir -Filter "input-target-*.log" -ErrorAction SilentlyContinue |
+        Sort-Object LastWriteTime -Descending |
+        Select-Object -First 1
+    if (-not $targetLog) {
+        return $null
+    }
+    $line = Get-Content -LiteralPath $targetLog.FullName -ErrorAction SilentlyContinue |
+        Where-Object { $_ -and $_.Trim().Length -gt 0 } |
+        Select-Object -Last 1
+    if (-not $line) {
+        return $null
+    }
+    try {
+        return $line | ConvertFrom-Json
+    }
+    catch {
+        return $null
+    }
 }
 
 $previousClipboard = $null
@@ -117,11 +189,8 @@ try {
     $notepad = Start-Process -FilePath "notepad.exe" -ArgumentList (Quote-ProcessArgument $tempFile) -PassThru
     $notepad = Wait-MainWindow -Process $notepad -TitleFragment (Split-Path $tempFile -Leaf) -BaselineIds $baselineNotepadIds
     Focus-Window -Process $notepad
-    $shell = New-Object -ComObject WScript.Shell
-    $shell.SendKeys("^a")
-    Start-Sleep -Milliseconds 150
-    $shell.SendKeys("{DEL}")
-    Start-Sleep -Milliseconds 150
+    Send-CtrlKey 0x41
+    Send-Key 0x2E
 
     $argumentList = @(
         (Quote-ProcessArgument "--paste-foreground"),
@@ -136,19 +205,28 @@ try {
         -Wait `
         -WindowStyle Hidden
 
+    $targetEntry = Get-LatestInputTarget
+    $targetProcess = if ($targetEntry) { [string]$targetEntry.target.process_name } else { "" }
+    $targetTitle = if ($targetEntry) { [string]$targetEntry.target.title } else { "" }
+    $caretSource = if ($targetEntry) { [string]$targetEntry.target.caret_source } else { "" }
+    $targetOk = ($targetProcess -ieq "notepad.exe")
+
     Focus-Window -Process $notepad
-    $shell.SendKeys("^a")
-    Start-Sleep -Milliseconds 150
-    $shell.SendKeys("^c")
+    Send-CtrlKey 0x41
+    Send-CtrlKey 0x43
     Start-Sleep -Milliseconds 500
     $actual = Get-Clipboard -Raw -ErrorAction SilentlyContinue
 
-    $passed = ($paste.ExitCode -eq 0) -and (($actual -replace "`r`n$", "") -eq $Text)
+    $passed = ($paste.ExitCode -eq 0) -and $targetOk -and (($actual -replace "`r`n$", "") -eq $Text)
     $lines = @(
         "Voice IME Notepad Acceptance",
         "created_at=$((Get-Date).ToString("o"))",
         "passed=$passed",
         "paste_exit_code=$($paste.ExitCode)",
+        "target_ok=$targetOk",
+        "target_process=$targetProcess",
+        "target_title=$targetTitle",
+        "caret_source=$caretSource",
         "expected=$Text",
         "actual=$actual",
         "logs_dir=$LogsDir"

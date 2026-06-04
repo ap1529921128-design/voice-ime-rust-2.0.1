@@ -127,8 +127,9 @@
 2. From the package root, run `powershell -NoProfile -ExecutionPolicy Bypass -File .\app\tools\Notepad-Input-Acceptance.ps1`.
 3. The script opens Notepad, focuses it, runs `VoiceIME.exe --paste-foreground <text> 80`, copies Notepad content back, and compares it with the expected text.
 4. A `notepad-acceptance-YYYYMMDD-HHMMSS.txt` report appears under `app/.voice_ime/logs`.
-5. The same run also appends an `input-target-YYYYMMDD.log` row with the captured target process, window class, paste method, `SendInput` count, and clipboard restore status.
-6. This is an automated smoke for Notepad only; WeChat/Feishu, Word/document editors, and IDE input boxes still need manual target-machine acceptance.
+5. The same run also appends an `input-target-YYYYMMDD.log` row with the captured target process, window class, paste method, `SendInput` count, clipboard restore status, and `caret_source`.
+6. The report must show `target_ok=True` and `target_process=Notepad.exe`; otherwise the script fails because another foreground app received the paste.
+7. This is an automated smoke for Notepad only; WeChat/Feishu, Word/document editors, and IDE input boxes still need manual target-machine acceptance.
 
 ## Browser Input Acceptance
 
@@ -137,7 +138,8 @@
 3. The script launches Microsoft Edge or Google Chrome with an isolated temporary user profile and opens a local textarea page.
 4. It focuses the browser text area, runs `VoiceIME.exe --paste-foreground <text> 80`, and verifies the pasted value through the page window title.
 5. A `browser-acceptance-YYYYMMDD-HHMMSS.txt` report appears under `app/.voice_ime/logs`.
-6. The browser profile and temporary page are deleted after the run; existing user browser profiles are not modified.
+6. The report must show `target_ok=True` and `target_process=msedge.exe` or `chrome.exe`; otherwise the script fails because another foreground app received the paste.
+7. The browser profile and temporary page are deleted after the run; existing user browser profiles are not modified.
 
 ## Current 2.0.1 Test Boundary
 

@@ -163,7 +163,7 @@ powershell -NoProfile -ExecutionPolicy Bypass -File .\app\tools\Notepad-Input-Ac
 powershell -NoProfile -ExecutionPolicy Bypass -File .\app\tools\Browser-Input-Acceptance.ps1
 ```
 
-Notepad 脚本会自动打开记事本、粘贴一段测试文本、读回内容并在 `app/.voice_ime/logs/notepad-acceptance-YYYYMMDD-HHMMSS.txt` 写入结果。Browser 脚本会用独立临时 Edge/Chrome profile 打开一个本地文本框页面，粘贴后通过窗口标题回读结果，并写入 `browser-acceptance-YYYYMMDD-HHMMSS.txt`。
+Notepad 脚本会自动打开记事本、粘贴一段测试文本、读回内容并在 `app/.voice_ime/logs/notepad-acceptance-YYYYMMDD-HHMMSS.txt` 写入结果。Browser 脚本会用独立临时 Edge/Chrome profile 打开一个本地文本框页面，粘贴后通过窗口标题回读结果，并写入 `browser-acceptance-YYYYMMDD-HHMMSS.txt`。两者都会校验 `input-target` 日志里的目标进程，避免前台窗口被抢走时误报通过。
 
 设置页“数据 / 导出”会先运行诊断，再生成 `app/.voice_ime/logs/voice-ime-support-YYYYMMDD-HHMMSS.zip`。导出包包含配置、历史、个人提示词、纠错表、热词/规则、日志和模型说明，不包含录音文件和模型二进制。“历史 CSV”只导出表格格式的历史记录。
 “数据”页还能控制长录音是否留存，并一键清理 `app/.voice_ime/recordings` 下的长录音文件。短录音只用于当次转写，默认不留存。

@@ -229,6 +229,27 @@ function Stop-BrowserProfileProcesses {
     }
 }
 
+function Get-LatestInputTarget {
+    $targetLog = Get-ChildItem -LiteralPath $LogsDir -Filter "input-target-*.log" -ErrorAction SilentlyContinue |
+        Sort-Object LastWriteTime -Descending |
+        Select-Object -First 1
+    if (-not $targetLog) {
+        return $null
+    }
+    $line = Get-Content -LiteralPath $targetLog.FullName -ErrorAction SilentlyContinue |
+        Where-Object { $_ -and $_.Trim().Length -gt 0 } |
+        Select-Object -Last 1
+    if (-not $line) {
+        return $null
+    }
+    try {
+        return $line | ConvertFrom-Json
+    }
+    catch {
+        return $null
+    }
+}
+
 $previousClipboard = $null
 try {
     $previousClipboard = Get-Clipboard -Raw -ErrorAction SilentlyContinue
@@ -332,13 +353,23 @@ try {
         -WindowStyle Hidden
 
     $titleResult = Wait-TitleContains -ProcessNames $browserSpec.ProcessNames -TitleFragment $titleToken -BaselineIds $baselineIds -Expected $Text
-    $passed = ($paste.ExitCode -eq 0) -and $titleResult.Passed
+    $targetEntry = Get-LatestInputTarget
+    $targetProcess = if ($targetEntry) { [string]$targetEntry.target.process_name } else { "" }
+    $targetTitle = if ($targetEntry) { [string]$targetEntry.target.title } else { "" }
+    $caretSource = if ($targetEntry) { [string]$targetEntry.target.caret_source } else { "" }
+    $expectedProcesses = @($browserSpec.ProcessNames | ForEach-Object { "$_.exe" })
+    $targetOk = @($expectedProcesses | Where-Object { $_ -ieq $targetProcess }).Count -gt 0
+    $passed = ($paste.ExitCode -eq 0) -and $targetOk -and $titleResult.Passed
     $lines = @(
         "Voice IME Browser Acceptance",
         "created_at=$((Get-Date).ToString("o"))",
         "passed=$passed",
         "browser=$($browserSpec.Id)",
         "paste_exit_code=$($paste.ExitCode)",
+        "target_ok=$targetOk",
+        "target_process=$targetProcess",
+        "target_title=$targetTitle",
+        "caret_source=$caretSource",
         "expected=$Text",
         "window_title=$($titleResult.Title)",
         "logs_dir=$LogsDir"
