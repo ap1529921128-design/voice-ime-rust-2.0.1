@@ -14,6 +14,7 @@ $PreservedModels = Join-Path $PreserveRoot "models"
 $ModelCache = "D:\voice-ime-build-release\voice-ime-2.0.1-model-cache\models"
 $ModelManifestSource = Join-Path $Root "packaging\model-manifest.json"
 $LauncherName = ([string][char]21551 + [string][char]21160 + [string][char]35821 + [string][char]38899 + [string][char]36755 + [string][char]20837 + ".bat")
+$DoctorLauncherName = $LauncherName.Replace(".bat", "-" + [string][char]35786 + [string][char]26029 + ".bat")
 
 function Copy-DirectoryContents {
     param(
@@ -135,6 +136,31 @@ function Write-BuildStamp {
     Set-Content -LiteralPath (Join-Path $DestinationApp "BUILD.txt") -Value ($lines -join [Environment]::NewLine) -Encoding UTF8
 }
 
+function Install-ToolScripts {
+    param(
+        [Parameter(Mandatory = $true)][string]$DestinationApp
+    )
+    $toolsDir = Join-Path $DestinationApp "tools"
+    New-Item -ItemType Directory -Path $toolsDir -Force | Out-Null
+    $doctorText = @'
+@echo off
+setlocal
+cd /d "%~dp0.."
+if not exist "VoiceIME.exe" (
+  echo VoiceIME.exe not found.
+  pause
+  exit /b 1
+)
+start /wait "" "%CD%\VoiceIME.exe" --doctor
+echo.
+echo 诊断已完成，日志目录：
+echo %CD%\.voice_ime\logs
+if exist "%CD%\.voice_ime\logs" start "" "%CD%\.voice_ime\logs"
+pause
+'@
+    Set-Content -LiteralPath (Join-Path $toolsDir $DoctorLauncherName) -Value $doctorText -Encoding Default
+}
+
 function Assert-PortableLayout {
     param(
         [Parameter(Mandatory = $true)][string]$DestinationRoot,
@@ -219,6 +245,7 @@ function Copy-PortableBody {
 
     Install-ModelManifest -ModelsDir (Join-Path $destinationApp "models")
     Write-BuildStamp -DestinationApp $destinationApp -PackageName $(if ($CorePackage) { "core" } else { "full" })
+    Install-ToolScripts -DestinationApp $destinationApp
     Set-Content -LiteralPath (Join-Path $DestinationRoot $LauncherName) -Value $LauncherText -Encoding Default
 
     $runtimeData = Join-Path $destinationApp ".voice_ime"
@@ -331,6 +358,7 @@ if (Test-Path -LiteralPath $PreservedModels) {
 
 Install-ModelManifest -ModelsDir (Join-Path $AppRoot "models")
 Write-BuildStamp -DestinationApp $AppRoot -PackageName "full"
+Install-ToolScripts -DestinationApp $AppRoot
 
 $toolsDir = Join-Path $AppRoot "tools"
 $miniCpmScript = Join-Path "D:\voice-ime-build-release\voice-ime-1.1.5-portable" "Start-MiniCPM-Translate.ps1"

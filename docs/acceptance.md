@@ -79,6 +79,7 @@
 3. The rows cover app/log paths, microphone, clipboard, ASR models, smart-correction endpoint, translation backend, prompt, correction table, hotwords, and hot rules.
 4. A `doctor-YYYYMMDD-HHMMSS.txt` report path is shown in the panel and the file exists under `.voice_ime/logs`.
 5. Clicking `导出` still creates the support zip and includes the latest doctor output without including recordings or model binaries.
+6. `app/tools/启动语音输入-诊断.bat` exists in packaged builds and runs `VoiceIME.exe --doctor` without adding another visible root launcher.
 
 ## Model Path Picker
 
@@ -143,3 +144,4 @@
 - Confirm paste now restores previous text clipboard where feasible and logs restore status; manual image/file clipboard preservation is still future work.
 - Clipboard failure can now fall back to direct Unicode typing for short single-line text; broad app coverage still needs manual acceptance.
 - `npm run ui:smoke` now covers main/settings/history/overlay layout with QA mock data; true OS DPI and WebView screenshots still need manual release checks.
+- Packaged builds now include `app/tools/启动语音输入-诊断.bat`; portable root layout still visibly exposes only the main launcher.
