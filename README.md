@@ -138,7 +138,7 @@ ASR 后处理会做基础 ITN，把常见中文数字、百分比、金额、日
 
 ## 本地诊断
 
-设置页的“诊断”按钮会生成 `app/.voice_ime/logs/doctor-YYYYMMDD-HHMMSS.txt`，检查应用目录、日志写入、麦克风、剪贴板、ASR 模型、本地 LLM 端点和用户词表文件。也可以运行：
+设置页的“数据 / 诊断”会在页面内显示通过、提醒、失败的检查行，同时生成 `app/.voice_ime/logs/doctor-YYYYMMDD-HHMMSS.txt`。它会检查应用目录、日志写入、麦克风、剪贴板、ASR 模型、本地 LLM 端点、翻译后端和用户词表文件。也可以运行：
 
 ```powershell
 app\VoiceIME.exe --doctor

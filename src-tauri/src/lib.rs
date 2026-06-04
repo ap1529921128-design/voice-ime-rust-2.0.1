@@ -224,6 +224,21 @@ fn run_doctor(app: AppHandle, state: State<'_, AppState>) -> Result<UiSnapshot, 
 }
 
 #[tauri::command]
+fn doctor_report(
+    app: AppHandle,
+    state: State<'_, AppState>,
+) -> Result<doctor::DoctorReport, String> {
+    let snapshot = state.snapshot();
+    let report = doctor::run(&state.paths, &snapshot.config).map_err(to_string)?;
+    state.set_runtime_notice(
+        &app,
+        "诊断完成",
+        format!("{}；报告：{}", report.summary, report.output_path),
+    );
+    Ok(report)
+}
+
+#[tauri::command]
 fn export_diagnostics(app: AppHandle, state: State<'_, AppState>) -> Result<UiSnapshot, String> {
     let snapshot = state.snapshot();
     let _ = doctor::run(&state.paths, &snapshot.config).map_err(to_string)?;
@@ -344,6 +359,7 @@ pub fn run() {
             open_models_dir,
             open_logs_dir,
             run_doctor,
+            doctor_report,
             export_diagnostics,
             export_history_csv,
             open_hotwords_file,

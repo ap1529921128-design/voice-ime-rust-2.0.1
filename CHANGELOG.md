@@ -24,6 +24,7 @@
 - Added one-click history CSV export from History and Settings / Data, including raw ASR, deterministic stages, LLM text, model/backend, session id, and timing columns.
 - Added Settings / Data retention controls for long recordings, a visible never-save short-recording policy, and a clear-recordings action for stored long audio files.
 - Added portable packaging release gates for root layout, forbidden runtime folders, core-model cleanliness, required app files, and a generated `BUILD.txt` build stamp.
+- Added an inline Settings / Data diagnostics panel showing pass, warning, and failure rows while still writing a shareable doctor report file.
 
 ## 2.0.1 - 2026-05-31
 

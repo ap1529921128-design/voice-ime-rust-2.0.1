@@ -57,6 +57,14 @@
 4. The CSV includes final text, raw ASR, deterministic stages, LLM text, backend, model, session id, and timing columns.
 5. Text that starts with spreadsheet formula trigger characters is exported safely for table tools.
 
+## Diagnostics Panel
+
+1. Open Settings / Data and click `诊断`.
+2. A diagnostics panel appears in the page with pass, warning, or failure rows.
+3. The rows cover app/log paths, microphone, clipboard, ASR models, smart-correction endpoint, translation backend, prompt, correction table, hotwords, and hot rules.
+4. A `doctor-YYYYMMDD-HHMMSS.txt` report path is shown in the panel and the file exists under `.voice_ime/logs`.
+5. Clicking `导出` still creates the support zip and includes the latest doctor output without including recordings or model binaries.
+
 ## Current 2.0.1 Test Boundary
 
 - Automated regression covers Rust unit tests, Rust compile, clippy, frontend build, release build, and portable packaging.
@@ -73,3 +81,4 @@
 - History CSV export is automated and unit-tested for escaping; real spreadsheet review still depends on manual sample data from target machines.
 - Long recording retention can be disabled and existing long recordings can be cleared from Settings / Data; short recordings remain non-retained by design.
 - Portable packaging now includes an automated layout/release gate and `BUILD.txt`; manual smoke is still useful after packaging because it proves WebView startup on this machine.
+- Settings / Data now shows an inline diagnostics panel after running Doctor; one-click repair actions are still future work.

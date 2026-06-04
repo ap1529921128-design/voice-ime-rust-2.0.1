@@ -138,6 +138,18 @@ type AudioLevelInfo = {
   samples: number;
 };
 
+type DoctorCheck = {
+  name: string;
+  status: "pass" | "warn" | "fail";
+  detail: string;
+};
+
+type DoctorReport = {
+  output_path: string;
+  summary: string;
+  checks: DoctorCheck[];
+};
+
 const app = document.querySelector<HTMLDivElement>("#app")!;
 const currentWindow = getCurrentWindow();
 const isOverlay = currentWindow.label === "overlay";
@@ -149,6 +161,7 @@ let audioDeviceError = "";
 let audioLevelError = "";
 let audioProbeTimer: number | undefined;
 let audioProbeInFlight = false;
+let doctorReport: DoctorReport | null = null;
 let activeView: "compose" | "settings" | "history" = "compose";
 let activeSettingsTab: "voice" | "models" | "smart" | "shortcuts" | "data" = "voice";
 let historyQuery = "";
@@ -579,6 +592,43 @@ function dataSettingsPanel(cfg: AppConfig) {
         <button class="tool-btn" data-action="open-hot-rules">${icon("ListChecks", "打开规则")}<span>规则</span></button>
         <button class="tool-btn danger" data-action="clear-history">${icon("Eraser", "清空历史")}<span>清空历史</span></button>
       </div>
+      ${doctorPanel()}
+    </div>
+  `;
+}
+
+function doctorPanel() {
+  if (!doctorReport) {
+    return `
+      <div class="doctor-panel empty-diagnostics">
+        <div class="doctor-head">
+          <strong>本地诊断</strong>
+          <span>尚未运行</span>
+        </div>
+      </div>
+    `;
+  }
+  return `
+    <div class="doctor-panel">
+      <div class="doctor-head">
+        <strong>${escapeHtml(doctorReport.summary)}</strong>
+        <span title="${escapeAttr(doctorReport.output_path)}">${escapeHtml(shortPath(doctorReport.output_path))}</span>
+      </div>
+      <div class="doctor-list">
+        ${doctorReport.checks.map((check) => doctorRow(check)).join("")}
+      </div>
+    </div>
+  `;
+}
+
+function doctorRow(check: DoctorCheck) {
+  const statusIcon = check.status === "pass" ? "CheckCircle2" : check.status === "warn" ? "TriangleAlert" : "CircleX";
+  const label = check.status === "pass" ? "通过" : check.status === "warn" ? "提醒" : "失败";
+  return `
+    <div class="doctor-row ${check.status}">
+      ${icon(statusIcon as IconName, label)}
+      <strong>${escapeHtml(check.name)}</strong>
+      <span>${escapeHtml(check.detail)}</span>
     </div>
   `;
 }
@@ -732,7 +782,7 @@ function wireCommon() {
       if (action === "open-model-page") await invoke("open_model_download_page", { profile: button.dataset.profile || "" });
       if (action === "open-model-dir") await invoke("open_models_dir");
       if (action === "open-logs-dir") await invoke("open_logs_dir");
-      if (action === "run-doctor") await run("run_doctor");
+      if (action === "run-doctor") await runDoctorReport();
       if (action === "export-diagnostics") await run("export_diagnostics");
       if (action === "export-history-csv") await run("export_history_csv");
       if (action === "open-hotwords") await invoke("open_hotwords_file");
@@ -856,6 +906,24 @@ async function saveConfig() {
 
 async function refreshModelStatus() {
   statusRows = await invoke<AsrModelStatus[]>("asr_status");
+}
+
+async function runDoctorReport() {
+  try {
+    doctorReport = await invoke<DoctorReport>("doctor_report");
+    if (snapshot) {
+      snapshot.status = "诊断完成";
+      snapshot.meta = `${doctorReport.summary}；报告：${doctorReport.output_path}`;
+    }
+    render();
+  } catch (error) {
+    if (snapshot) {
+      snapshot.status = "出错";
+      snapshot.meta = String(error);
+      render();
+    }
+    throw error;
+  }
 }
 
 async function refreshAudioDevices(shouldRender = false) {

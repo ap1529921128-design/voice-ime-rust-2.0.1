@@ -430,6 +430,94 @@ p {
   background: rgba(255, 255, 255, 0.46);
 }
 
+.doctor-panel {
+  display: grid;
+  grid-column: 1 / -1;
+  gap: 10px;
+  border-radius: 16px;
+  padding: 12px 14px;
+  background: rgba(255, 255, 255, 0.46);
+}
+
+.doctor-head,
+.doctor-row {
+  display: grid;
+  min-width: 0;
+  align-items: center;
+}
+
+.doctor-head {
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1.1fr);
+  gap: 12px;
+}
+
+.doctor-head strong {
+  overflow: hidden;
+  color: #0a1f3d;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.doctor-head span {
+  overflow: hidden;
+  color: #5f6d78;
+  font-size: 12px;
+  text-align: right;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.doctor-list {
+  display: grid;
+  gap: 7px;
+}
+
+.doctor-row {
+  grid-template-columns: 20px minmax(74px, 0.35fr) minmax(0, 1fr);
+  gap: 9px;
+  border-radius: 12px;
+  padding: 8px 10px;
+  background: rgba(255, 255, 255, 0.48);
+}
+
+.doctor-row svg {
+  width: 18px;
+  height: 18px;
+}
+
+.doctor-row strong,
+.doctor-row span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.doctor-row strong {
+  color: #0a1f3d;
+  font-size: 13px;
+}
+
+.doctor-row span {
+  color: #5f6d78;
+  font-size: 12px;
+}
+
+.doctor-row.pass svg {
+  color: #2e6b4f;
+}
+
+.doctor-row.warn svg {
+  color: #9a5b00;
+}
+
+.doctor-row.fail svg {
+  color: #8a2c0d;
+}
+
+.empty-diagnostics {
+  color: #5f6d78;
+}
+
 label {
   display: grid;
   gap: 8px;
@@ -691,6 +779,15 @@ select:disabled {
 
   .history-filters {
     grid-template-columns: 1fr 1fr;
+  }
+
+  .doctor-head,
+  .doctor-row {
+    grid-template-columns: 1fr;
+  }
+
+  .doctor-head span {
+    text-align: left;
   }
 
   .spacer {
