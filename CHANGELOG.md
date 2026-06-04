@@ -14,6 +14,7 @@
 - Added deterministic ITN for common Chinese numbers, percentages, money, dates, times, ranges, and units, plus per-app short-sentence period removal.
 - Added a tray menu for showing the main window, toggling recording, opening model/log/hotword files, running doctor, and exiting; closing the main window now hides it to tray.
 - Added a translation engine abstraction with `llm` and `external` backends, plus Settings and Doctor support, so dedicated local MT tools can be used without routing through MiniCPM prompts.
+- Added raw ASR, deterministic correction stages, LLM final text, and stage timing fields to transcript history so accuracy and latency can be diagnosed from one record.
 
 ## 2.0.1 - 2026-05-31
 

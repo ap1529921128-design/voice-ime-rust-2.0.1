@@ -38,6 +38,8 @@ pub struct AsrModelStatus {
 
 #[derive(Debug, Clone, Serialize, serde::Deserialize)]
 pub struct AsrOutcome {
+    #[serde(default)]
+    pub raw_text: String,
     pub text: String,
     pub backend: String,
     pub model: String,
@@ -144,6 +146,9 @@ pub fn run_worker_cli_if_requested() -> bool {
         };
         let started = Instant::now();
         let mut outcome = transcribe_profile(&input, &request.config, &paths, &request.profile)?;
+        if outcome.raw_text.is_empty() {
+            outcome.raw_text = outcome.text.clone();
+        }
         outcome.elapsed_seconds = started.elapsed().as_secs_f32();
         outcome.text = text::clean_asr_text(&outcome.text, &paths.corrections_path);
         fs::write(
@@ -366,6 +371,9 @@ fn handle_daemon_request(
     let started = Instant::now();
     let mut outcome =
         cache.transcribe_profile(&input, &request.config, &paths, &request.profile)?;
+    if outcome.raw_text.is_empty() {
+        outcome.raw_text = outcome.text.clone();
+    }
     outcome.elapsed_seconds = started.elapsed().as_secs_f32();
     outcome.text = text::clean_asr_text(&outcome.text, &paths.corrections_path);
     Ok(outcome)
@@ -769,6 +777,7 @@ fn decode_with_recognizer(
     recognizer.decode(&stream);
     let result = stream.get_result().context("ASR 没有返回结果")?;
     Ok(AsrOutcome {
+        raw_text: result.text.clone(),
         text: result.text,
         backend: backend.into(),
         model: model.into(),

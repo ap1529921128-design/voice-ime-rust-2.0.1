@@ -14,10 +14,22 @@ type SessionState =
   | "Error";
 
 type TranscriptRecord = {
+  session_id: number;
   text: string;
+  raw_text: string;
+  normalized_text: string;
+  dictionary_text: string;
+  hotword_text: string;
+  rule_text: string;
+  itn_text: string;
+  llm_text: string;
+  punctuation_policy: string;
   created_at: string;
   duration_seconds: number;
   transcribe_seconds: number;
+  deterministic_seconds: number;
+  llm_seconds: number;
+  total_seconds: number;
   backend: string;
   model: string;
 };
@@ -375,16 +387,48 @@ function historyView(data: Snapshot) {
   return `
     <section class="history-list">
       ${data.history
-        .map(
-          (record, index) => `
+        .map((record, index) => {
+          const totalSeconds = record.total_seconds || record.transcribe_seconds;
+          return `
         <article class="history-item" data-history="${index}">
           <p>${escapeHtml(record.text)}</p>
-          <footer>${record.created_at} · ${record.duration_seconds.toFixed(1)}s · ${record.transcribe_seconds.toFixed(1)}s · ${escapeHtml(record.backend)}</footer>
-        </article>`,
-        )
+          <footer>${record.created_at} · 录音 ${record.duration_seconds.toFixed(1)}s · ASR ${record.transcribe_seconds.toFixed(1)}s · 总 ${totalSeconds.toFixed(1)}s · ${escapeHtml(record.backend)}</footer>
+          ${historyTrace(record)}
+        </article>`;
+        })
         .join("") || `<div class="empty">暂无历史</div>`}
       <button class="tool-btn danger" data-action="clear-history">${icon("Eraser", "清空历史")}<span>清空历史</span></button>
     </section>
+  `;
+}
+
+function historyTrace(record: TranscriptRecord) {
+  const deterministicSeconds = Number(record.deterministic_seconds || 0);
+  const llmSeconds = Number(record.llm_seconds || 0);
+  const rows = [
+    ["原始", record.raw_text],
+    ["词表", record.dictionary_text],
+    ["热词", record.hotword_text],
+    ["规则", record.rule_text],
+    ["ITN", record.itn_text],
+    ["LLM", record.llm_text],
+  ].filter(([, value]) => value && value.trim().length > 0);
+  if (rows.length === 0) return "";
+  return `
+    <details class="history-trace">
+      <summary>过程 · 清理 ${deterministicSeconds.toFixed(2)}s · LLM ${llmSeconds.toFixed(2)}s</summary>
+      <dl>
+        ${rows
+          .map(
+            ([label, value]) => `
+          <div>
+            <dt>${escapeHtml(label)}</dt>
+            <dd>${escapeHtml(value)}</dd>
+          </div>`,
+          )
+          .join("")}
+      </dl>
+    </details>
   `;
 }
 

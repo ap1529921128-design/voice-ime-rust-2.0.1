@@ -445,6 +445,7 @@ impl WorkerState {
             );
             let total = chunks.len().max(1);
             let mut texts = Vec::new();
+            let mut raw_texts = Vec::new();
             for (index, samples) in chunks.into_iter().enumerate() {
                 if !app_state.is_current(session_id) {
                     return Ok(());
@@ -462,6 +463,9 @@ impl WorkerState {
                 };
                 let outcome = asr::transcribe(&input, &config, &self.paths)?;
                 if !outcome.text.is_empty() {
+                    if !outcome.raw_text.trim().is_empty() {
+                        raw_texts.push(outcome.raw_text);
+                    }
                     texts.push(outcome.text);
                     let preview =
                         text::join_transcript_chunks(&texts, &self.paths.corrections_path);
@@ -469,8 +473,17 @@ impl WorkerState {
                 }
             }
             let combined = text::join_transcript_chunks(&texts, &self.paths.corrections_path);
+            let raw_combined = {
+                let joined = join_raw_transcript_chunks(&raw_texts);
+                if joined.trim().is_empty() {
+                    combined.clone()
+                } else {
+                    joined
+                }
+            };
             let raw_finished = FinishedTranscript {
                 session_id,
+                raw_text: raw_combined,
                 text: combined.clone(),
                 duration_seconds: recording.duration_seconds,
                 transcribe_seconds: started.elapsed().as_secs_f32(),
@@ -485,14 +498,17 @@ impl WorkerState {
                 return Ok(());
             }
             app_state.set_postprocess_status(app, session_id, "智能纠错中".into());
+            let correction_started = Instant::now();
             let final_text =
                 llm::smart_correct(&combined, &base_text, &config, &self.paths, &prompt);
+            let llm_seconds = correction_started.elapsed().as_secs_f32();
             app_state.update_finished_text(
                 app,
                 session_id,
                 final_text,
                 recording.duration_seconds,
                 started.elapsed().as_secs_f32(),
+                llm_seconds,
             )?;
         } else {
             let input = AsrInput {
@@ -505,6 +521,11 @@ impl WorkerState {
             let raw_text = outcome.text.clone();
             let raw_finished = FinishedTranscript {
                 session_id,
+                raw_text: if outcome.raw_text.trim().is_empty() {
+                    raw_text.clone()
+                } else {
+                    outcome.raw_text
+                },
                 text: raw_text.clone(),
                 duration_seconds: recording.duration_seconds,
                 transcribe_seconds: outcome.elapsed_seconds,
@@ -519,14 +540,17 @@ impl WorkerState {
                 return Ok(());
             }
             app_state.set_postprocess_status(app, session_id, "智能纠错中".into());
+            let correction_started = Instant::now();
             let final_text =
                 llm::smart_correct(&raw_text, &base_text, &config, &self.paths, &prompt);
+            let llm_seconds = correction_started.elapsed().as_secs_f32();
             app_state.update_finished_text(
                 app,
                 session_id,
                 final_text,
                 recording.duration_seconds,
                 started.elapsed().as_secs_f32(),
+                llm_seconds,
             )?;
         }
         let _ = fs::remove_file(recording.wav_path);
@@ -646,10 +670,12 @@ impl AppState {
             if inner.session_id != finished.session_id {
                 return Ok(());
             }
-            let final_text = text::apply_punctuation_policy(
-                &finished.text,
-                current_punctuation_policy(&inner).as_str(),
-            );
+            let deterministic_started = Instant::now();
+            let trace = text::correction_trace(&finished.raw_text, &self.paths.corrections_path);
+            let deterministic_seconds = deterministic_started.elapsed().as_secs_f32();
+            let punctuation_policy = current_punctuation_policy(&inner);
+            let final_text =
+                text::apply_punctuation_policy(&finished.text, punctuation_policy.as_str());
             if final_text.trim().is_empty() {
                 inner.state = SessionState::Idle;
                 inner.status = "未识别到有效语音".into();
@@ -665,9 +691,19 @@ impl AppState {
                 );
                 inner.text = final_text.clone();
                 let record = TranscriptRecord::new(
+                    finished.session_id,
                     final_text,
+                    trace.raw_text,
+                    trace.normalized_text,
+                    trace.dictionary_text,
+                    trace.hotword_text,
+                    trace.rule_text,
+                    trace.itn_text,
+                    punctuation_policy,
                     finished.duration_seconds,
                     finished.transcribe_seconds,
+                    deterministic_seconds,
+                    finished.transcribe_seconds + deterministic_seconds,
                     finished.backend,
                     finished.model,
                 );
@@ -685,7 +721,8 @@ impl AppState {
         session_id: u64,
         text: String,
         duration_seconds: f32,
-        transcribe_seconds: f32,
+        total_seconds: f32,
+        llm_seconds: f32,
     ) -> Result<()> {
         {
             let mut inner = self.inner.lock();
@@ -697,12 +734,22 @@ impl AppState {
             inner.state = SessionState::Idle;
             inner.status = "等待确认".into();
             inner.meta = format!(
-                "录音 {:.1}s / 处理 {:.1}s / {} 字",
+                "录音 {:.1}s / 总耗时 {:.1}s / LLM {:.1}s / {} 字",
                 duration_seconds,
-                transcribe_seconds,
+                total_seconds,
+                llm_seconds,
                 text.chars().count()
             );
             inner.text = text;
+            let history_path = self.paths.history_path.clone();
+            let final_text = inner.text.clone();
+            inner.history.update_postprocess(
+                session_id,
+                final_text,
+                llm_seconds,
+                total_seconds,
+                &history_path,
+            )?;
         }
         emit_snapshot(app, self);
         Ok(())
@@ -711,6 +758,7 @@ impl AppState {
 
 struct FinishedTranscript {
     session_id: u64,
+    raw_text: String,
     text: String,
     duration_seconds: f32,
     transcribe_seconds: f32,
@@ -754,6 +802,29 @@ pub fn hide_overlay(app: &AppHandle) {
 
 fn read_prompt(paths: &Paths) -> String {
     fs::read_to_string(&paths.prompt_path).unwrap_or_default()
+}
+
+fn join_raw_transcript_chunks(chunks: &[String]) -> String {
+    let mut result = String::new();
+    for chunk in chunks {
+        let chunk = text::normalize_text(chunk);
+        if chunk.is_empty() {
+            continue;
+        }
+        if result
+            .chars()
+            .last()
+            .is_some_and(|c| c.is_ascii_alphanumeric())
+            && chunk
+                .chars()
+                .next()
+                .is_some_and(|c| c.is_ascii_alphanumeric())
+        {
+            result.push(' ');
+        }
+        result.push_str(&chunk);
+    }
+    text::normalize_text(&result)
 }
 
 fn current_punctuation_policy(inner: &InnerState) -> String {

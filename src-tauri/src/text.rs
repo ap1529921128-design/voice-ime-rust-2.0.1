@@ -106,16 +106,46 @@ pub fn normalize_text(text: &str) -> String {
 }
 
 pub fn apply_corrections(text: &str, corrections_path: &Path) -> String {
-    let mut text = normalize_text(text);
+    correction_trace(text, corrections_path).final_text
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct CorrectionTrace {
+    pub raw_text: String,
+    pub normalized_text: String,
+    pub dictionary_text: String,
+    pub hotword_text: String,
+    pub rule_text: String,
+    pub itn_text: String,
+    pub final_text: String,
+}
+
+pub fn correction_trace(text: &str, corrections_path: &Path) -> CorrectionTrace {
+    let raw_text = text.to_string();
+    let mut current = normalize_text(text);
+    let normalized_text = current.clone();
     for (wrong, right) in load_corrections(corrections_path) {
-        text = text.replace(&wrong, &right);
+        current = current.replace(&wrong, &right);
     }
+    let dictionary_text = current.clone();
     for (wrong, right) in load_hotword_replacements(&hotwords_path_for(corrections_path)) {
-        text = text.replace(&wrong, &right);
+        current = current.replace(&wrong, &right);
     }
-    text = apply_hot_rules(&text, &hot_rules_path_for(corrections_path));
-    text = crate::itn::apply_itn(&text);
-    normalize_text(&text)
+    let hotword_text = current.clone();
+    current = apply_hot_rules(&current, &hot_rules_path_for(corrections_path));
+    let rule_text = current.clone();
+    current = crate::itn::apply_itn(&current);
+    let itn_text = current.clone();
+    let final_text = normalize_text(&current);
+    CorrectionTrace {
+        raw_text,
+        normalized_text,
+        dictionary_text,
+        hotword_text,
+        rule_text,
+        itn_text,
+        final_text,
+    }
 }
 
 pub fn apply_punctuation_policy(text: &str, policy: &str) -> String {
@@ -563,6 +593,24 @@ mod tests {
             ),
             "打开 Voice IME，非洲之星，1000mAh，@qq.com"
         );
+    }
+
+    #[test]
+    fn records_correction_trace_stages() {
+        let temp = tempfile::tempdir().unwrap();
+        let corrections = temp.path().join("corrections.json");
+        let hotwords = temp.path().join("hot.txt");
+        let rules = temp.path().join("hot-rule.txt");
+        fs::write(&corrections, r#"{"mini CPM":"minicpm"}"#).unwrap();
+        fs::write(&hotwords, "非洲之星 | 非州之星\n").unwrap();
+        fs::write(&rules, "毫安时 = mAh\n").unwrap();
+
+        let trace = correction_trace("mini CPM 非州之星 一千毫安时", &corrections);
+        assert_eq!(trace.normalized_text, "mini CPM 非州之星 一千毫安时");
+        assert_eq!(trace.dictionary_text, "minicpm 非州之星 一千毫安时");
+        assert_eq!(trace.hotword_text, "minicpm 非洲之星 一千毫安时");
+        assert_eq!(trace.rule_text, "minicpm 非洲之星 一千mAh");
+        assert_eq!(trace.final_text, "minicpm 非洲之星 1000mAh");
     }
 
     #[test]

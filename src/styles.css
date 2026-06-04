@@ -443,6 +443,45 @@ select {
   font-size: 12px;
 }
 
+.history-trace {
+  border-top: 1px solid rgba(49, 93, 147, 0.1);
+  padding-top: 8px;
+  color: #5f6d78;
+  font-size: 12px;
+}
+
+.history-trace summary {
+  width: fit-content;
+  cursor: pointer;
+  color: #315d93;
+  font-weight: 650;
+}
+
+.history-trace dl {
+  display: grid;
+  gap: 6px;
+  margin: 8px 0 0;
+}
+
+.history-trace div {
+  display: grid;
+  grid-template-columns: 42px minmax(0, 1fr);
+  gap: 8px;
+}
+
+.history-trace dt {
+  color: #315d93;
+  font-weight: 700;
+}
+
+.history-trace dd {
+  margin: 0;
+  overflow: hidden;
+  color: #0a1f3d;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 .empty {
   display: grid;
   min-height: 180px;
