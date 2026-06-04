@@ -127,6 +127,7 @@ const isOverlay = currentWindow.label === "overlay";
 let snapshot: Snapshot | null = null;
 let statusRows: AsrModelStatus[] = [];
 let activeView: "compose" | "settings" | "history" = "compose";
+let activeSettingsTab: "voice" | "models" | "smart" | "shortcuts" | "data" = "voice";
 let pendingTextSync: number | undefined;
 
 type IconName = keyof typeof icons;
@@ -262,6 +263,36 @@ function settingsView(data: Snapshot) {
         <strong>${escapeHtml(data.status)}</strong>
         <span>${escapeHtml(data.meta || "模型状态会在这里更新")}</span>
       </div>
+      <nav class="settings-tabs">
+        ${settingsTabButton("voice", "SlidersHorizontal", "语音")}
+        ${settingsTabButton("models", "Boxes", "模型")}
+        ${settingsTabButton("smart", "Sparkles", "智能")}
+        ${settingsTabButton("shortcuts", "Keyboard", "快捷键")}
+        ${settingsTabButton("data", "Database", "数据")}
+      </nav>
+      ${settingsPanel(cfg)}
+      <footer class="settings-actions">
+        <button class="tool-btn primary" data-action="save-config">${icon("Check", "保存")}<span>保存设置</span></button>
+      </footer>
+    </section>
+  `;
+}
+
+function settingsTabButton(tab: typeof activeSettingsTab, iconName: IconName, label: string) {
+  return `<button class="${activeSettingsTab === tab ? "active" : ""}" data-settings-tab="${tab}">${icon(iconName, label)}<span>${label}</span></button>`;
+}
+
+function settingsPanel(cfg: AppConfig) {
+  if (activeSettingsTab === "models") return modelSettingsPanel(cfg);
+  if (activeSettingsTab === "smart") return smartSettingsPanel(cfg);
+  if (activeSettingsTab === "shortcuts") return shortcutSettingsPanel(cfg);
+  if (activeSettingsTab === "data") return dataSettingsPanel(cfg);
+  return voiceSettingsPanel(cfg);
+}
+
+function voiceSettingsPanel(cfg: AppConfig) {
+  return `
+    <div class="settings-panel">
       <label>ASR 档位
         <select data-config="asr.profile">
           ${option("fast", cfg.asr.profile, "fast")}
@@ -290,6 +321,25 @@ function settingsView(data: Snapshot) {
       </label>
       <label>ASR 线程
         <input type="number" min="1" max="4" value="${cfg.asr.num_threads}" data-config="asr.num_threads" />
+      </label>
+    </div>
+  `;
+}
+
+function shortcutSettingsPanel(cfg: AppConfig) {
+  return `
+    <div class="settings-panel">
+      <label>录音热键
+        <input value="${escapeAttr(cfg.input.hotkey_record)}" data-config="input.hotkey_record" />
+      </label>
+      <label>语言切换
+        <input value="${escapeAttr(cfg.input.hotkey_language)}" data-config="input.hotkey_language" />
+      </label>
+      <label>转英文
+        <input value="${escapeAttr(cfg.input.hotkey_english)}" data-config="input.hotkey_english" />
+      </label>
+      <label>转日文
+        <input value="${escapeAttr(cfg.input.hotkey_japanese)}" data-config="input.hotkey_japanese" />
       </label>
       <label>按住说话
         <select data-config="input.ptt_enabled">
@@ -320,6 +370,13 @@ function settingsView(data: Snapshot) {
           ${option("false", String(cfg.input.ptt_suppress), "关闭")}
         </select>
       </label>
+    </div>
+  `;
+}
+
+function smartSettingsPanel(cfg: AppConfig) {
+  return `
+    <div class="settings-panel">
       <label>智能纠错
         <select data-config="smart.enabled">
           ${option("true", String(cfg.smart.enabled), "开启")}
@@ -352,6 +409,13 @@ function settingsView(data: Snapshot) {
       <label>外部翻译命令
         <input value="${escapeAttr(cfg.translation.external_command)}" data-config="translation.external_command" />
       </label>
+    </div>
+  `;
+}
+
+function modelSettingsPanel(cfg: AppConfig) {
+  return `
+    <div class="settings-panel">
       <div class="model-status">
         ${statusRows
           .map(
@@ -371,15 +435,48 @@ function settingsView(data: Snapshot) {
           )
           .join("")}
       </div>
-      <footer class="settings-actions">
+      <label>fast 模型
+        <input value="${escapeAttr(cfg.asr.models.zipformer_ctc_model)}" data-config="asr.models.zipformer_ctc_model" />
+      </label>
+      <label>fast tokens
+        <input value="${escapeAttr(cfg.asr.models.zipformer_ctc_tokens)}" data-config="asr.models.zipformer_ctc_tokens" />
+      </label>
+      <label>balanced 模型
+        <input value="${escapeAttr(cfg.asr.models.sense_voice_model)}" data-config="asr.models.sense_voice_model" />
+      </label>
+      <label>balanced tokens
+        <input value="${escapeAttr(cfg.asr.models.sense_voice_tokens)}" data-config="asr.models.sense_voice_tokens" />
+      </label>
+      <label>fallback encoder
+        <input value="${escapeAttr(cfg.asr.models.whisper_encoder)}" data-config="asr.models.whisper_encoder" />
+      </label>
+      <label>fallback decoder
+        <input value="${escapeAttr(cfg.asr.models.whisper_decoder)}" data-config="asr.models.whisper_decoder" />
+      </label>
+      <label>fallback tokens
+        <input value="${escapeAttr(cfg.asr.models.whisper_tokens)}" data-config="asr.models.whisper_tokens" />
+      </label>
+      <div class="settings-tools">
         <button class="tool-btn" data-action="open-model-dir">${icon("FolderOpen", "打开模型目录")}<span>模型目录</span></button>
+      </div>
+    </div>
+  `;
+}
+
+function dataSettingsPanel(cfg: AppConfig) {
+  return `
+    <div class="settings-panel">
+      <label>历史上限
+        <input type="number" min="0" max="500" value="${cfg.history_limit}" data-config="history_limit" />
+      </label>
+      <div class="settings-tools">
         <button class="tool-btn" data-action="open-logs-dir">${icon("FileText", "打开日志")}<span>日志</span></button>
         <button class="tool-btn" data-action="run-doctor">${icon("Stethoscope", "运行诊断")}<span>诊断</span></button>
         <button class="tool-btn" data-action="open-hotwords">${icon("BookOpen", "打开热词")}<span>热词</span></button>
         <button class="tool-btn" data-action="open-hot-rules">${icon("ListChecks", "打开规则")}<span>规则</span></button>
-        <button class="tool-btn primary" data-action="save-config">${icon("Check", "保存")}<span>保存设置</span></button>
-      </footer>
-    </section>
+        <button class="tool-btn danger" data-action="clear-history">${icon("Eraser", "清空历史")}<span>清空历史</span></button>
+      </div>
+    </div>
   `;
 }
 
@@ -514,6 +611,19 @@ function wireMain() {
       }
       render();
     });
+  });
+  app.querySelectorAll<HTMLButtonElement>("[data-settings-tab]").forEach((tab) => {
+    tab.addEventListener("click", () => {
+      activeSettingsTab = tab.dataset.settingsTab as typeof activeSettingsTab;
+      render();
+    });
+  });
+  app.querySelectorAll<HTMLInputElement | HTMLSelectElement>("[data-config]").forEach((input) => {
+    const syncDraft = () => {
+      if (snapshot) setPath(snapshot.config, input.dataset.config!, input.value);
+    };
+    input.addEventListener("input", syncDraft);
+    input.addEventListener("change", syncDraft);
   });
   app.querySelectorAll<HTMLElement>("[data-history]").forEach((item) => {
     item.addEventListener("dblclick", () => {

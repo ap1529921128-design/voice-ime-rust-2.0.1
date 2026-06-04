@@ -138,7 +138,24 @@ p {
   background: rgba(255, 255, 255, 0.5);
 }
 
+.settings-tabs {
+  display: flex;
+  grid-column: 1 / -1;
+  gap: 6px;
+  overflow-x: auto;
+  border-radius: 18px;
+  padding: 6px;
+  background: rgba(255, 255, 255, 0.5);
+  scrollbar-width: none;
+}
+
+.settings-tabs::-webkit-scrollbar {
+  width: 0;
+  height: 0;
+}
+
 .tabs button,
+.settings-tabs button,
 .tool-btn,
 .icon-btn,
 .mini-action {
@@ -157,7 +174,13 @@ p {
   padding: 0 14px;
 }
 
+.settings-tabs button {
+  flex: 0 0 auto;
+  padding: 0 12px;
+}
+
 .tabs button.active,
+.settings-tabs button.active,
 .tool-btn.primary {
   background: #315d93;
   color: #fff;
@@ -330,6 +353,21 @@ p {
   color: #8a2c0d;
 }
 
+.settings-panel {
+  display: grid;
+  grid-column: 1 / -1;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 14px;
+  min-height: 0;
+}
+
+.settings-tools {
+  display: flex;
+  grid-column: 1 / -1;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+
 label {
   display: grid;
   gap: 8px;
@@ -410,6 +448,7 @@ select {
 
 .settings-actions {
   grid-column: 1 / -1;
+  justify-content: flex-end;
   gap: 10px;
 }
 
@@ -536,7 +575,8 @@ select {
 }
 
 @media (max-width: 760px) {
-  .settings-grid {
+  .settings-grid,
+  .settings-panel {
     grid-template-columns: 1fr;
   }
 
