@@ -65,6 +65,14 @@
 4. A `doctor-YYYYMMDD-HHMMSS.txt` report path is shown in the panel and the file exists under `.voice_ime/logs`.
 5. Clicking `导出` still creates the support zip and includes the latest doctor output without including recordings or model binaries.
 
+## Model Path Picker
+
+1. Open Settings / Models.
+2. Each ASR profile row has `下载`, `选择`, `镜像`, and `官网` actions.
+3. Clicking `选择` opens a native directory picker and fills the matching default filenames for that profile.
+4. Each individual model path has a file-picker icon that updates only that config field.
+5. After selecting a directory or file, the config is saved and the ready/missing rows refresh.
+
 ## Current 2.0.1 Test Boundary
 
 - Automated regression covers Rust unit tests, Rust compile, clippy, frontend build, release build, and portable packaging.
@@ -82,3 +90,4 @@
 - Long recording retention can be disabled and existing long recordings can be cleared from Settings / Data; short recordings remain non-retained by design.
 - Portable packaging now includes an automated layout/release gate and `BUILD.txt`; manual smoke is still useful after packaging because it proves WebView startup on this machine.
 - Settings / Data now shows an inline diagnostics panel after running Doctor; one-click repair actions are still future work.
+- Settings / Models now has native file and directory pickers; real removable-drive acceptance should still be tested on target machines.

@@ -521,9 +521,33 @@ p {
 label {
   display: grid;
   gap: 8px;
+  min-width: 0;
   color: #5f6d78;
   font-size: 13px;
   font-weight: 650;
+}
+
+.path-field > span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.path-input {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 42px;
+  gap: 8px;
+  min-width: 0;
+}
+
+.path-input input {
+  min-width: 0;
+}
+
+.path-input .icon-btn.tiny {
+  width: 42px;
+  min-height: 44px;
+  border-radius: 14px;
 }
 
 input,
@@ -578,6 +602,8 @@ select:disabled {
 .model-actions {
   display: flex;
   flex: 0 0 auto;
+  flex-wrap: wrap;
+  justify-content: flex-end;
   gap: 6px;
 }
 
@@ -779,6 +805,15 @@ select:disabled {
 
   .history-filters {
     grid-template-columns: 1fr 1fr;
+  }
+
+  .model-row {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .model-actions {
+    justify-content: flex-start;
   }
 
   .doctor-head,

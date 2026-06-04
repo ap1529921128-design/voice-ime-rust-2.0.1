@@ -25,6 +25,7 @@
 - Added Settings / Data retention controls for long recordings, a visible never-save short-recording policy, and a clear-recordings action for stored long audio files.
 - Added portable packaging release gates for root layout, forbidden runtime folders, core-model cleanliness, required app files, and a generated `BUILD.txt` build stamp.
 - Added an inline Settings / Data diagnostics panel showing pass, warning, and failure rows while still writing a shareable doctor report file.
+- Added native model file and profile-directory pickers in Settings / Models for external or removable model packs.
 
 ## 2.0.1 - 2026-05-31
 

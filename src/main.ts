@@ -1,6 +1,7 @@
 import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
 import { getCurrentWindow } from "@tauri-apps/api/window";
+import { open } from "@tauri-apps/plugin-dialog";
 import { createElement, icons } from "lucide";
 import "./styles.css";
 
@@ -149,6 +150,8 @@ type DoctorReport = {
   summary: string;
   checks: DoctorCheck[];
 };
+
+type ModelProfile = "fast" | "balanced" | "fallback";
 
 const app = document.querySelector<HTMLDivElement>("#app")!;
 const currentWindow = getCurrentWindow();
@@ -529,6 +532,7 @@ function modelSettingsPanel(cfg: AppConfig) {
             </div>
             <div class="model-actions">
               <button class="mini-action" data-action="download-model" data-profile="${escapeAttr(row.profile)}" title="下载模型">${icon("Download", "下载模型")}<span>下载</span></button>
+              <button class="mini-action" data-action="pick-model-dir" data-profile="${escapeAttr(row.profile)}" title="选择模型目录">${icon("FolderSearch", "选择模型目录")}<span>选择</span></button>
               <button class="mini-action" data-action="open-model-mirror" data-profile="${escapeAttr(row.profile)}" title="打开镜像页">${icon("Cloud", "打开镜像页")}<span>镜像</span></button>
               <button class="mini-action" data-action="open-model-page" data-profile="${escapeAttr(row.profile)}" title="打开官方页">${icon("ExternalLink", "打开官方页")}<span>官网</span></button>
             </div>
@@ -536,32 +540,29 @@ function modelSettingsPanel(cfg: AppConfig) {
           )
           .join("")}
       </div>
-      <label>fast 模型
-        <input value="${escapeAttr(cfg.asr.models.zipformer_ctc_model)}" data-config="asr.models.zipformer_ctc_model" />
-      </label>
-      <label>fast tokens
-        <input value="${escapeAttr(cfg.asr.models.zipformer_ctc_tokens)}" data-config="asr.models.zipformer_ctc_tokens" />
-      </label>
-      <label>balanced 模型
-        <input value="${escapeAttr(cfg.asr.models.sense_voice_model)}" data-config="asr.models.sense_voice_model" />
-      </label>
-      <label>balanced tokens
-        <input value="${escapeAttr(cfg.asr.models.sense_voice_tokens)}" data-config="asr.models.sense_voice_tokens" />
-      </label>
-      <label>fallback encoder
-        <input value="${escapeAttr(cfg.asr.models.whisper_encoder)}" data-config="asr.models.whisper_encoder" />
-      </label>
-      <label>fallback decoder
-        <input value="${escapeAttr(cfg.asr.models.whisper_decoder)}" data-config="asr.models.whisper_decoder" />
-      </label>
-      <label>fallback tokens
-        <input value="${escapeAttr(cfg.asr.models.whisper_tokens)}" data-config="asr.models.whisper_tokens" />
-      </label>
+      ${modelPathField("fast 模型", "asr.models.zipformer_ctc_model", cfg.asr.models.zipformer_ctc_model)}
+      ${modelPathField("fast tokens", "asr.models.zipformer_ctc_tokens", cfg.asr.models.zipformer_ctc_tokens)}
+      ${modelPathField("balanced 模型", "asr.models.sense_voice_model", cfg.asr.models.sense_voice_model)}
+      ${modelPathField("balanced tokens", "asr.models.sense_voice_tokens", cfg.asr.models.sense_voice_tokens)}
+      ${modelPathField("fallback encoder", "asr.models.whisper_encoder", cfg.asr.models.whisper_encoder)}
+      ${modelPathField("fallback decoder", "asr.models.whisper_decoder", cfg.asr.models.whisper_decoder)}
+      ${modelPathField("fallback tokens", "asr.models.whisper_tokens", cfg.asr.models.whisper_tokens)}
       <div class="settings-tools">
         <button class="tool-btn" data-action="open-model-dir">${icon("FolderOpen", "打开模型目录")}<span>模型目录</span></button>
         <button class="tool-btn" data-action="prewarm-asr">${icon("Flame", "预热 ASR")}<span>预热</span></button>
       </div>
     </div>
+  `;
+}
+
+function modelPathField(label: string, configPath: string, value: string) {
+  return `
+    <label class="path-field"><span>${escapeHtml(label)}</span>
+      <div class="path-input">
+        <input value="${escapeAttr(value)}" data-config="${escapeAttr(configPath)}" />
+        <button class="icon-btn tiny" data-action="pick-model-file" data-config-path="${escapeAttr(configPath)}" title="选择文件">${icon("FileSearch", "选择文件")}</button>
+      </div>
+    </label>
   `;
 }
 
@@ -777,6 +778,8 @@ function wireCommon() {
       if (action === "save-config") await saveConfig();
       if (action === "refresh-audio-devices") await refreshAudioDevices(true);
       if (action === "download-model") await downloadModel(button.dataset.profile || "");
+      if (action === "pick-model-file") await pickModelFile(button.dataset.configPath || "");
+      if (action === "pick-model-dir") await pickModelDirectory(button.dataset.profile || "");
       if (action === "prewarm-asr") await run("prewarm_asr");
       if (action === "open-model-mirror") await invoke("open_model_mirror_page", { profile: button.dataset.profile || "" });
       if (action === "open-model-page") await invoke("open_model_download_page", { profile: button.dataset.profile || "" });
@@ -897,15 +900,83 @@ function resetHistoryFilters() {
 
 async function saveConfig() {
   if (!snapshot) return;
+  await saveConfigDraft(collectConfigDraft());
+}
+
+function collectConfigDraft() {
+  if (!snapshot) throw new Error("配置尚未加载");
   const next = structuredClone(snapshot.config);
   app.querySelectorAll<HTMLInputElement | HTMLSelectElement>("[data-config]").forEach((input) => {
     setPath(next, input.dataset.config!, input.value);
   });
+  return next;
+}
+
+async function saveConfigDraft(next: AppConfig) {
   await run("save_config", { config: next });
+  if (activeView === "settings") {
+    await refreshModelStatus();
+    render();
+  }
 }
 
 async function refreshModelStatus() {
   statusRows = await invoke<AsrModelStatus[]>("asr_status");
+}
+
+async function pickModelFile(configPath: string) {
+  if (!configPath || !snapshot) return;
+  const selected = await open({
+    multiple: false,
+    directory: false,
+    title: "选择模型文件",
+  });
+  if (typeof selected !== "string") return;
+  const next = collectConfigDraft();
+  setPath(next, configPath, selected);
+  await saveConfigDraft(next);
+}
+
+async function pickModelDirectory(profile: string) {
+  if (!isModelProfile(profile) || !snapshot) return;
+  const selected = await open({
+    multiple: false,
+    directory: true,
+    title: "选择模型目录",
+  });
+  if (typeof selected !== "string") return;
+  const next = collectConfigDraft();
+  applyModelDirectory(next, profile, selected);
+  await saveConfigDraft(next);
+}
+
+function isModelProfile(value: string): value is ModelProfile {
+  return value === "fast" || value === "balanced" || value === "fallback";
+}
+
+function applyModelDirectory(config: AppConfig, profile: ModelProfile, dir: string) {
+  const files: Record<ModelProfile, Array<[string, string]>> = {
+    fast: [
+      ["asr.models.zipformer_ctc_model", "model.int8.onnx"],
+      ["asr.models.zipformer_ctc_tokens", "tokens.txt"],
+    ],
+    balanced: [
+      ["asr.models.sense_voice_model", "model.int8.onnx"],
+      ["asr.models.sense_voice_tokens", "tokens.txt"],
+    ],
+    fallback: [
+      ["asr.models.whisper_encoder", "tiny-encoder.int8.onnx"],
+      ["asr.models.whisper_decoder", "tiny-decoder.int8.onnx"],
+      ["asr.models.whisper_tokens", "tiny-tokens.txt"],
+    ],
+  };
+  files[profile].forEach(([configPath, filename]) => setPath(config, configPath, joinPickedPath(dir, filename)));
+}
+
+function joinPickedPath(dir: string, filename: string) {
+  const clean = dir.replace(/[\\/]+$/, "");
+  const separator = clean.includes("\\") ? "\\" : "/";
+  return `${clean}${separator}${filename}`;
 }
 
 async function runDoctorReport() {
