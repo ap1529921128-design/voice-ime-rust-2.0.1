@@ -18,6 +18,7 @@
 - Split Settings into voice, models, smart input, shortcuts, and data groups, with editable ASR model paths and hotkey fields.
 - Added a one-click support bundle export that zips config, history, dictionaries, logs, doctor output, and model manifests while excluding recordings and model binaries.
 - Added ASR idle prewarming for persistent worker mode, plus a Settings model-page prewarm button, so the current ready profile can load before the first real dictation.
+- Added history filters for text/stage content, backend, model, and date so trace records can be located quickly during accuracy and latency debugging.
 
 ## 2.0.1 - 2026-05-31
 

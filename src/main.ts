@@ -128,6 +128,10 @@ let snapshot: Snapshot | null = null;
 let statusRows: AsrModelStatus[] = [];
 let activeView: "compose" | "settings" | "history" = "compose";
 let activeSettingsTab: "voice" | "models" | "smart" | "shortcuts" | "data" = "voice";
+let historyQuery = "";
+let historyBackend = "all";
+let historyModel = "all";
+let historyDate = "";
 let pendingTextSync: number | undefined;
 
 type IconName = keyof typeof icons;
@@ -483,10 +487,33 @@ function dataSettingsPanel(cfg: AppConfig) {
 }
 
 function historyView(data: Snapshot) {
+  const rows = filteredHistoryRows(data.history);
   return `
     <section class="history-list">
-      ${data.history
-        .map((record, index) => {
+      <div class="history-filters">
+        <label>搜索
+          <input value="${escapeAttr(historyQuery)}" data-history-filter="query" placeholder="文本 / 模型 / 后端" />
+        </label>
+        <label>后端
+          <select data-history-filter="backend">
+            ${option("all", historyBackend, "全部")}
+            ${historyOptions(data.history.map((record) => record.backend), historyBackend)}
+          </select>
+        </label>
+        <label>模型
+          <select data-history-filter="model">
+            ${option("all", historyModel, "全部")}
+            ${historyOptions(data.history.map((record) => record.model), historyModel)}
+          </select>
+        </label>
+        <label>日期
+          <input type="date" value="${escapeAttr(historyDate)}" data-history-filter="date" />
+        </label>
+        <button class="icon-btn" data-action="reset-history-filters" title="重置筛选">${icon("RotateCcw", "重置筛选")}</button>
+      </div>
+      <div class="history-count">${rows.length} / ${data.history.length}</div>
+      ${rows
+        .map(({ record, index }) => {
           const totalSeconds = record.total_seconds || record.transcribe_seconds;
           return `
         <article class="history-item" data-history="${index}">
@@ -495,10 +522,48 @@ function historyView(data: Snapshot) {
           ${historyTrace(record)}
         </article>`;
         })
-        .join("") || `<div class="empty">暂无历史</div>`}
+        .join("") || `<div class="empty">暂无匹配</div>`}
       <button class="tool-btn danger" data-action="clear-history">${icon("Eraser", "清空历史")}<span>清空历史</span></button>
     </section>
   `;
+}
+
+function filteredHistoryRows(records: TranscriptRecord[]) {
+  const query = historyQuery.trim().toLowerCase();
+  return records
+    .map((record, index) => ({ record, index }))
+    .filter(({ record }) => {
+      if (historyBackend !== "all" && record.backend !== historyBackend) return false;
+      if (historyModel !== "all" && record.model !== historyModel) return false;
+      if (historyDate && !record.created_at.startsWith(historyDate)) return false;
+      if (!query) return true;
+      return historySearchText(record).toLowerCase().includes(query);
+    });
+}
+
+function historySearchText(record: TranscriptRecord) {
+  return [
+    record.text,
+    record.raw_text,
+    record.normalized_text,
+    record.dictionary_text,
+    record.hotword_text,
+    record.rule_text,
+    record.itn_text,
+    record.llm_text,
+    record.backend,
+    record.model,
+    record.created_at,
+    record.punctuation_policy,
+    String(record.session_id || ""),
+  ].join("\n");
+}
+
+function historyOptions(values: string[], current: string) {
+  return Array.from(new Set(values.filter((value) => value && value.trim().length > 0)))
+    .sort((a, b) => a.localeCompare(b))
+    .map((value) => option(value, current, value))
+    .join("");
 }
 
 function historyTrace(record: TranscriptRecord) {
@@ -554,6 +619,7 @@ function wireCommon() {
       if (action === "translate-zh") await run("translate_text", { targetLanguage: "zh" });
       if (action === "hide") await run("hide_overlay");
       if (action === "clear-history") await run("clear_history");
+      if (action === "reset-history-filters") resetHistoryFilters();
       if (action === "save-config") await saveConfig();
       if (action === "download-model") await downloadModel(button.dataset.profile || "");
       if (action === "prewarm-asr") await run("prewarm_asr");
@@ -629,6 +695,10 @@ function wireMain() {
     input.addEventListener("input", syncDraft);
     input.addEventListener("change", syncDraft);
   });
+  app.querySelectorAll<HTMLInputElement | HTMLSelectElement>("[data-history-filter]").forEach((input) => {
+    input.addEventListener("input", () => updateHistoryFilter(input));
+    input.addEventListener("change", () => updateHistoryFilter(input));
+  });
   app.querySelectorAll<HTMLElement>("[data-history]").forEach((item) => {
     item.addEventListener("dblclick", () => {
       const index = Number(item.dataset.history);
@@ -638,6 +708,29 @@ function wireMain() {
       render();
     });
   });
+}
+
+function updateHistoryFilter(input: HTMLInputElement | HTMLSelectElement) {
+  const filter = input.dataset.historyFilter;
+  const cursor = input instanceof HTMLInputElement ? input.selectionStart : null;
+  if (filter === "query") historyQuery = input.value;
+  if (filter === "backend") historyBackend = input.value;
+  if (filter === "model") historyModel = input.value;
+  if (filter === "date") historyDate = input.value;
+  render();
+  if (filter === "query") {
+    const next = app.querySelector<HTMLInputElement>("[data-history-filter='query']");
+    next?.focus();
+    if (next && cursor !== null) next.setSelectionRange(cursor, cursor);
+  }
+}
+
+function resetHistoryFilters() {
+  historyQuery = "";
+  historyBackend = "all";
+  historyModel = "all";
+  historyDate = "";
+  render();
 }
 
 async function saveConfig() {
