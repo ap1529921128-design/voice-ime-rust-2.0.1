@@ -4,6 +4,7 @@ mod config;
 mod core;
 mod history;
 mod llm;
+mod ptt;
 mod text;
 mod win_bridge;
 mod window_shape;
@@ -82,7 +83,9 @@ fn save_config(
     state: State<'_, AppState>,
     config: AppConfig,
 ) -> Result<UiSnapshot, String> {
-    state.save_config(&app, config).map_err(to_string)
+    let snapshot = state.save_config(&app, config).map_err(to_string)?;
+    ptt::update_config(&snapshot.config);
+    Ok(snapshot)
 }
 
 #[tauri::command]
@@ -170,6 +173,7 @@ pub fn run() {
             window_shape::install(app);
             let state = app.state::<AppState>();
             register_hotkeys(app.handle(), &state);
+            ptt::install(app.handle(), &state.snapshot().config);
             core::emit_snapshot(app.handle(), &state);
             Ok(())
         })

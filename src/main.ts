@@ -52,6 +52,10 @@ type AppConfig = {
     hotkey_language: string;
     hotkey_english: string;
     hotkey_japanese: string;
+    ptt_enabled: boolean;
+    ptt_key: string;
+    ptt_mouse_button: string;
+    ptt_suppress: boolean;
   };
   smart: {
     enabled: boolean;
@@ -119,6 +123,13 @@ function languageLabel(language: string) {
 
 function workerModeLabel(mode: string) {
   return mode === "isolated" ? "隔离" : "常驻";
+}
+
+function pttLabel(config: AppConfig) {
+  if (!config.input.ptt_enabled) return "PTT 关";
+  const triggers = [config.input.ptt_key, config.input.ptt_mouse_button].filter((item) => item && item !== "off");
+  if (triggers.length === 0) return "PTT 待配置";
+  return `按住 ${triggers.join(" / ")}`;
 }
 
 function stateTone(state: SessionState) {
@@ -199,7 +210,7 @@ function composeView(data: Snapshot) {
         </button>
         <div class="listen-copy">
           <strong>${data.state === "Recording" ? "正在录音" : "准备输入"}</strong>
-          <span>${languageLabel(data.language)} · ${data.config.asr.profile} · ${workerModeLabel(data.config.asr.worker_mode)}</span>
+          <span>${languageLabel(data.language)} · ${data.config.asr.profile} · ${workerModeLabel(data.config.asr.worker_mode)} · ${pttLabel(data.config)}</span>
         </div>
       </div>
       <div class="meta-strip">
@@ -256,6 +267,35 @@ function settingsView(data: Snapshot) {
       </label>
       <label>ASR 线程
         <input type="number" min="1" max="4" value="${cfg.asr.num_threads}" data-config="asr.num_threads" />
+      </label>
+      <label>按住说话
+        <select data-config="input.ptt_enabled">
+          ${option("true", String(cfg.input.ptt_enabled), "开启")}
+          ${option("false", String(cfg.input.ptt_enabled), "关闭")}
+        </select>
+      </label>
+      <label>键盘触发
+        <select data-config="input.ptt_key">
+          ${option("CapsLock", cfg.input.ptt_key, "CapsLock")}
+          ${option("F8", cfg.input.ptt_key, "F8")}
+          ${option("F9", cfg.input.ptt_key, "F9")}
+          ${option("F10", cfg.input.ptt_key, "F10")}
+          ${option("F13", cfg.input.ptt_key, "F13")}
+          ${option("off", cfg.input.ptt_key, "关闭")}
+        </select>
+      </label>
+      <label>鼠标触发
+        <select data-config="input.ptt_mouse_button">
+          ${option("X2", cfg.input.ptt_mouse_button, "X2")}
+          ${option("X1", cfg.input.ptt_mouse_button, "X1")}
+          ${option("off", cfg.input.ptt_mouse_button, "关闭")}
+        </select>
+      </label>
+      <label>触发键吞掉
+        <select data-config="input.ptt_suppress">
+          ${option("true", String(cfg.input.ptt_suppress), "开启")}
+          ${option("false", String(cfg.input.ptt_suppress), "关闭")}
+        </select>
       </label>
       <label>智能纠错
         <select data-config="smart.enabled">

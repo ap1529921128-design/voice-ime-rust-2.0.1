@@ -7,6 +7,7 @@
 - Exposed the ASR worker mode in Settings as "常驻加速" and "隔离稳妥".
 - Added a versioned model manifest and a core portable package strategy so the app body can be tested and upgraded separately from large ASR/LLM model packs.
 - Added `hot.txt` alias replacement and `hot-rule.txt` regex replacement, with Settings buttons to open both files.
+- Added optional push-to-talk recording with CapsLock and mouse X2 hold triggers, plus Settings controls for trigger key, mouse button, and event suppression.
 
 ## 2.0.1 - 2026-05-31
 

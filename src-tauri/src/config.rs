@@ -82,6 +82,14 @@ pub struct InputConfig {
     pub hotkey_english: String,
     #[serde(default = "default_hotkey_japanese")]
     pub hotkey_japanese: String,
+    #[serde(default = "default_ptt_enabled")]
+    pub ptt_enabled: bool,
+    #[serde(default = "default_ptt_key")]
+    pub ptt_key: String,
+    #[serde(default = "default_ptt_mouse_button")]
+    pub ptt_mouse_button: String,
+    #[serde(default = "default_ptt_suppress")]
+    pub ptt_suppress: bool,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -184,6 +192,10 @@ impl Default for InputConfig {
             hotkey_language: default_hotkey_language(),
             hotkey_english: default_hotkey_english(),
             hotkey_japanese: default_hotkey_japanese(),
+            ptt_enabled: default_ptt_enabled(),
+            ptt_key: default_ptt_key(),
+            ptt_mouse_button: default_ptt_mouse_button(),
+            ptt_suppress: default_ptt_suppress(),
         }
     }
 }
@@ -328,6 +340,8 @@ fn normalize_config(config: &mut AppConfig) {
     config.input.hotkey_record = normalize_hotkey(&config.input.hotkey_record);
     config.input.hotkey_english = normalize_hotkey(&config.input.hotkey_english);
     config.input.hotkey_japanese = normalize_hotkey(&config.input.hotkey_japanese);
+    config.input.ptt_key = normalize_ptt_key(&config.input.ptt_key);
+    config.input.ptt_mouse_button = normalize_ptt_mouse_button(&config.input.ptt_mouse_button);
     normalize_model_paths(config);
 }
 
@@ -337,6 +351,27 @@ fn normalize_hotkey(value: &str) -> String {
         "Alt+KeyE" => "Alt+E".into(),
         "Alt+KeyJ" => "Alt+J".into(),
         other => other.to_string(),
+    }
+}
+
+fn normalize_ptt_key(value: &str) -> String {
+    match value.trim().to_ascii_lowercase().as_str() {
+        "off" | "none" | "disabled" | "关闭" => "off".into(),
+        "capslock" | "caps_lock" | "capital" | "caps" | "大小写" => default_ptt_key(),
+        "f8" => "F8".into(),
+        "f9" => "F9".into(),
+        "f10" => "F10".into(),
+        "f13" => "F13".into(),
+        _ => default_ptt_key(),
+    }
+}
+
+fn normalize_ptt_mouse_button(value: &str) -> String {
+    match value.trim().to_ascii_lowercase().as_str() {
+        "off" | "none" | "disabled" | "关闭" => "off".into(),
+        "x1" | "xbutton1" | "mouse4" | "back" => "X1".into(),
+        "x2" | "xbutton2" | "mouse5" | "forward" => "X2".into(),
+        _ => default_ptt_mouse_button(),
     }
 }
 
@@ -462,6 +497,18 @@ fn default_hotkey_english() -> String {
 fn default_hotkey_japanese() -> String {
     "Alt+J".into()
 }
+fn default_ptt_enabled() -> bool {
+    true
+}
+fn default_ptt_key() -> String {
+    "CapsLock".into()
+}
+fn default_ptt_mouse_button() -> String {
+    "X2".into()
+}
+fn default_ptt_suppress() -> bool {
+    true
+}
 fn default_true() -> bool {
     true
 }
@@ -549,6 +596,27 @@ mod tests {
         cfg.asr.worker_mode = "isolated".into();
         normalize_config(&mut cfg);
         assert_eq!(cfg.asr.worker_mode, "isolated");
+    }
+
+    #[test]
+    fn normalizes_push_to_talk_options() {
+        let mut cfg = AppConfig::default();
+        assert!(cfg.input.ptt_enabled);
+        assert_eq!(cfg.input.ptt_key, "CapsLock");
+        assert_eq!(cfg.input.ptt_mouse_button, "X2");
+        assert!(cfg.input.ptt_suppress);
+
+        cfg.input.ptt_key = "caps".into();
+        cfg.input.ptt_mouse_button = "mouse4".into();
+        normalize_config(&mut cfg);
+        assert_eq!(cfg.input.ptt_key, "CapsLock");
+        assert_eq!(cfg.input.ptt_mouse_button, "X1");
+
+        cfg.input.ptt_key = "unknown".into();
+        cfg.input.ptt_mouse_button = "unknown".into();
+        normalize_config(&mut cfg);
+        assert_eq!(cfg.input.ptt_key, "CapsLock");
+        assert_eq!(cfg.input.ptt_mouse_button, "X2");
     }
 
     #[test]

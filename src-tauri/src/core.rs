@@ -99,7 +99,7 @@ impl AppState {
 
     pub fn start_recording(&self, app: &AppHandle) -> Result<UiSnapshot> {
         if self.recorder.is_recording() {
-            return self.stop_recording(app);
+            return Ok(self.snapshot());
         }
         let session_id = self.session_counter.fetch_add(1, Ordering::Relaxed);
         let target = InputTarget::capture();
