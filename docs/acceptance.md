@@ -112,6 +112,14 @@
 4. The zip contains `app/models/...`, `app/models/MODELS.json`, and `MODEL_PACK.txt`.
 5. Missing required files fail the script before a model pack is produced.
 
+## UI Smoke
+
+1. Run `npm run ui:smoke`.
+2. The command starts a local Vite QA page with mocked Tauri data.
+3. Main compose, Settings / Models, Settings / Shortcuts, History, and Overlay render at multiple viewport/device-scale combinations.
+4. The command fails on outer page scroll, shell viewport overflow, or overflowing button/control text.
+5. Screenshots are written under `work/ui-smoke/`.
+
 ## Current 2.0.1 Test Boundary
 
 - Automated regression covers Rust unit tests, Rust compile, clippy, frontend build, release build, and portable packaging.
@@ -134,3 +142,4 @@
 - `--benchmark-asr` now provides a repeatable timing CSV harness; real quality scoring still depends on recorded sample audio.
 - Confirm paste now restores previous text clipboard where feasible and logs restore status; manual image/file clipboard preservation is still future work.
 - Clipboard failure can now fall back to direct Unicode typing for short single-line text; broad app coverage still needs manual acceptance.
+- `npm run ui:smoke` now covers main/settings/history/overlay layout with QA mock data; true OS DPI and WebView screenshots still need manual release checks.

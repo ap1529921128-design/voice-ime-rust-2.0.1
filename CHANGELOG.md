@@ -31,6 +31,7 @@
 - Added a model-pack packaging script that creates standalone `voice-ime-model-pack-*.zip` archives from the manifest and an existing models directory.
 - Confirm paste now checks `SendInput` delivery, restores the previous text clipboard where feasible, and logs clipboard restoration fields in input-target logs.
 - Added a conservative direct Unicode typing fallback for short single-line text when clipboard paste fails.
+- Added a Playwright-based `npm run ui:smoke` QA harness with Tauri mock data, viewport/DPI checks, and screenshots for the main window, settings, history, and overlay.
 
 ## 2.0.1 - 2026-05-31
 

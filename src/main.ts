@@ -1,8 +1,5 @@
-import { invoke } from "@tauri-apps/api/core";
-import { listen } from "@tauri-apps/api/event";
-import { getCurrentWindow } from "@tauri-apps/api/window";
-import { open } from "@tauri-apps/plugin-dialog";
 import { createElement, icons } from "lucide";
+import { currentWindowLabel, invoke, listen, openDialog } from "./tauri-adapter";
 import "./styles.css";
 
 type SessionState =
@@ -162,8 +159,7 @@ type HotkeyCheck = {
 type ModelProfile = "fast" | "balanced" | "fallback";
 
 const app = document.querySelector<HTMLDivElement>("#app")!;
-const currentWindow = getCurrentWindow();
-const isOverlay = currentWindow.label === "overlay";
+const isOverlay = currentWindowLabel() === "overlay";
 let snapshot: Snapshot | null = null;
 let statusRows: AsrModelStatus[] = [];
 let audioDevices: AudioDeviceInfo[] = [];
@@ -980,7 +976,7 @@ async function refreshHotkeyStatus() {
 
 async function pickModelFile(configPath: string) {
   if (!configPath || !snapshot) return;
-  const selected = await open({
+  const selected = await openDialog({
     multiple: false,
     directory: false,
     title: "选择模型文件",
@@ -993,7 +989,7 @@ async function pickModelFile(configPath: string) {
 
 async function pickModelDirectory(profile: string) {
   if (!isModelProfile(profile) || !snapshot) return;
-  const selected = await open({
+  const selected = await openDialog({
     multiple: false,
     directory: true,
     title: "选择模型目录",

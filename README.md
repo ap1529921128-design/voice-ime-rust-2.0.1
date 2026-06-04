@@ -196,6 +196,14 @@ npm run build
 npm run tauri build
 ```
 
+UI 烟测：
+
+```powershell
+npm run ui:smoke
+```
+
+该命令会用 QA mock 数据打开主窗口、设置页、历史页和光标浮窗，检查外层滚动、按钮文字溢出和窗口越界，并把截图写到 `work/ui-smoke/`。
+
 打便携包：
 
 ```powershell
