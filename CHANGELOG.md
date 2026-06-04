@@ -16,6 +16,7 @@
 - Added a translation engine abstraction with `llm` and `external` backends, plus Settings and Doctor support, so dedicated local MT tools can be used without routing through MiniCPM prompts.
 - Added raw ASR, deterministic correction stages, LLM final text, and stage timing fields to transcript history so accuracy and latency can be diagnosed from one record.
 - Split Settings into voice, models, smart input, shortcuts, and data groups, with editable ASR model paths and hotkey fields.
+- Added a one-click support bundle export that zips config, history, dictionaries, logs, doctor output, and model manifests while excluding recordings and model binaries.
 
 ## 2.0.1 - 2026-05-31
 

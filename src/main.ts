@@ -472,6 +472,7 @@ function dataSettingsPanel(cfg: AppConfig) {
       <div class="settings-tools">
         <button class="tool-btn" data-action="open-logs-dir">${icon("FileText", "打开日志")}<span>日志</span></button>
         <button class="tool-btn" data-action="run-doctor">${icon("Stethoscope", "运行诊断")}<span>诊断</span></button>
+        <button class="tool-btn" data-action="export-diagnostics">${icon("Archive", "导出诊断")}<span>导出</span></button>
         <button class="tool-btn" data-action="open-hotwords">${icon("BookOpen", "打开热词")}<span>热词</span></button>
         <button class="tool-btn" data-action="open-hot-rules">${icon("ListChecks", "打开规则")}<span>规则</span></button>
         <button class="tool-btn danger" data-action="clear-history">${icon("Eraser", "清空历史")}<span>清空历史</span></button>
@@ -559,6 +560,7 @@ function wireCommon() {
       if (action === "open-model-dir") await invoke("open_models_dir");
       if (action === "open-logs-dir") await invoke("open_logs_dir");
       if (action === "run-doctor") await run("run_doctor");
+      if (action === "export-diagnostics") await run("export_diagnostics");
       if (action === "open-hotwords") await invoke("open_hotwords_file");
       if (action === "open-hot-rules") await invoke("open_hot_rules_file");
     });

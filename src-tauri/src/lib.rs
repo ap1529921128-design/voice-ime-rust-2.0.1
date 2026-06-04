@@ -7,6 +7,7 @@ mod history;
 mod itn;
 mod llm;
 mod ptt;
+mod support_bundle;
 mod text;
 mod translation;
 mod tray;
@@ -163,6 +164,23 @@ fn run_doctor(app: AppHandle, state: State<'_, AppState>) -> Result<UiSnapshot, 
 }
 
 #[tauri::command]
+fn export_diagnostics(app: AppHandle, state: State<'_, AppState>) -> Result<UiSnapshot, String> {
+    let snapshot = state.snapshot();
+    let _ = doctor::run(&state.paths, &snapshot.config).map_err(to_string)?;
+    let output_path = support_bundle::export(&state.paths, &snapshot.config).map_err(to_string)?;
+    if let Some(parent) = output_path.parent() {
+        let _ = app
+            .opener()
+            .open_path(parent.to_string_lossy().to_string(), None::<&str>);
+    }
+    Ok(state.set_runtime_notice(
+        &app,
+        "导出完成",
+        format!("诊断包：{}", output_path.to_string_lossy()),
+    ))
+}
+
+#[tauri::command]
 fn open_hotwords_file(app: AppHandle, state: State<'_, AppState>) -> Result<(), String> {
     ensure_text_file(&state.paths.hotwords_path, "# hot.txt\n").map_err(to_string)?;
     app.opener()
@@ -236,6 +254,7 @@ pub fn run() {
             open_models_dir,
             open_logs_dir,
             run_doctor,
+            export_diagnostics,
             open_hotwords_file,
             open_hot_rules_file,
             hide_overlay,
