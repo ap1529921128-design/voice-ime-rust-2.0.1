@@ -117,6 +117,11 @@ try {
     $notepad = Start-Process -FilePath "notepad.exe" -ArgumentList (Quote-ProcessArgument $tempFile) -PassThru
     $notepad = Wait-MainWindow -Process $notepad -TitleFragment (Split-Path $tempFile -Leaf) -BaselineIds $baselineNotepadIds
     Focus-Window -Process $notepad
+    $shell = New-Object -ComObject WScript.Shell
+    $shell.SendKeys("^a")
+    Start-Sleep -Milliseconds 150
+    $shell.SendKeys("{DEL}")
+    Start-Sleep -Milliseconds 150
 
     $argumentList = @(
         (Quote-ProcessArgument "--paste-foreground"),
@@ -132,7 +137,6 @@ try {
         -WindowStyle Hidden
 
     Focus-Window -Process $notepad
-    $shell = New-Object -ComObject WScript.Shell
     $shell.SendKeys("^a")
     Start-Sleep -Milliseconds 150
     $shell.SendKeys("^c")
