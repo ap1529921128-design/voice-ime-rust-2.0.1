@@ -56,6 +56,15 @@ type AppConfig = {
     ptt_key: string;
     ptt_mouse_button: string;
     ptt_suppress: boolean;
+    app_profiles: {
+      name: string;
+      process_name: string;
+      class_name: string;
+      title_contains: string;
+      output_mode: string;
+      paste_delay_ms: number | null;
+      punctuation: string;
+    }[];
   };
   smart: {
     enabled: boolean;

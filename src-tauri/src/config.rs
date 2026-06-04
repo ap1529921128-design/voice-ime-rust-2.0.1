@@ -90,6 +90,26 @@ pub struct InputConfig {
     pub ptt_mouse_button: String,
     #[serde(default = "default_ptt_suppress")]
     pub ptt_suppress: bool,
+    #[serde(default = "default_app_profiles")]
+    pub app_profiles: Vec<AppInputProfile>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct AppInputProfile {
+    #[serde(default)]
+    pub name: String,
+    #[serde(default)]
+    pub process_name: String,
+    #[serde(default)]
+    pub class_name: String,
+    #[serde(default)]
+    pub title_contains: String,
+    #[serde(default = "default_profile_output_mode")]
+    pub output_mode: String,
+    #[serde(default)]
+    pub paste_delay_ms: Option<u64>,
+    #[serde(default = "default_profile_punctuation")]
+    pub punctuation: String,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -197,6 +217,7 @@ impl Default for InputConfig {
             ptt_key: default_ptt_key(),
             ptt_mouse_button: default_ptt_mouse_button(),
             ptt_suppress: default_ptt_suppress(),
+            app_profiles: default_app_profiles(),
         }
     }
 }
@@ -345,6 +366,10 @@ fn normalize_config(config: &mut AppConfig) {
     config.input.hotkey_japanese = normalize_hotkey(&config.input.hotkey_japanese);
     config.input.ptt_key = normalize_ptt_key(&config.input.ptt_key);
     config.input.ptt_mouse_button = normalize_ptt_mouse_button(&config.input.ptt_mouse_button);
+    if config.input.app_profiles.is_empty() {
+        config.input.app_profiles = default_app_profiles();
+    }
+    normalize_app_profiles(&mut config.input.app_profiles);
     normalize_model_paths(config);
 }
 
@@ -375,6 +400,54 @@ fn normalize_ptt_mouse_button(value: &str) -> String {
         "x1" | "xbutton1" | "mouse4" | "back" => "X1".into(),
         "x2" | "xbutton2" | "mouse5" | "forward" => "X2".into(),
         _ => default_ptt_mouse_button(),
+    }
+}
+
+fn normalize_app_profiles(profiles: &mut [AppInputProfile]) {
+    for profile in profiles {
+        profile.output_mode = match profile.output_mode.trim().to_ascii_lowercase().as_str() {
+            "paste" | "clipboard-paste" => "paste".into(),
+            _ => default_profile_output_mode(),
+        };
+        profile.punctuation = match profile.punctuation.trim().to_ascii_lowercase().as_str() {
+            "default" | "short-no-period" | "keep" => profile.punctuation.to_ascii_lowercase(),
+            _ => default_profile_punctuation(),
+        };
+        if let Some(delay) = profile.paste_delay_ms.as_mut() {
+            *delay = (*delay).min(500);
+        }
+    }
+}
+
+pub fn matching_app_profile<'a>(
+    profiles: &'a [AppInputProfile],
+    process_name: &str,
+    class_name: &str,
+    title: &str,
+) -> Option<&'a AppInputProfile> {
+    let process_name = process_name.to_ascii_lowercase();
+    let class_name = class_name.to_ascii_lowercase();
+    let title = title.to_ascii_lowercase();
+    profiles.iter().find(|profile| {
+        field_matches(&profile.process_name, &process_name, MatchMode::Equals)
+            && field_matches(&profile.class_name, &class_name, MatchMode::Equals)
+            && field_matches(&profile.title_contains, &title, MatchMode::Contains)
+    })
+}
+
+enum MatchMode {
+    Equals,
+    Contains,
+}
+
+fn field_matches(pattern: &str, value: &str, mode: MatchMode) -> bool {
+    let pattern = pattern.trim().to_ascii_lowercase();
+    if pattern.is_empty() || pattern == "*" {
+        return true;
+    }
+    match mode {
+        MatchMode::Equals => pattern == value,
+        MatchMode::Contains => value.contains(&pattern),
     }
 }
 
@@ -512,6 +585,40 @@ fn default_ptt_mouse_button() -> String {
 fn default_ptt_suppress() -> bool {
     true
 }
+fn default_app_profiles() -> Vec<AppInputProfile> {
+    vec![
+        app_profile("微信", "WeChat.exe", 80, "short-no-period"),
+        app_profile("飞书", "Feishu.exe", 80, "short-no-period"),
+        app_profile("Lark", "Lark.exe", 80, "short-no-period"),
+        app_profile("Word", "WINWORD.EXE", 120, "keep"),
+        app_profile("Chrome", "chrome.exe", 20, "default"),
+        app_profile("Edge", "msedge.exe", 20, "default"),
+        app_profile("VS Code", "Code.exe", 30, "default"),
+        app_profile("JetBrains", "idea64.exe", 50, "default"),
+    ]
+}
+fn app_profile(
+    name: &str,
+    process_name: &str,
+    paste_delay_ms: u64,
+    punctuation: &str,
+) -> AppInputProfile {
+    AppInputProfile {
+        name: name.into(),
+        process_name: process_name.into(),
+        class_name: String::new(),
+        title_contains: String::new(),
+        output_mode: default_profile_output_mode(),
+        paste_delay_ms: Some(paste_delay_ms),
+        punctuation: punctuation.into(),
+    }
+}
+fn default_profile_output_mode() -> String {
+    "paste".into()
+}
+fn default_profile_punctuation() -> String {
+    "default".into()
+}
 fn default_true() -> bool {
     true
 }
@@ -620,6 +727,41 @@ mod tests {
         normalize_config(&mut cfg);
         assert_eq!(cfg.input.ptt_key, "CapsLock");
         assert_eq!(cfg.input.ptt_mouse_button, "X2");
+    }
+
+    #[test]
+    fn matches_app_profiles_case_insensitively() {
+        let mut cfg = AppConfig::default();
+        normalize_config(&mut cfg);
+        let profile = matching_app_profile(
+            &cfg.input.app_profiles,
+            "wechat.exe",
+            "Chrome_WidgetWin_1",
+            "聊天",
+        )
+        .unwrap();
+        assert_eq!(profile.name, "微信");
+        assert_eq!(profile.paste_delay_ms, Some(80));
+    }
+
+    #[test]
+    fn normalizes_app_profile_defaults() {
+        let mut cfg = AppConfig::default();
+        cfg.input.app_profiles = vec![AppInputProfile {
+            name: "custom".into(),
+            process_name: "*".into(),
+            class_name: String::new(),
+            title_contains: "note".into(),
+            output_mode: "type".into(),
+            paste_delay_ms: Some(900),
+            punctuation: "bad".into(),
+        }];
+        normalize_config(&mut cfg);
+        let profile = &cfg.input.app_profiles[0];
+        assert_eq!(profile.output_mode, "paste");
+        assert_eq!(profile.paste_delay_ms, Some(500));
+        assert_eq!(profile.punctuation, "default");
+        assert!(matching_app_profile(&cfg.input.app_profiles, "x.exe", "", "OneNote").is_some());
     }
 
     #[test]

@@ -103,6 +103,10 @@ app/tools/Start-MiniCPM-Translate.ps1
 
 每次点击“确认输入”后，会在 `app/.voice_ime/logs/input-target-YYYYMMDD.log` 追加一行目标窗口日志，包含进程名、窗口类名、标题、光标来源、粘贴结果和粘贴延迟。设置页的“日志”按钮可以直接打开日志目录。
 
+## 按应用输入画像
+
+内置了微信、飞书/Lark、Word、Chrome/Edge、VS Code 和 JetBrains 的输入 profile。当前版本只自动应用更稳妥的粘贴延迟，并把命中的 profile 写入输入目标日志；不会自动发送 Enter。
+
 ## 本地诊断
 
 设置页的“诊断”按钮会生成 `app/.voice_ime/logs/doctor-YYYYMMDD-HHMMSS.txt`，检查应用目录、日志写入、麦克风、剪贴板、ASR 模型、本地 LLM 端点和用户词表文件。也可以运行：

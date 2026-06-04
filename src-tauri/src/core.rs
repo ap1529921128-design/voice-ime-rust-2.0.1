@@ -212,7 +212,7 @@ impl AppState {
     }
 
     pub fn confirm_input(&self, app: &AppHandle) -> Result<UiSnapshot> {
-        let (target, text, delay) = {
+        let (target, text, input_config) = {
             let inner = self.inner.lock();
             if inner.text.trim().is_empty() {
                 return Err(anyhow!("没有可输入的文本"));
@@ -220,15 +220,28 @@ impl AppState {
             (
                 inner.target.clone(),
                 inner.text.clone(),
-                inner.config.input.paste_delay_ms,
+                inner.config.input.clone(),
             )
         };
         let target = target.unwrap_or_else(InputTarget::capture);
         let target_info = target.info().clone();
+        let profile = config::matching_app_profile(
+            &input_config.app_profiles,
+            &target_info.process_name,
+            &target_info.class_name,
+            &target_info.title,
+        );
+        let profile_name = profile
+            .map(|profile| profile.name.clone())
+            .filter(|name| !name.trim().is_empty());
+        let delay = profile
+            .and_then(|profile| profile.paste_delay_ms)
+            .unwrap_or(input_config.paste_delay_ms);
         let paste_result = target.paste_text(&text, delay);
         let error = paste_result.as_ref().err().map(ToString::to_string);
         let _ = self.write_input_target_log(
             &target_info,
+            profile_name.as_deref(),
             text.chars().count(),
             delay,
             if paste_result.is_ok() { "ok" } else { "error" },
@@ -239,7 +252,9 @@ impl AppState {
         {
             let mut inner = self.inner.lock();
             inner.status = "已粘贴到当前焦点位置".into();
-            inner.meta = "没有自动发送".into();
+            inner.meta = profile_name
+                .map(|name| format!("没有自动发送 / {name}"))
+                .unwrap_or_else(|| "没有自动发送".into());
         }
         emit_snapshot(app, self);
         Ok(self.snapshot())
@@ -327,6 +342,7 @@ impl AppState {
     fn write_input_target_log(
         &self,
         target: &InputTargetInfo,
+        input_profile: Option<&str>,
         text_chars: usize,
         paste_delay_ms: u64,
         result: &str,
@@ -340,6 +356,7 @@ impl AppState {
         let entry = InputTargetLogEntry {
             created_at: chrono::Local::now().format("%Y-%m-%d %H:%M:%S").to_string(),
             action: "confirm_input",
+            input_profile,
             text_chars,
             paste_delay_ms,
             result,
@@ -697,6 +714,7 @@ struct FinishedTranscript {
 struct InputTargetLogEntry<'a> {
     created_at: String,
     action: &'static str,
+    input_profile: Option<&'a str>,
     text_chars: usize,
     paste_delay_ms: u64,
     result: &'a str,
