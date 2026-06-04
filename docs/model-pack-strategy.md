@@ -79,4 +79,4 @@ powershell -NoProfile -ExecutionPolicy Bypass -File .\packaging\package-model-pa
   -OutputRoot D:\voice-ime-build-release
 ```
 
-生成的 zip 根目录包含 `app/models/...` 和 `MODEL_PACK.txt`。把它解压到 portable 根目录即可合并模型，也可以在 Settings / Models 里点击 `导入包` 选择该 zip。GUI 导入只会写入 `app/models` 对应目录，并拒绝绝对路径、盘符路径和 `..` 路径。
+生成的 zip 根目录包含 `app/models/...`、`MODEL_PACK.txt` 和 `MODEL_PACK.json`。`MODEL_PACK.json` 记录包内文件的大小与 SHA-256；Settings / Models 里的 `导入包` 会先校验这些条目，再写入 `app/models` 对应目录，并拒绝绝对路径、盘符路径和 `..` 路径。旧的无 metadata 模型包仍可导入，但不会显示校验数量。

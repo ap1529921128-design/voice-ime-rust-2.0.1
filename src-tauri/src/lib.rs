@@ -191,8 +191,12 @@ fn install_model_pack(
         &app,
         "模型包已导入",
         format!(
-            "{} 个文件，覆盖 {} 个，忽略 {} 个；{}",
-            report.files_written, report.files_replaced, report.files_ignored, report.output_dir
+            "{} 个文件，覆盖 {} 个，忽略 {} 个，校验 {} 个；{}",
+            report.files_written,
+            report.files_replaced,
+            report.files_ignored,
+            report.checksum_verified,
+            report.output_dir
         ),
     ))
 }

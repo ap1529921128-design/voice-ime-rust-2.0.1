@@ -120,16 +120,17 @@
 1. Prepare a models directory containing the required files for one profile from `packaging/model-manifest.json`.
 2. Run `packaging/package-model-pack.ps1 -Profile <profile> -SourceModelsDir <models-dir> -OutputRoot <out-dir>`.
 3. A `voice-ime-model-pack-<id>.zip` file is created.
-4. The zip contains `app/models/...`, `app/models/MODELS.json`, and `MODEL_PACK.txt`.
+4. The zip contains `app/models/...`, `app/models/MODELS.json`, `MODEL_PACK.txt`, and `MODEL_PACK.json`.
 5. Missing required files fail the script before a model pack is produced.
 
 ## Model Pack Import
 
 1. Open Settings / Models and click `导入包`.
 2. Select a `voice-ime-model-pack-*.zip`.
-3. Only zip entries under `app/models/`, `models/`, or root `MODEL_PACK.txt` are extracted.
-4. Entries with absolute paths, drive prefixes, or `..` are rejected and cannot write outside `app/models`.
-5. Model status refreshes after import, and the status line reports written, replaced, and ignored files.
+3. If root `MODEL_PACK.json` is present, every listed file is checked for size and SHA-256 before extraction.
+4. Only zip entries under `app/models/`, `models/`, or root `MODEL_PACK.txt` / `MODEL_PACK.json` are extracted.
+5. Entries with absolute paths, drive prefixes, or `..` are rejected and cannot write outside `app/models`.
+6. Model status refreshes after import, and the status line reports written, replaced, ignored, and verified files.
 
 ## UI Smoke
 

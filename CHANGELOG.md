@@ -44,6 +44,7 @@
 - Added a Settings / Models model-pack importer that safely extracts `app/models` or `models` entries from `voice-ime-model-pack-*.zip` into the current portable body.
 - Added CER, edit-distance, expected-character-count, and accuracy columns to the CLI ASR benchmark CSV.
 - Added compact hotkey capture buttons in Settings / Shortcuts so recording, language, and translation shortcuts can be entered by pressing the desired key combination.
+- Added `MODEL_PACK.json` metadata with SHA-256 and size entries to generated model packs, and validate those checksums before importing model packs in the GUI.
 
 ## 2.0.1 - 2026-05-31
 

@@ -75,6 +75,32 @@ try {
     )
     Set-Content -LiteralPath (Join-Path $staging "MODEL_PACK.txt") -Value ($summary -join [Environment]::NewLine) -Encoding UTF8
 
+    $metadataFiles = @()
+    foreach ($file in Get-ChildItem -LiteralPath $staging -Recurse -File | Sort-Object FullName) {
+        if ($file.Name -eq "MODEL_PACK.json") {
+            continue
+        }
+        $relative = $file.FullName.Substring($staging.Length).TrimStart([System.IO.Path]::DirectorySeparatorChar, [System.IO.Path]::AltDirectorySeparatorChar)
+        $relative = $relative -replace '\\', '/'
+        $metadataFiles += [ordered]@{
+            path   = $relative
+            bytes  = $file.Length
+            sha256 = (Get-FileHash -LiteralPath $file.FullName -Algorithm SHA256).Hash.ToLowerInvariant()
+        }
+    }
+    $metadata = [ordered]@{
+        schema_version    = 1
+        app_version       = [string]$manifest.app_version
+        id                = [string]$pack.id
+        profile           = [string]$pack.profile
+        kind              = [string]$pack.kind
+        target_dir        = [string]$pack.target_dir
+        source_models_dir = $SourceModelsDir
+        created_at        = (Get-Date).ToString("o")
+        files             = $metadataFiles
+    }
+    $metadata | ConvertTo-Json -Depth 8 | Set-Content -LiteralPath (Join-Path $staging "MODEL_PACK.json") -Encoding UTF8
+
     if (-not (Test-Path -LiteralPath $OutputRoot -PathType Container)) {
         New-Item -ItemType Directory -Path $OutputRoot -Force | Out-Null
     }

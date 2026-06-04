@@ -79,7 +79,7 @@ app/models/
     tiny-tokens.txt
 ```
 
-设置页提供“下载”“选择”“导入包”“镜像”“官网”“模型目录”按钮。模型放在移动硬盘或外部目录时，点对应 profile 的“选择”可以选择该模型目录并自动填入默认文件名；已有 `voice-ime-model-pack-*.zip` 时，点“导入包”会把包内 `app/models` 或 `models` 内容合并到当前主体的 `app/models`。每个模型路径右侧也有文件按钮，可单独选择 `onnx` 或 `tokens.txt`。下载会优先尝试 `hf-mirror.com`，失败后再尝试 `huggingface.co`。
+设置页提供“下载”“选择”“导入包”“镜像”“官网”“模型目录”按钮。模型放在移动硬盘或外部目录时，点对应 profile 的“选择”可以选择该模型目录并自动填入默认文件名；已有 `voice-ime-model-pack-*.zip` 时，点“导入包”会把包内 `app/models` 或 `models` 内容合并到当前主体的 `app/models`，新格式模型包会先校验 SHA-256 和文件大小。每个模型路径右侧也有文件按钮，可单独选择 `onnx` 或 `tokens.txt`。下载会优先尝试 `hf-mirror.com`，失败后再尝试 `huggingface.co`。
 
 ## 智能纠错和翻译
 
