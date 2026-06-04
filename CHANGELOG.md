@@ -40,6 +40,7 @@
 - Added captured cursor rectangle data to input-target logs for overlay placement diagnostics.
 - Hardened packaged input acceptance scripts so they fail if the captured foreground target process is not the expected Notepad or Edge/Chrome process.
 - Browser input acceptance now launches its temporary Edge/Chrome profile with renderer accessibility forced so Chromium UIA fallback paths can be verified.
+- Added a conservative Settings / Data repair action that creates missing runtime directories and default prompt/correction/hotword/rule files without overwriting existing user data.
 
 ## 2.0.1 - 2026-05-31
 

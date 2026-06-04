@@ -1,6 +1,6 @@
 use crate::{
     asr, audio,
-    config::{AppConfig, Paths},
+    config::{AppConfig, Paths, DEFAULT_HOTWORDS, DEFAULT_HOT_RULES, DEFAULT_PERSONAL_PROMPT},
     translation,
 };
 use anyhow::Result;
@@ -24,6 +24,28 @@ pub struct DoctorCheck {
     pub name: String,
     pub status: DoctorStatus,
     pub detail: String,
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub struct RepairReport {
+    pub summary: String,
+    pub actions: Vec<RepairAction>,
+    pub doctor: DoctorReport,
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub struct RepairAction {
+    pub name: String,
+    pub status: RepairStatus,
+    pub detail: String,
+}
+
+#[derive(Debug, Clone, Copy, Serialize, PartialEq, Eq)]
+#[serde(rename_all = "lowercase")]
+pub enum RepairStatus {
+    Repaired,
+    Skipped,
+    Failed,
 }
 
 #[derive(Debug, Clone, Copy, Serialize, PartialEq, Eq)]
@@ -54,6 +76,34 @@ pub fn run(paths: &Paths, config: &AppConfig) -> Result<DoctorReport> {
     })
 }
 
+pub fn repair(paths: &Paths, config: &AppConfig) -> Result<RepairReport> {
+    let mut actions = Vec::new();
+    repair_directory(&mut actions, "应用数据目录", &paths.app_dir);
+    repair_directory(&mut actions, "日志目录", &paths.logs_dir);
+    repair_directory(&mut actions, "长录音目录", &paths.recordings_dir);
+    repair_text_file(&mut actions, "个人提示词", &paths.prompt_path, || {
+        Ok(DEFAULT_PERSONAL_PROMPT.to_string())
+    });
+    repair_text_file(&mut actions, "纠错表", &paths.corrections_path, || {
+        Ok(serde_json::to_string_pretty(
+            &crate::text::default_corrections(),
+        )?)
+    });
+    repair_text_file(&mut actions, "热词", &paths.hotwords_path, || {
+        Ok(DEFAULT_HOTWORDS.to_string())
+    });
+    repair_text_file(&mut actions, "规则", &paths.hot_rules_path, || {
+        Ok(DEFAULT_HOT_RULES.to_string())
+    });
+
+    let doctor = run(paths, config)?;
+    Ok(RepairReport {
+        summary: summarize_repair(&actions),
+        actions,
+        doctor,
+    })
+}
+
 pub fn run_cli() -> Result<()> {
     let paths = Paths::discover()?;
     let config = crate::config::load_or_create(&paths)?;
@@ -61,6 +111,83 @@ pub fn run_cli() -> Result<()> {
     println!("{}", report.summary);
     println!("{}", report.output_path);
     Ok(())
+}
+
+fn repair_directory(actions: &mut Vec<RepairAction>, name: &str, path: &std::path::Path) {
+    let existed = path.exists();
+    match fs::create_dir_all(path) {
+        Ok(()) => push_repair(
+            actions,
+            name,
+            if existed {
+                RepairStatus::Skipped
+            } else {
+                RepairStatus::Repaired
+            },
+            if existed {
+                format!("已存在，未改动：{}", path.to_string_lossy())
+            } else {
+                format!("已创建：{}", path.to_string_lossy())
+            },
+        ),
+        Err(err) => push_repair(
+            actions,
+            name,
+            RepairStatus::Failed,
+            format!("创建失败：{}；{}", path.to_string_lossy(), err),
+        ),
+    }
+}
+
+fn repair_text_file<F>(
+    actions: &mut Vec<RepairAction>,
+    name: &str,
+    path: &std::path::Path,
+    content: F,
+) where
+    F: FnOnce() -> Result<String>,
+{
+    if path.exists() {
+        push_repair(
+            actions,
+            name,
+            RepairStatus::Skipped,
+            format!("已存在，未覆盖：{}", path.to_string_lossy()),
+        );
+        return;
+    }
+    if let Some(parent) = path.parent() {
+        if let Err(err) = fs::create_dir_all(parent) {
+            push_repair(
+                actions,
+                name,
+                RepairStatus::Failed,
+                format!("目录创建失败：{}；{}", parent.to_string_lossy(), err),
+            );
+            return;
+        }
+    }
+    let content = match content() {
+        Ok(content) => content,
+        Err(err) => {
+            push_repair(actions, name, RepairStatus::Failed, err.to_string());
+            return;
+        }
+    };
+    match fs::write(path, content) {
+        Ok(()) => push_repair(
+            actions,
+            name,
+            RepairStatus::Repaired,
+            format!("已创建：{}", path.to_string_lossy()),
+        ),
+        Err(err) => push_repair(
+            actions,
+            name,
+            RepairStatus::Failed,
+            format!("写入失败：{}；{}", path.to_string_lossy(), err),
+        ),
+    }
 }
 
 fn check_app_paths(paths: &Paths, checks: &mut Vec<DoctorCheck>) {
@@ -304,6 +431,42 @@ fn push_check(
     });
 }
 
+fn push_repair(
+    actions: &mut Vec<RepairAction>,
+    name: impl Into<String>,
+    status: RepairStatus,
+    detail: impl Into<String>,
+) {
+    actions.push(RepairAction {
+        name: name.into(),
+        status,
+        detail: detail.into(),
+    });
+}
+
+fn summarize_repair(actions: &[RepairAction]) -> String {
+    let repaired = actions
+        .iter()
+        .filter(|action| action.status == RepairStatus::Repaired)
+        .count();
+    let skipped = actions
+        .iter()
+        .filter(|action| action.status == RepairStatus::Skipped)
+        .count();
+    let failed = actions
+        .iter()
+        .filter(|action| action.status == RepairStatus::Failed)
+        .count();
+    if failed == 0 {
+        format!("修复完成：{} 项补齐，{} 项已存在", repaired, skipped)
+    } else {
+        format!(
+            "修复完成：{} 项补齐，{} 项已存在，{} 项失败",
+            repaired, skipped, failed
+        )
+    }
+}
+
 fn status_label(status: DoctorStatus) -> &'static str {
     match status {
         DoctorStatus::Pass => "PASS",
@@ -358,5 +521,43 @@ mod tests {
             models_endpoint("http://127.0.0.1:18080/v1/chat/completions"),
             "http://127.0.0.1:18080/v1/models"
         );
+    }
+
+    #[test]
+    fn repair_creates_missing_text_files_without_overwriting_existing_files() {
+        let temp = tempfile::tempdir().unwrap();
+        let app_dir = temp.path().join(".voice_ime");
+        fs::create_dir_all(&app_dir).unwrap();
+        let hotwords_path = app_dir.join("hot.txt");
+        fs::write(&hotwords_path, "custom hotwords").unwrap();
+        let paths = Paths {
+            root_dir: temp.path().to_path_buf(),
+            app_dir: app_dir.clone(),
+            config_path: app_dir.join("config.json"),
+            history_path: app_dir.join("history.json"),
+            prompt_path: app_dir.join("personal_prompt.txt"),
+            corrections_path: app_dir.join("corrections.json"),
+            hotwords_path: hotwords_path.clone(),
+            hot_rules_path: app_dir.join("hot-rule.txt"),
+            recordings_dir: app_dir.join("recordings"),
+            logs_dir: app_dir.join("logs"),
+        };
+
+        let report = repair(&paths, &AppConfig::default()).unwrap();
+
+        assert!(paths.prompt_path.exists());
+        assert!(paths.corrections_path.exists());
+        assert!(paths.hot_rules_path.exists());
+        assert_eq!(
+            fs::read_to_string(hotwords_path).unwrap(),
+            "custom hotwords"
+        );
+        assert!(report
+            .actions
+            .iter()
+            .any(|action| { action.name == "热词" && action.status == RepairStatus::Skipped }));
+        assert!(report.actions.iter().any(|action| {
+            action.name == "个人提示词" && action.status == RepairStatus::Repaired
+        }));
     }
 }

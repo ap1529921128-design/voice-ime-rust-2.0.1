@@ -40,6 +40,7 @@ function qaInvoke(command: string, args?: Record<string, unknown>) {
   if (command === "audio_level") return qaAudioLevel();
   if (command === "hotkey_status") return qaHotkeys();
   if (command === "doctor_report") return qaDoctorReport();
+  if (command === "repair_doctor") return qaRepairReport();
   if (command === "set_text") {
     const text = String(args?.text || "");
     qaSnapshot = { ...qaSnapshot, text, word_count: Array.from(text).length };
@@ -211,6 +212,18 @@ function qaDoctorReport() {
       { name: "ASR 模型", status: "warn", detail: "fallback 缺少 1 个文件" },
       { name: "热键 录音", status: "pass", detail: "Alt+R 已注册" },
     ],
+  };
+}
+
+function qaRepairReport() {
+  return {
+    summary: "修复完成：2 项补齐，5 项已存在",
+    actions: [
+      { name: "日志目录", status: "skipped", detail: "已存在，未改动：D:/voice-ime/.voice_ime/logs" },
+      { name: "个人提示词", status: "repaired", detail: "已创建：D:/voice-ime/.voice_ime/personal_prompt.txt" },
+      { name: "热词", status: "skipped", detail: "已存在，未覆盖：D:/voice-ime/.voice_ime/hot.txt" },
+    ],
+    doctor: qaDoctorReport(),
   };
 }
 

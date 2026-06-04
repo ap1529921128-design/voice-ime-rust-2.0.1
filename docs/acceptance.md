@@ -81,6 +81,15 @@
 5. Clicking `导出` still creates the support zip and includes the latest doctor output without including recordings or model binaries.
 6. `app/tools/启动语音输入-诊断.bat` exists in packaged builds and runs `VoiceIME.exe --doctor` without adding another visible root launcher.
 
+## Conservative Repair
+
+1. Open Settings / Data and click `修复`.
+2. Missing `.voice_ime` runtime directories are created.
+3. Missing `personal_prompt.txt`, `corrections.json`, `hot.txt`, and `hot-rule.txt` are restored with defaults.
+4. Existing user files are reported as skipped and are not overwritten.
+5. The diagnostics panel refreshes after repair and writes a fresh `doctor-YYYYMMDD-HHMMSS.txt` report.
+6. Repair does not download models, change hotkeys, alter existing config values, upload data, or send input to other apps.
+
 ## Model Path Picker
 
 1. Open Settings / Models.

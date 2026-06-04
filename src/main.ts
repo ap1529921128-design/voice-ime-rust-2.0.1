@@ -148,6 +148,18 @@ type DoctorReport = {
   checks: DoctorCheck[];
 };
 
+type RepairAction = {
+  name: string;
+  status: "repaired" | "skipped" | "failed";
+  detail: string;
+};
+
+type RepairReport = {
+  summary: string;
+  actions: RepairAction[];
+  doctor: DoctorReport;
+};
+
 type HotkeyCheck = {
   name: string;
   shortcut: string;
@@ -169,6 +181,7 @@ let audioLevelError = "";
 let audioProbeTimer: number | undefined;
 let audioProbeInFlight = false;
 let doctorReport: DoctorReport | null = null;
+let repairReport: RepairReport | null = null;
 let hotkeyRows: HotkeyCheck[] = [];
 let activeView: "compose" | "settings" | "history" = "compose";
 let activeSettingsTab: "voice" | "models" | "smart" | "shortcuts" | "data" = "voice";
@@ -629,6 +642,7 @@ function dataSettingsPanel(cfg: AppConfig) {
       <div class="settings-tools">
         <button class="tool-btn" data-action="open-logs-dir">${icon("FileText", "打开日志")}<span>日志</span></button>
         <button class="tool-btn" data-action="run-doctor">${icon("Stethoscope", "运行诊断")}<span>诊断</span></button>
+        <button class="tool-btn" data-action="repair-doctor">${icon("Wrench", "修复诊断")}<span>修复</span></button>
         <button class="tool-btn" data-action="export-diagnostics">${icon("Archive", "导出诊断")}<span>导出</span></button>
         <button class="tool-btn" data-action="export-history-csv">${icon("Download", "导出历史")}<span>历史 CSV</span></button>
         <button class="tool-btn danger" data-action="clear-recordings">${icon("Trash2", "清理录音")}<span>清理录音</span></button>
@@ -661,6 +675,16 @@ function doctorPanel() {
       <div class="doctor-list">
         ${doctorReport.checks.map((check) => doctorRow(check)).join("")}
       </div>
+      ${repairActionsPanel()}
+    </div>
+  `;
+}
+
+function repairActionsPanel() {
+  if (!repairReport) return "";
+  return `
+    <div class="doctor-list repair-list">
+      ${repairReport.actions.map((action) => repairRow(action)).join("")}
     </div>
   `;
 }
@@ -673,6 +697,18 @@ function doctorRow(check: DoctorCheck) {
       ${icon(statusIcon as IconName, label)}
       <strong>${escapeHtml(check.name)}</strong>
       <span>${escapeHtml(check.detail)}</span>
+    </div>
+  `;
+}
+
+function repairRow(action: RepairAction) {
+  const statusIcon = action.status === "repaired" ? "CheckCircle2" : action.status === "skipped" ? "CircleMinus" : "CircleX";
+  const label = action.status === "repaired" ? "已补齐" : action.status === "skipped" ? "已跳过" : "失败";
+  return `
+    <div class="doctor-row repair-${action.status}">
+      ${icon(statusIcon as IconName, label)}
+      <strong>${escapeHtml(action.name)}</strong>
+      <span>${escapeHtml(action.detail)}</span>
     </div>
   `;
 }
@@ -829,6 +865,7 @@ function wireCommon() {
       if (action === "open-model-dir") await invoke("open_models_dir");
       if (action === "open-logs-dir") await invoke("open_logs_dir");
       if (action === "run-doctor") await runDoctorReport();
+      if (action === "repair-doctor") await repairDoctorReport();
       if (action === "export-diagnostics") await run("export_diagnostics");
       if (action === "export-history-csv") await run("export_history_csv");
       if (action === "open-hotwords") await invoke("open_hotwords_file");
@@ -1031,10 +1068,30 @@ function joinPickedPath(dir: string, filename: string) {
 
 async function runDoctorReport() {
   try {
+    repairReport = null;
     doctorReport = await invoke<DoctorReport>("doctor_report");
     if (snapshot) {
       snapshot.status = "诊断完成";
       snapshot.meta = `${doctorReport.summary}；报告：${doctorReport.output_path}`;
+    }
+    render();
+  } catch (error) {
+    if (snapshot) {
+      snapshot.status = "出错";
+      snapshot.meta = String(error);
+      render();
+    }
+    throw error;
+  }
+}
+
+async function repairDoctorReport() {
+  try {
+    repairReport = await invoke<RepairReport>("repair_doctor");
+    doctorReport = repairReport.doctor;
+    if (snapshot) {
+      snapshot.status = "修复完成";
+      snapshot.meta = `${repairReport.summary}；${doctorReport.summary}`;
     }
     render();
   } catch (error) {

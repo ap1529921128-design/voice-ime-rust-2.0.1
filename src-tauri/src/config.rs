@@ -567,9 +567,9 @@ fn discover_root_dir() -> PathBuf {
         .to_path_buf()
 }
 
-const DEFAULT_PERSONAL_PROMPT: &str = "请优先识别为简体中文，保留常见英文工具名和技术名词。\n常用词：Codex, Claude Code, ChatGPT, OpenAI, GitHub, Python, PowerShell, Windows, macOS, ASR, GUI, MVP, PRD, faster-whisper, FunASR, SenseVoice, sherpa-onnx, whisper.cpp, llama-server, MiniCPM, Rust, Tauri。\n常用表达：不要自动发送，放到输入框等我确认；帮我整理需求；帮我判断有没有搞头；问问老金；先做最小验证；移动硬盘环境；最小化到托盘。\n";
-const DEFAULT_HOTWORDS: &str = "# hot.txt\n# One entry per line. Use the first item as output and aliases after |.\n# Example:\n# Voice IME | voice ime | 语音输入法\n# GitHub | git hub | 机特哈布\n";
-const DEFAULT_HOT_RULES: &str = "# hot-rule.txt\n# One rule per line: regex = replacement\n# Example:\n# 毫安时 = mAh\n# 艾特\\s*(\\w+)\\s*点\\s*(\\w+) = @\\1.\\2\n";
+pub(crate) const DEFAULT_PERSONAL_PROMPT: &str = "请优先识别为简体中文，保留常见英文工具名和技术名词。\n常用词：Codex, Claude Code, ChatGPT, OpenAI, GitHub, Python, PowerShell, Windows, macOS, ASR, GUI, MVP, PRD, faster-whisper, FunASR, SenseVoice, sherpa-onnx, whisper.cpp, llama-server, MiniCPM, Rust, Tauri。\n常用表达：不要自动发送，放到输入框等我确认；帮我整理需求；帮我判断有没有搞头；问问老金；先做最小验证；移动硬盘环境；最小化到托盘。\n";
+pub(crate) const DEFAULT_HOTWORDS: &str = "# hot.txt\n# One entry per line. Use the first item as output and aliases after |.\n# Example:\n# Voice IME | voice ime | 语音输入法\n# GitHub | git hub | 机特哈布\n";
+pub(crate) const DEFAULT_HOT_RULES: &str = "# hot-rule.txt\n# One rule per line: regex = replacement\n# Example:\n# 毫安时 = mAh\n# 艾特\\s*(\\w+)\\s*点\\s*(\\w+) = @\\1.\\2\n";
 
 fn default_asr_engine() -> String {
     "sherpa-onnx".into()

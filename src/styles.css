@@ -515,6 +515,18 @@ p {
   color: #8a2c0d;
 }
 
+.doctor-row.repair-repaired svg {
+  color: #2e6b4f;
+}
+
+.doctor-row.repair-skipped svg {
+  color: #5f6d78;
+}
+
+.doctor-row.repair-failed svg {
+  color: #8a2c0d;
+}
+
 .empty-diagnostics {
   color: #5f6d78;
 }

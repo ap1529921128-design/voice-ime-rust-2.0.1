@@ -268,6 +268,22 @@ fn doctor_report(
 }
 
 #[tauri::command]
+fn repair_doctor(
+    app: AppHandle,
+    state: State<'_, AppState>,
+) -> Result<doctor::RepairReport, String> {
+    let snapshot = state.snapshot();
+    let mut report = doctor::repair(&state.paths, &snapshot.config).map_err(to_string)?;
+    append_hotkey_checks(&mut report.doctor);
+    state.set_runtime_notice(
+        &app,
+        "修复完成",
+        format!("{}；{}", report.summary, report.doctor.summary),
+    );
+    Ok(report)
+}
+
+#[tauri::command]
 fn hotkey_status() -> Vec<HotkeyCheck> {
     HOTKEY_STATUS.lock().clone()
 }
@@ -395,6 +411,7 @@ pub fn run() {
             open_logs_dir,
             run_doctor,
             doctor_report,
+            repair_doctor,
             hotkey_status,
             export_diagnostics,
             export_history_csv,
