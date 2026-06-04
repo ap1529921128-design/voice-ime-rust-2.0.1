@@ -8,6 +8,7 @@ mod itn;
 mod llm;
 mod ptt;
 mod text;
+mod tray;
 mod win_bridge;
 mod window_shape;
 
@@ -192,12 +193,24 @@ pub fn run() {
     tauri::Builder::default()
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_global_shortcut::Builder::new().build())
+        .on_window_event(|window, event| {
+            if window.label() == "main" {
+                if let tauri::WindowEvent::CloseRequested { api, .. } = event {
+                    api.prevent_close();
+                    tray::hide_main_to_tray(window.app_handle());
+                }
+            }
+        })
         .manage(app_state)
         .setup(|app| {
             window_shape::install(app);
+            let tray_error = tray::install(app).err().map(to_string);
             let state = app.state::<AppState>();
             register_hotkeys(app.handle(), &state);
             ptt::install(app.handle(), &state.snapshot().config);
+            if let Some(err) = tray_error {
+                state.set_runtime_notice(app.handle(), "托盘不可用", err);
+            }
             core::emit_snapshot(app.handle(), &state);
             Ok(())
         })

@@ -12,6 +12,7 @@
 - Added a lightweight doctor report command and Settings button for local path, microphone, clipboard, ASR model, LLM endpoint, and user text-file checks.
 - Added built-in per-app input profiles for common chat, browser, document, and IDE targets, currently applying safer paste delays and logging the matched profile.
 - Added deterministic ITN for common Chinese numbers, percentages, money, dates, times, ranges, and units, plus per-app short-sentence period removal.
+- Added a tray menu for showing the main window, toggling recording, opening model/log/hotword files, running doctor, and exiting; closing the main window now hides it to tray.
 
 ## 2.0.1 - 2026-05-31
 
