@@ -19,6 +19,7 @@
 - Added a one-click support bundle export that zips config, history, dictionaries, logs, doctor output, and model manifests while excluding recordings and model binaries.
 - Added ASR idle prewarming for persistent worker mode, plus a Settings model-page prewarm button, so the current ready profile can load before the first real dictation.
 - Added history filters for text/stage content, backend, model, and date so trace records can be located quickly during accuracy and latency debugging.
+- Added a real backend `Cancelling` state and worker-update token checks so clear/re-record actions ignore stale ASR, correction, translation, and error results.
 
 ## 2.0.1 - 2026-05-31
 

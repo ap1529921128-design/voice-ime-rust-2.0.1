@@ -162,7 +162,13 @@ function pttLabel(config: AppConfig) {
 
 function stateTone(state: SessionState) {
   if (state === "Recording") return "recording";
-  if (state === "Transcribing" || state === "LongTranscribing" || state === "Previewing") return "working";
+  if (
+    state === "Transcribing" ||
+    state === "LongTranscribing" ||
+    state === "Previewing" ||
+    state === "Cancelling"
+  )
+    return "working";
   if (state === "Error") return "error";
   return "idle";
 }

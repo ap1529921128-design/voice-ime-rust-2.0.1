@@ -14,7 +14,7 @@ use std::{
     path::PathBuf,
     sync::atomic::{AtomicU64, Ordering},
     sync::Arc,
-    time::Instant,
+    time::{Duration, Instant},
 };
 use tauri::{AppHandle, Emitter, Manager};
 
@@ -25,6 +25,7 @@ pub enum SessionState {
     Previewing,
     Transcribing,
     LongTranscribing,
+    Cancelling,
     Error,
 }
 
@@ -102,7 +103,7 @@ impl AppState {
         if self.recorder.is_recording() {
             return Ok(self.snapshot());
         }
-        let session_id = self.session_counter.fetch_add(1, Ordering::Relaxed);
+        let session_id = self.next_session_id();
         let target = InputTarget::capture();
         let overlay_rect = win_bridge::overlay_position_from_rect(target.rect());
         {
@@ -135,12 +136,18 @@ impl AppState {
         let recording = self.recorder.stop(config.asr.sample_rate)?;
         {
             let mut inner = self.inner.lock();
-            if inner.session_id == session_id {
-                inner.state = SessionState::Transcribing;
+            if !accepts_worker_update(inner.session_id, &inner.state, session_id) {
+                let _ = fs::remove_file(&recording.wav_path);
+                return Ok(self.snapshot());
             }
+            inner.state = SessionState::Transcribing;
         }
         if recording.duration_seconds < config.asr.min_record_seconds {
             let mut inner = self.inner.lock();
+            if !accepts_worker_update(inner.session_id, &inner.state, session_id) {
+                let _ = fs::remove_file(&recording.wav_path);
+                return Ok(self.snapshot());
+            }
             inner.state = SessionState::Idle;
             inner.status = "录音时间过短，已忽略".into();
             inner.meta.clear();
@@ -150,6 +157,10 @@ impl AppState {
         }
         if recording.peak < 0.0015 || recording.rms < 0.0005 {
             let mut inner = self.inner.lock();
+            if !accepts_worker_update(inner.session_id, &inner.state, session_id) {
+                let _ = fs::remove_file(&recording.wav_path);
+                return Ok(self.snapshot());
+            }
             inner.state = SessionState::Idle;
             inner.status = "没检测到有效麦克风输入".into();
             inner.text = "没检测到有效麦克风输入。\n\n建议：\n1. 检查 Windows 麦克风权限\n2. 尝试切换默认麦克风\n3. 靠近麦克风重新录音".into();
@@ -172,17 +183,38 @@ impl AppState {
     }
 
     pub fn clear(&self, app: &AppHandle) -> UiSnapshot {
+        let recorder_was_active = self.recorder.is_recording();
         self.recorder.cancel();
-        {
+        let cancel_session_id = self.next_session_id();
+        let should_transition = {
             let mut inner = self.inner.lock();
-            inner.session_id = self.session_counter.fetch_add(1, Ordering::Relaxed);
-            inner.state = SessionState::Idle;
-            inner.status = "已清空".into();
-            inner.meta = "当前转写任务已取消".into();
+            let had_active_task = recorder_was_active || is_busy_state(&inner.state);
+            inner.session_id = cancel_session_id;
+            inner.state = if had_active_task {
+                SessionState::Cancelling
+            } else {
+                SessionState::Idle
+            };
+            inner.status = if had_active_task {
+                "取消中".into()
+            } else {
+                "已清空".into()
+            };
+            inner.meta = if had_active_task {
+                "旧任务结果会被忽略".into()
+            } else {
+                "当前文本已清空".into()
+            };
             inner.text.clear();
             inner.target = None;
-        }
+            inner.overlay_rect = None;
+            had_active_task
+        };
+        hide_overlay(app);
         emit_snapshot(app, self);
+        if should_transition {
+            finish_cancelling_async(app.clone(), self.clone_for_worker(), cancel_session_id);
+        }
         self.snapshot()
     }
 
@@ -299,7 +331,7 @@ impl AppState {
             if inner.text.trim().is_empty() {
                 return Err(anyhow!("没有可翻译的文本"));
             }
-            let session_id = self.session_counter.fetch_add(1, Ordering::Relaxed);
+            let session_id = self.next_session_id();
             inner.session_id = session_id;
             inner.state = SessionState::Idle;
             inner.status = format!("转{}中", target_label(&target_language));
@@ -407,6 +439,10 @@ impl AppState {
             paths: self.paths.clone(),
             inner_ptr: self as *const AppState,
         }
+    }
+
+    fn next_session_id(&self) -> u64 {
+        self.session_counter.fetch_add(1, Ordering::Relaxed)
     }
 }
 
@@ -586,7 +622,7 @@ impl WorkerState {
         let state = self.app_state();
         {
             let mut inner = state.inner.lock();
-            if inner.session_id != session_id {
+            if !accepts_worker_update(inner.session_id, &inner.state, session_id) {
                 return;
             }
             inner.state = SessionState::Idle;
@@ -610,7 +646,7 @@ impl WorkerState {
         let state = self.app_state();
         {
             let mut inner = state.inner.lock();
-            if inner.session_id != session_id {
+            if !accepts_worker_update(inner.session_id, &inner.state, session_id) {
                 return;
             }
             inner.state = SessionState::Error;
@@ -623,13 +659,14 @@ impl WorkerState {
 
 impl AppState {
     fn is_current(&self, session_id: u64) -> bool {
-        self.inner.lock().session_id == session_id
+        let inner = self.inner.lock();
+        accepts_worker_update(inner.session_id, &inner.state, session_id)
     }
 
     fn set_long_status(&self, app: &AppHandle, session_id: u64, status: String) {
         {
             let mut inner = self.inner.lock();
-            if inner.session_id != session_id {
+            if !accepts_worker_update(inner.session_id, &inner.state, session_id) {
                 return;
             }
             inner.state = SessionState::LongTranscribing;
@@ -642,7 +679,7 @@ impl AppState {
     fn set_partial_text(&self, app: &AppHandle, session_id: u64, text: String) {
         {
             let mut inner = self.inner.lock();
-            if inner.session_id != session_id {
+            if !accepts_worker_update(inner.session_id, &inner.state, session_id) {
                 return;
             }
             inner.text = text;
@@ -654,7 +691,7 @@ impl AppState {
     fn set_postprocess_status(&self, app: &AppHandle, session_id: u64, status: String) {
         {
             let mut inner = self.inner.lock();
-            if inner.session_id != session_id {
+            if !accepts_worker_update(inner.session_id, &inner.state, session_id) {
                 return;
             }
             inner.state = SessionState::Idle;
@@ -667,7 +704,7 @@ impl AppState {
     fn finish_transcription(&self, app: &AppHandle, finished: FinishedTranscript) -> Result<()> {
         {
             let mut inner = self.inner.lock();
-            if inner.session_id != finished.session_id {
+            if !accepts_worker_update(inner.session_id, &inner.state, finished.session_id) {
                 return Ok(());
             }
             let deterministic_started = Instant::now();
@@ -726,7 +763,9 @@ impl AppState {
     ) -> Result<()> {
         {
             let mut inner = self.inner.lock();
-            if inner.session_id != session_id || text.trim().is_empty() {
+            if !accepts_worker_update(inner.session_id, &inner.state, session_id)
+                || text.trim().is_empty()
+            {
                 return Ok(());
             }
             let text =
@@ -804,6 +843,42 @@ fn read_prompt(paths: &Paths) -> String {
     fs::read_to_string(&paths.prompt_path).unwrap_or_default()
 }
 
+fn finish_cancelling_async(app: AppHandle, worker: WorkerState, cancel_session_id: u64) {
+    std::thread::spawn(move || {
+        std::thread::sleep(Duration::from_millis(120));
+        let state = worker.app_state();
+        {
+            let mut inner = state.inner.lock();
+            if inner.session_id != cancel_session_id || inner.state != SessionState::Cancelling {
+                return;
+            }
+            inner.state = SessionState::Idle;
+            inner.status = "已清空".into();
+            inner.meta = "旧任务结果会被忽略".into();
+        }
+        emit_snapshot(&app, state);
+    });
+}
+
+fn accepts_worker_update(
+    current_session_id: u64,
+    current_state: &SessionState,
+    incoming: u64,
+) -> bool {
+    current_session_id == incoming && *current_state != SessionState::Cancelling
+}
+
+fn is_busy_state(state: &SessionState) -> bool {
+    matches!(
+        state,
+        SessionState::Recording
+            | SessionState::Previewing
+            | SessionState::Transcribing
+            | SessionState::LongTranscribing
+            | SessionState::Cancelling
+    )
+}
+
 fn join_raw_transcript_chunks(chunks: &[String]) -> String {
     let mut result = String::new();
     for chunk in chunks {
@@ -848,5 +923,32 @@ fn target_label(language: &str) -> &'static str {
         "ja" => "日语",
         "zh" => "中文",
         _ => "目标语言",
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn cancelling_rejects_stale_worker_updates() {
+        assert!(accepts_worker_update(7, &SessionState::Idle, 7));
+        assert!(!accepts_worker_update(7, &SessionState::Idle, 8));
+        assert!(!accepts_worker_update(7, &SessionState::Cancelling, 7));
+    }
+
+    #[test]
+    fn busy_state_includes_cancelling_and_worker_states() {
+        for state in [
+            SessionState::Recording,
+            SessionState::Previewing,
+            SessionState::Transcribing,
+            SessionState::LongTranscribing,
+            SessionState::Cancelling,
+        ] {
+            assert!(is_busy_state(&state));
+        }
+        assert!(!is_busy_state(&SessionState::Idle));
+        assert!(!is_busy_state(&SessionState::Error));
     }
 }
