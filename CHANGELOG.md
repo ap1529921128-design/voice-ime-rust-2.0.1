@@ -33,6 +33,7 @@
 - Added a conservative direct Unicode typing fallback for short single-line text when clipboard paste fails.
 - Added a Playwright-based `npm run ui:smoke` QA harness with Tauri mock data, viewport/DPI checks, and screenshots for the main window, settings, history, and overlay.
 - Added a packaged `app/tools/启动语音输入-诊断.bat` helper while keeping the portable root limited to the single main launcher.
+- Added a packaged `app/tools/Notepad-Input-Acceptance.ps1` smoke test that exercises the same foreground-window paste path as confirm input.
 
 ## 2.0.1 - 2026-05-31
 

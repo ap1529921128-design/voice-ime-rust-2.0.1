@@ -121,6 +121,15 @@
 4. The command fails on outer page scroll, shell viewport overflow, or overflowing button/control text.
 5. Screenshots are written under `work/ui-smoke/`.
 
+## Notepad Input Acceptance
+
+1. Build or unpack a portable package.
+2. From the package root, run `powershell -NoProfile -ExecutionPolicy Bypass -File .\app\tools\Notepad-Input-Acceptance.ps1`.
+3. The script opens Notepad, focuses it, runs `VoiceIME.exe --paste-foreground <text> 80`, copies Notepad content back, and compares it with the expected text.
+4. A `notepad-acceptance-YYYYMMDD-HHMMSS.txt` report appears under `app/.voice_ime/logs`.
+5. The same run also appends an `input-target-YYYYMMDD.log` row with the captured target process, window class, paste method, `SendInput` count, and clipboard restore status.
+6. This is an automated smoke for Notepad only; WeChat/Feishu, Chrome, Word/document editors, and IDE input boxes still need manual target-machine acceptance.
+
 ## Current 2.0.1 Test Boundary
 
 - Automated regression covers Rust unit tests, Rust compile, clippy, frontend build, release build, and portable packaging.
@@ -145,3 +154,4 @@
 - Clipboard failure can now fall back to direct Unicode typing for short single-line text; broad app coverage still needs manual acceptance.
 - `npm run ui:smoke` now covers main/settings/history/overlay layout with QA mock data; true OS DPI and WebView screenshots still need manual release checks.
 - Packaged builds now include `app/tools/启动语音输入-诊断.bat`; portable root layout still visibly exposes only the main launcher.
+- Packaged builds now include `app/tools/Notepad-Input-Acceptance.ps1`; Notepad has an automated paste-path smoke, while other real apps still need manual coverage.

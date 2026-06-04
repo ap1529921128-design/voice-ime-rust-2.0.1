@@ -5,6 +5,7 @@ mod config;
 mod core;
 mod doctor;
 mod history;
+mod input_smoke;
 mod itn;
 mod llm;
 mod ptt;
@@ -423,6 +424,21 @@ pub fn run_cli_worker_if_requested() -> bool {
             .map(std::path::PathBuf::from)
             .unwrap_or_else(|| std::path::PathBuf::from("benchmarks/asr"));
         if let Err(err) = benchmark::run_asr_cli(samples_dir) {
+            eprintln!("{err:?}");
+            std::process::exit(2);
+        }
+        return true;
+    }
+    if first == std::ffi::OsStr::new("--paste-foreground") {
+        let text = args
+            .next()
+            .map(|value| value.to_string_lossy().to_string())
+            .unwrap_or_default();
+        let delay_ms = args
+            .next()
+            .and_then(|value| value.to_string_lossy().parse::<u64>().ok())
+            .unwrap_or(60);
+        if let Err(err) = input_smoke::paste_foreground_cli(text, delay_ms) {
             eprintln!("{err:?}");
             std::process::exit(2);
         }

@@ -142,6 +142,10 @@ function Install-ToolScripts {
     )
     $toolsDir = Join-Path $DestinationApp "tools"
     New-Item -ItemType Directory -Path $toolsDir -Force | Out-Null
+    $sourceToolsDir = Join-Path $Root "packaging\tools"
+    if (Test-Path -LiteralPath $sourceToolsDir -PathType Container) {
+        Copy-Item -Path (Join-Path $sourceToolsDir "*") -Destination $toolsDir -Recurse -Force
+    }
     $doctorText = @'
 @echo off
 setlocal
