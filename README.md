@@ -99,6 +99,10 @@ app/tools/Start-MiniCPM-Translate.ps1
 
 设置页提供“热词”和“规则”按钮，可直接打开 `app/.voice_ime/hot.txt` 与 `app/.voice_ime/hot-rule.txt`。`hot.txt` 用 `目标词 | 别名` 做专名替换，`hot-rule.txt` 用正则做格式替换。详细格式见 [docs/hotwords.md](docs/hotwords.md)。
 
+## 输入目标日志
+
+每次点击“确认输入”后，会在 `app/.voice_ime/logs/input-target-YYYYMMDD.log` 追加一行目标窗口日志，包含进程名、窗口类名、标题、光标来源、粘贴结果和粘贴延迟。设置页的“日志”按钮可以直接打开日志目录。
+
 ## 设置建议
 
 - 普通电脑：ASR 档位选 `balanced`。

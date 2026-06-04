@@ -137,6 +137,17 @@ fn open_models_dir(app: AppHandle, state: State<'_, AppState>) -> Result<(), Str
 }
 
 #[tauri::command]
+fn open_logs_dir(app: AppHandle, state: State<'_, AppState>) -> Result<(), String> {
+    fs::create_dir_all(&state.paths.logs_dir).map_err(to_string)?;
+    app.opener()
+        .open_path(
+            state.paths.logs_dir.to_string_lossy().to_string(),
+            None::<&str>,
+        )
+        .map_err(to_string)
+}
+
+#[tauri::command]
 fn open_hotwords_file(app: AppHandle, state: State<'_, AppState>) -> Result<(), String> {
     ensure_text_file(&state.paths.hotwords_path, "# hot.txt\n").map_err(to_string)?;
     app.opener()
@@ -196,6 +207,7 @@ pub fn run() {
             open_model_download_page,
             open_model_mirror_page,
             open_models_dir,
+            open_logs_dir,
             open_hotwords_file,
             open_hot_rules_file,
             hide_overlay,

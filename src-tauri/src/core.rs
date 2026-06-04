@@ -4,12 +4,13 @@ use crate::{
     config::{self, AppConfig, Paths},
     history::{HistoryStore, TranscriptRecord},
     llm, text,
-    win_bridge::{self, InputTarget, OverlayRect},
+    win_bridge::{self, InputTarget, InputTargetInfo, OverlayRect},
 };
 use anyhow::{anyhow, Result};
 use serde::Serialize;
 use std::{
-    fs,
+    fs::{self, OpenOptions},
+    io::Write,
     path::PathBuf,
     sync::atomic::{AtomicU64, Ordering},
     sync::Arc,
@@ -217,13 +218,23 @@ impl AppState {
                 return Err(anyhow!("没有可输入的文本"));
             }
             (
-                inner.target,
+                inner.target.clone(),
                 inner.text.clone(),
                 inner.config.input.paste_delay_ms,
             )
         };
         let target = target.unwrap_or_else(InputTarget::capture);
-        target.paste_text(&text, delay)?;
+        let target_info = target.info().clone();
+        let paste_result = target.paste_text(&text, delay);
+        let error = paste_result.as_ref().err().map(ToString::to_string);
+        let _ = self.write_input_target_log(
+            &target_info,
+            text.chars().count(),
+            delay,
+            if paste_result.is_ok() { "ok" } else { "error" },
+            error.as_deref(),
+        );
+        paste_result?;
         hide_overlay(app);
         {
             let mut inner = self.inner.lock();
@@ -311,6 +322,33 @@ impl AppState {
         }
         emit_snapshot(app, self);
         Ok(self.snapshot())
+    }
+
+    fn write_input_target_log(
+        &self,
+        target: &InputTargetInfo,
+        text_chars: usize,
+        paste_delay_ms: u64,
+        result: &str,
+        error: Option<&str>,
+    ) -> Result<()> {
+        fs::create_dir_all(&self.paths.logs_dir)?;
+        let path = self.paths.logs_dir.join(format!(
+            "input-target-{}.log",
+            chrono::Local::now().format("%Y%m%d")
+        ));
+        let entry = InputTargetLogEntry {
+            created_at: chrono::Local::now().format("%Y-%m-%d %H:%M:%S").to_string(),
+            action: "confirm_input",
+            text_chars,
+            paste_delay_ms,
+            result,
+            error,
+            target,
+        };
+        let mut file = OpenOptions::new().create(true).append(true).open(path)?;
+        writeln!(file, "{}", serde_json::to_string(&entry)?)?;
+        Ok(())
     }
 
     pub fn download_asr_model(&self, app: &AppHandle, profile: String) -> Result<UiSnapshot> {
@@ -653,6 +691,17 @@ struct FinishedTranscript {
     transcribe_seconds: f32,
     backend: String,
     model: String,
+}
+
+#[derive(Serialize)]
+struct InputTargetLogEntry<'a> {
+    created_at: String,
+    action: &'static str,
+    text_chars: usize,
+    paste_delay_ms: u64,
+    result: &'a str,
+    error: Option<&'a str>,
+    target: &'a InputTargetInfo,
 }
 
 pub fn emit_snapshot(app: &AppHandle, state: &AppState) {

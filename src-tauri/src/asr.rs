@@ -134,6 +134,7 @@ pub fn run_worker_cli_if_requested() -> bool {
             hotwords_path: request.app_dir.join("hot.txt"),
             hot_rules_path: request.app_dir.join("hot-rule.txt"),
             recordings_dir: request.app_dir.join("recordings"),
+            logs_dir: request.app_dir.join("logs"),
         };
         let input = AsrInput {
             samples,
@@ -381,6 +382,7 @@ fn paths_from_worker_request(request: &AsrWorkerRequest) -> Paths {
         hotwords_path: request.app_dir.join("hot.txt"),
         hot_rules_path: request.app_dir.join("hot-rule.txt"),
         recordings_dir: request.app_dir.join("recordings"),
+        logs_dir: request.app_dir.join("logs"),
     }
 }
 
@@ -981,6 +983,7 @@ mod tests {
             hotwords_path: temp.path().join(".voice_ime/hot.txt"),
             hot_rules_path: temp.path().join(".voice_ime/hot-rule.txt"),
             recordings_dir: temp.path().join(".voice_ime/recordings"),
+            logs_dir: temp.path().join(".voice_ime/logs"),
         };
         let config = AppConfig::default();
         let balanced = download_spec("balanced", &config, &paths).unwrap();

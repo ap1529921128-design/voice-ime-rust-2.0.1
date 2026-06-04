@@ -135,6 +135,7 @@ pub struct Paths {
     pub hotwords_path: PathBuf,
     pub hot_rules_path: PathBuf,
     pub recordings_dir: PathBuf,
+    pub logs_dir: PathBuf,
 }
 
 impl Default for AppConfig {
@@ -245,6 +246,7 @@ impl Paths {
             hotwords_path: app_dir.join("hot.txt"),
             hot_rules_path: app_dir.join("hot-rule.txt"),
             recordings_dir: app_dir.join("recordings"),
+            logs_dir: app_dir.join("logs"),
             root_dir,
             app_dir,
         })
@@ -253,6 +255,7 @@ impl Paths {
     pub fn ensure(&self) -> Result<()> {
         fs::create_dir_all(&self.app_dir)?;
         fs::create_dir_all(&self.recordings_dir)?;
+        fs::create_dir_all(&self.logs_dir)?;
         Ok(())
     }
 }

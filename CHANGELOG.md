@@ -8,6 +8,7 @@
 - Added a versioned model manifest and a core portable package strategy so the app body can be tested and upgraded separately from large ASR/LLM model packs.
 - Added `hot.txt` alias replacement and `hot-rule.txt` regex replacement, with Settings buttons to open both files.
 - Added optional push-to-talk recording with CapsLock and mouse X2 hold triggers, plus Settings controls for trigger key, mouse button, and event suppression.
+- Added input-target logging for confirmed paste operations, recording target process, class, title, caret source, result, and paste timing under `.voice_ime/logs`.
 
 ## 2.0.1 - 2026-05-31
 

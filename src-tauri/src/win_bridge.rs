@@ -1,20 +1,22 @@
 use anyhow::{anyhow, Result};
 use arboard::Clipboard;
 use serde::Serialize;
-use std::{thread, time::Duration};
+use std::{path::Path, thread, time::Duration};
 use uiautomation::patterns::UITextPattern;
 use uiautomation::types::Rect as UiRect;
 use uiautomation::UIAutomation;
-use windows_sys::Win32::Foundation::{HWND, POINT, RECT};
+use windows_sys::Win32::Foundation::{CloseHandle, HWND, POINT, RECT};
 use windows_sys::Win32::Graphics::Gdi::ClientToScreen;
-use windows_sys::Win32::System::Threading::GetCurrentThreadId;
+use windows_sys::Win32::System::Threading::{
+    GetCurrentThreadId, OpenProcess, QueryFullProcessImageNameW, PROCESS_QUERY_LIMITED_INFORMATION,
+};
 use windows_sys::Win32::UI::Input::KeyboardAndMouse::{
     SendInput, INPUT, INPUT_0, INPUT_KEYBOARD, KEYBDINPUT, KEYEVENTF_KEYUP, VIRTUAL_KEY,
     VK_CONTROL, VK_V,
 };
 use windows_sys::Win32::UI::WindowsAndMessaging::{
-    GetForegroundWindow, GetGUIThreadInfo, GetWindowThreadProcessId, SetForegroundWindow,
-    GUITHREADINFO,
+    GetClassNameW, GetForegroundWindow, GetGUIThreadInfo, GetWindowTextLengthW, GetWindowTextW,
+    GetWindowThreadProcessId, SetForegroundWindow, GUITHREADINFO,
 };
 
 #[derive(Debug, Clone, Copy, Serialize)]
@@ -25,10 +27,23 @@ pub struct OverlayRect {
     pub height: i32,
 }
 
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone, Serialize)]
+pub struct InputTargetInfo {
+    pub hwnd: usize,
+    pub thread_id: u32,
+    pub process_id: u32,
+    pub process_name: String,
+    pub process_path: String,
+    pub class_name: String,
+    pub title: String,
+    pub caret_source: String,
+}
+
+#[derive(Debug, Clone)]
 pub struct InputTarget {
     hwnd: HWND,
     rect: Option<OverlayRect>,
+    info: InputTargetInfo,
 }
 
 unsafe impl Send for InputTarget {}
@@ -37,12 +52,23 @@ unsafe impl Sync for InputTarget {}
 impl InputTarget {
     pub fn capture() -> Self {
         let hwnd = unsafe { GetForegroundWindow() };
-        let rect = caret_rect_uia().or_else(caret_rect_gui_thread);
-        Self { hwnd, rect }
+        let (rect, caret_source) = match caret_rect_uia() {
+            Some(rect) => (Some(rect), "uia"),
+            None => match caret_rect_gui_thread() {
+                Some(rect) => (Some(rect), "gui-thread"),
+                None => (None, "fallback"),
+            },
+        };
+        let info = target_info(hwnd, caret_source);
+        Self { hwnd, rect, info }
     }
 
     pub fn rect(&self) -> Option<OverlayRect> {
         self.rect
+    }
+
+    pub fn info(&self) -> &InputTargetInfo {
+        &self.info
     }
 
     pub fn paste_text(&self, text: &str, delay_ms: u64) -> Result<()> {
@@ -61,6 +87,91 @@ impl InputTarget {
         }
         send_ctrl_v();
         Ok(())
+    }
+}
+
+fn target_info(hwnd: HWND, caret_source: &str) -> InputTargetInfo {
+    let mut process_id = 0;
+    let thread_id = if hwnd.is_null() {
+        0
+    } else {
+        unsafe { GetWindowThreadProcessId(hwnd, &mut process_id) }
+    };
+    let process_path = process_path(process_id);
+    InputTargetInfo {
+        hwnd: hwnd as usize,
+        thread_id,
+        process_id,
+        process_name: process_name(&process_path),
+        process_path,
+        class_name: window_class_name(hwnd),
+        title: window_title(hwnd),
+        caret_source: caret_source.to_string(),
+    }
+}
+
+fn window_title(hwnd: HWND) -> String {
+    if hwnd.is_null() {
+        return String::new();
+    }
+    unsafe {
+        let length = GetWindowTextLengthW(hwnd);
+        if length <= 0 {
+            return String::new();
+        }
+        let mut buffer = vec![0u16; length as usize + 1];
+        let copied = GetWindowTextW(hwnd, buffer.as_mut_ptr(), buffer.len() as i32);
+        wide_to_string(&buffer, copied)
+    }
+}
+
+fn window_class_name(hwnd: HWND) -> String {
+    if hwnd.is_null() {
+        return String::new();
+    }
+    unsafe {
+        let mut buffer = vec![0u16; 256];
+        let copied = GetClassNameW(hwnd, buffer.as_mut_ptr(), buffer.len() as i32);
+        wide_to_string(&buffer, copied)
+    }
+}
+
+fn process_path(process_id: u32) -> String {
+    if process_id == 0 {
+        return String::new();
+    }
+    unsafe {
+        let handle = OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, 0, process_id);
+        if handle.is_null() {
+            return String::new();
+        }
+        let mut buffer = vec![0u16; 32_768];
+        let mut size = buffer.len() as u32;
+        let ok = QueryFullProcessImageNameW(handle, 0, buffer.as_mut_ptr(), &mut size) != 0;
+        CloseHandle(handle);
+        if ok {
+            String::from_utf16_lossy(&buffer[..size as usize])
+        } else {
+            String::new()
+        }
+    }
+}
+
+fn process_name(process_path: &str) -> String {
+    Path::new(process_path)
+        .file_name()
+        .and_then(|name| name.to_str())
+        .unwrap_or_default()
+        .to_string()
+}
+
+fn wide_to_string(buffer: &[u16], copied: i32) -> String {
+    if copied <= 0 {
+        String::new()
+    } else {
+        String::from_utf16_lossy(&buffer[..copied as usize])
+            .trim()
+            .to_string()
     }
 }
 
