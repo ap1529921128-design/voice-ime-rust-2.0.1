@@ -114,7 +114,23 @@ pub fn apply_corrections(text: &str, corrections_path: &Path) -> String {
         text = text.replace(&wrong, &right);
     }
     text = apply_hot_rules(&text, &hot_rules_path_for(corrections_path));
+    text = crate::itn::apply_itn(&text);
     normalize_text(&text)
+}
+
+pub fn apply_punctuation_policy(text: &str, policy: &str) -> String {
+    let mut text = normalize_text(text);
+    if policy == "short-no-period"
+        && !text.contains('\n')
+        && text.chars().count() <= 30
+        && text
+            .chars()
+            .last()
+            .is_some_and(|ch| matches!(ch, '。' | '.'))
+    {
+        text.pop();
+    }
+    text
 }
 
 pub fn load_hotword_replacements(path: &Path) -> Vec<(String, String)> {
@@ -545,8 +561,21 @@ mod tests {
                 "打开 voice ime，非州之星，一千毫安时，艾特qq点com",
                 &corrections
             ),
-            "打开 Voice IME，非洲之星，一千mAh，@qq.com"
+            "打开 Voice IME，非洲之星，1000mAh，@qq.com"
         );
+    }
+
+    #[test]
+    fn applies_punctuation_policy() {
+        assert_eq!(
+            apply_punctuation_policy("好的。", "short-no-period"),
+            "好的"
+        );
+        assert_eq!(
+            apply_punctuation_policy("你确定吗？", "short-no-period"),
+            "你确定吗？"
+        );
+        assert_eq!(apply_punctuation_policy("好的。", "keep"), "好的。");
     }
 
     #[test]

@@ -644,7 +644,11 @@ impl AppState {
             if inner.session_id != finished.session_id {
                 return Ok(());
             }
-            if finished.text.trim().is_empty() {
+            let final_text = text::apply_punctuation_policy(
+                &finished.text,
+                current_punctuation_policy(&inner).as_str(),
+            );
+            if final_text.trim().is_empty() {
                 inner.state = SessionState::Idle;
                 inner.status = "未识别到有效语音".into();
                 inner.meta.clear();
@@ -655,11 +659,11 @@ impl AppState {
                     "录音 {:.1}s / 转写 {:.1}s / {} 字",
                     finished.duration_seconds,
                     finished.transcribe_seconds,
-                    finished.text.chars().count()
+                    final_text.chars().count()
                 );
-                inner.text = finished.text.clone();
+                inner.text = final_text.clone();
                 let record = TranscriptRecord::new(
-                    finished.text,
+                    final_text,
                     finished.duration_seconds,
                     finished.transcribe_seconds,
                     finished.backend,
@@ -686,6 +690,8 @@ impl AppState {
             if inner.session_id != session_id || text.trim().is_empty() {
                 return Ok(());
             }
+            let text =
+                text::apply_punctuation_policy(&text, current_punctuation_policy(&inner).as_str());
             inner.state = SessionState::Idle;
             inner.status = "等待确认".into();
             inner.meta = format!(
@@ -746,6 +752,21 @@ pub fn hide_overlay(app: &AppHandle) {
 
 fn read_prompt(paths: &Paths) -> String {
     fs::read_to_string(&paths.prompt_path).unwrap_or_default()
+}
+
+fn current_punctuation_policy(inner: &InnerState) -> String {
+    let Some(target) = inner.target.as_ref() else {
+        return "default".into();
+    };
+    let info = target.info();
+    config::matching_app_profile(
+        &inner.config.input.app_profiles,
+        &info.process_name,
+        &info.class_name,
+        &info.title,
+    )
+    .map(|profile| profile.punctuation.clone())
+    .unwrap_or_else(|| "default".into())
 }
 
 fn target_label(language: &str) -> &'static str {

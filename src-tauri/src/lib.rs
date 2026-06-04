@@ -4,6 +4,7 @@ mod config;
 mod core;
 mod doctor;
 mod history;
+mod itn;
 mod llm;
 mod ptt;
 mod text;
