@@ -1,5 +1,6 @@
 mod asr;
 mod audio;
+mod benchmark;
 mod config;
 mod core;
 mod doctor;
@@ -405,11 +406,23 @@ pub fn run() {
 }
 
 pub fn run_cli_worker_if_requested() -> bool {
-    let is_doctor = std::env::args_os()
-        .nth(1)
-        .is_some_and(|arg| arg == std::ffi::OsStr::new("--doctor"));
-    if is_doctor {
+    let mut args = std::env::args_os().skip(1);
+    let Some(first) = args.next() else {
+        return asr::run_worker_cli_if_requested();
+    };
+    if first == std::ffi::OsStr::new("--doctor") {
         if let Err(err) = doctor::run_cli() {
+            eprintln!("{err:?}");
+            std::process::exit(2);
+        }
+        return true;
+    }
+    if first == std::ffi::OsStr::new("--benchmark-asr") {
+        let samples_dir = args
+            .next()
+            .map(std::path::PathBuf::from)
+            .unwrap_or_else(|| std::path::PathBuf::from("benchmarks/asr"));
+        if let Err(err) = benchmark::run_asr_cli(samples_dir) {
             eprintln!("{err:?}");
             std::process::exit(2);
         }

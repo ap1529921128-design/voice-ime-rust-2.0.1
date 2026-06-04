@@ -952,7 +952,7 @@ fn write_wav_file(path: &Path, samples: &[f32], sample_rate: u32) -> Result<()> 
     Ok(())
 }
 
-fn read_wav_file(path: &Path) -> Result<(u32, Vec<f32>)> {
+pub(crate) fn read_wav_file(path: &Path) -> Result<(u32, Vec<f32>)> {
     let mut reader = hound::WavReader::open(path)?;
     let spec = reader.spec();
     let channels = spec.channels.max(1) as usize;

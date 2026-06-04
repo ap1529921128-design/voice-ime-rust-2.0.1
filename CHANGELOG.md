@@ -27,6 +27,7 @@
 - Added an inline Settings / Data diagnostics panel showing pass, warning, and failure rows while still writing a shareable doctor report file.
 - Added native model file and profile-directory pickers in Settings / Models for external or removable model packs.
 - Added visible global-hotkey registration status in Settings / Shortcuts and Doctor, and re-register hotkeys immediately after saving settings.
+- Added a CLI ASR benchmark harness that scans wav samples and writes timing, realtime factor, model, transcript, expected text, and errors to CSV.
 
 ## 2.0.1 - 2026-05-31
 

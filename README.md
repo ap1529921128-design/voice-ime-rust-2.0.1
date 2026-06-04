@@ -132,6 +132,16 @@ ASR 后处理会做基础 ITN，把常见中文数字、百分比、金额、日
 历史页会保存每次转写的最终文本、原始 ASR、词表修正、热词、规则、ITN、LLM 后文本和阶段耗时。双击历史项可以把最终文本放回确认栏；展开“过程”可以看这次到底是模型识别错了，还是词表/规则/LLM 改偏了。
 历史页支持按文本、后端、模型和日期筛选，排查某个模型或某天的异常更快。点击“导出 CSV”会把完整历史导出到 `app/.voice_ime/logs/history-export-YYYYMMDD-HHMMSS.csv`，便于用表格软件对比耗时和各阶段文本。
 
+## ASR 基准
+
+可以把一组 `.wav` 样本放进同一个目录，并给每条音频放一个同名 `.txt` 作为参考文本，然后运行：
+
+```powershell
+app\VoiceIME.exe --benchmark-asr D:\voice-ime-benchmarks\asr
+```
+
+结果会写到 `app/.voice_ime/logs/asr-benchmark-YYYYMMDD-HHMMSS.csv`，包含音频时长、当前 profile、worker 模式、后端、模型、耗时、实时率、参考文本、转写文本和错误信息。样本句模板见 [docs/asr-benchmark.md](docs/asr-benchmark.md)。
+
 ## 按应用输入画像
 
 内置了微信、飞书/Lark、Word、Chrome/Edge、VS Code 和 JetBrains 的输入 profile。当前版本只自动应用更稳妥的粘贴延迟，并把命中的 profile 写入输入目标日志；不会自动发送 Enter。
