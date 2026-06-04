@@ -1,0 +1,117 @@
+{
+  "schema_version": 1,
+  "app_version": "2.0.1",
+  "layout": {
+    "root": "app/models",
+    "rule": "Model packs are copied into app/models without changing VoiceIME.exe.",
+    "core_package": "No model binaries are required in the core package."
+  },
+  "packs": [
+    {
+      "id": "asr-balanced-sensevoice-int8",
+      "kind": "asr",
+      "profile": "balanced",
+      "status": "default",
+      "recommended_for": "Default balanced ASR pack for common Windows PCs.",
+      "target_dir": "app/models/sherpa-onnx-sense-voice-zh-en-ja-ko-yue-int8-2024-07-17",
+      "required_files": [
+        "model.int8.onnx",
+        "tokens.txt"
+      ],
+      "source": {
+        "mirror": "https://hf-mirror.com/chris-cao/sherpa-onnx-sense-voice-zh-en-ja-ko-yue-int8-2024-07-17/tree/main",
+        "official": "https://huggingface.co/chris-cao/sherpa-onnx-sense-voice-zh-en-ja-ko-yue-int8-2024-07-17/tree/main"
+      },
+      "estimated_size_mb": 230
+    },
+    {
+      "id": "asr-fast-zipformer-ctc-int8",
+      "kind": "asr",
+      "profile": "fast",
+      "status": "fast",
+      "recommended_for": "Fast short Chinese dictation pack.",
+      "target_dir": "app/models/sherpa-onnx-zipformer-ctc-zh-int8-2025-07-03",
+      "required_files": [
+        "model.int8.onnx",
+        "tokens.txt",
+        "bbpe.model"
+      ],
+      "source": {
+        "mirror": "https://hf-mirror.com/csukuangfj/sherpa-onnx-zipformer-ctc-zh-int8-2025-07-03/tree/main",
+        "official": "https://huggingface.co/csukuangfj/sherpa-onnx-zipformer-ctc-zh-int8-2025-07-03/tree/main"
+      },
+      "estimated_size_mb": 352
+    },
+    {
+      "id": "asr-fallback-whisper-tiny-int8",
+      "kind": "asr",
+      "profile": "fallback",
+      "status": "fallback",
+      "recommended_for": "Small multilingual fallback pack for compatibility.",
+      "target_dir": "app/models/sherpa-onnx-whisper-tiny",
+      "required_files": [
+        "tiny-encoder.int8.onnx",
+        "tiny-decoder.int8.onnx",
+        "tiny-tokens.txt"
+      ],
+      "source": {
+        "mirror": "https://hf-mirror.com/csukuangfj/sherpa-onnx-whisper-tiny/tree/main",
+        "official": "https://huggingface.co/csukuangfj/sherpa-onnx-whisper-tiny/tree/main"
+      },
+      "estimated_size_mb": 100
+    },
+    {
+      "id": "llm-minicpm5-1b-q4",
+      "kind": "llm",
+      "profile": "smart-correction-translation",
+      "status": "optional",
+      "recommended_for": "Optional local correction, rewrite, and temporary translation model.",
+      "target_dir": "app/models",
+      "required_files": [
+        "minicpm5-1b-q4.gguf"
+      ],
+      "source": {
+        "mirror": "",
+        "official": ""
+      },
+      "estimated_size_mb": 657
+    },
+    {
+      "id": "asr-accurate-qwen3-1.7b-q4",
+      "kind": "asr",
+      "profile": "accurate",
+      "status": "planned",
+      "recommended_for": "Planned high-accuracy experimental ASR pack for stronger hardware.",
+      "target_dir": "app/models/Qwen3-ASR/Qwen3-ASR-1.7B",
+      "required_files": [
+        "qwen3_asr_encoder_frontend.onnx",
+        "qwen3_asr_encoder_backend.onnx",
+        "qwen3_asr_llm.gguf"
+      ],
+      "source": {
+        "mirror": "https://github.com/HaujetZhao/CapsWriter-Offline/releases/tag/models",
+        "official": "https://github.com/HaujetZhao/CapsWriter-Offline/releases/tag/models"
+      },
+      "estimated_size_mb": 1345
+    },
+    {
+      "id": "asr-accurate-fun-asr-nano",
+      "kind": "asr",
+      "profile": "accurate",
+      "status": "planned",
+      "recommended_for": "Planned accuracy-size tradeoff pack following the ONNX plus GGUF route.",
+      "target_dir": "app/models/Fun-ASR-Nano/Fun-ASR-Nano-GGUF",
+      "required_files": [
+        "Fun-ASR-Nano-Encoder-Adaptor.fp16.onnx",
+        "Fun-ASR-Nano-CTC.fp16.onnx",
+        "Fun-ASR-Nano-Decoder.q5_k.gguf",
+        "tokens.txt"
+      ],
+      "source": {
+        "mirror": "https://github.com/HaujetZhao/CapsWriter-Offline/releases/tag/models",
+        "official": "https://github.com/HaujetZhao/CapsWriter-Offline/releases/tag/models"
+      },
+      "estimated_size_mb": 796
+    }
+  ]
+}

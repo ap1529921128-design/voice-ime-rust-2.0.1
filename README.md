@@ -144,5 +144,6 @@ powershell -ExecutionPolicy Bypass -File .\packaging\package-portable.ps1
 详细变更见 [CHANGELOG.md](CHANGELOG.md)。  
 2.0.1 的验收、风险和 100 项优化 backlog 见 [docs/2.0.1-roadmap.md](docs/2.0.1-roadmap.md)。
 CapsWriter-Offline v2.6 的对照落地计划见 [docs/capswriter-adaptation-plan.md](docs/capswriter-adaptation-plan.md)。
+模型与主体分离策略见 [docs/model-pack-strategy.md](docs/model-pack-strategy.md)。
 
 英文说明保留在 [README.en.md](README.en.md)。

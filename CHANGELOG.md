@@ -5,6 +5,7 @@
 - Added a persistent ASR worker mode that keeps a hidden subprocess alive and reuses the loaded recognizer for the same profile, reducing repeated model cold-start cost.
 - Kept the previous isolated per-request ASR worker as a settings option and automatic fallback if the persistent worker fails.
 - Exposed the ASR worker mode in Settings as "常驻加速" and "隔离稳妥".
+- Added a versioned model manifest and a core portable package strategy so the app body can be tested and upgraded separately from large ASR/LLM model packs.
 
 ## 2.0.1 - 2026-05-31
 
