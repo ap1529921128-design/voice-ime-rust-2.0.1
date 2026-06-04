@@ -128,7 +128,16 @@
 3. The script opens Notepad, focuses it, runs `VoiceIME.exe --paste-foreground <text> 80`, copies Notepad content back, and compares it with the expected text.
 4. A `notepad-acceptance-YYYYMMDD-HHMMSS.txt` report appears under `app/.voice_ime/logs`.
 5. The same run also appends an `input-target-YYYYMMDD.log` row with the captured target process, window class, paste method, `SendInput` count, and clipboard restore status.
-6. This is an automated smoke for Notepad only; WeChat/Feishu, Chrome, Word/document editors, and IDE input boxes still need manual target-machine acceptance.
+6. This is an automated smoke for Notepad only; WeChat/Feishu, Word/document editors, and IDE input boxes still need manual target-machine acceptance.
+
+## Browser Input Acceptance
+
+1. Build or unpack a portable package.
+2. From the package root, run `powershell -NoProfile -ExecutionPolicy Bypass -File .\app\tools\Browser-Input-Acceptance.ps1`.
+3. The script launches Microsoft Edge or Google Chrome with an isolated temporary user profile and opens a local textarea page.
+4. It focuses the browser text area, runs `VoiceIME.exe --paste-foreground <text> 80`, and verifies the pasted value through the page window title.
+5. A `browser-acceptance-YYYYMMDD-HHMMSS.txt` report appears under `app/.voice_ime/logs`.
+6. The browser profile and temporary page are deleted after the run; existing user browser profiles are not modified.
 
 ## Current 2.0.1 Test Boundary
 
@@ -138,7 +147,7 @@
 - Empty ASR output must not call MiniCPM; prompt-like MiniCPM output containing "个人词表", "纠错表", or "ASR 文本" must be discarded.
 - Translation must translate the current editor text only; prompt-like translation output must be discarded.
 - Portable release must not open a console window for `VoiceIME.exe`; local llama-server is launched hidden.
-- Manual Windows integration still needs a real pass on Notepad, WeChat/Feishu, Chrome, Word/document editors, and IDE input boxes.
+- Manual Windows integration still needs a real pass on WeChat/Feishu, Word/document editors, and IDE input boxes; Notepad and Edge/Chrome textarea paste have automated smoke scripts.
 - Real ASR acceptance requires sherpa-onnx model files matching the 2.0.1 default config. The copied 1.1.5 `faster-whisper-small` folder is reference material only and does not satisfy the new sherpa-onnx model paths.
 - Each missing model row in Settings has clickable download, mirror page, official page, and model-folder actions. The downloader tries `hf-mirror.com` first, then `huggingface.co`.
 - Settings shows download progress/failure in an in-panel notice, not only in the title status chip.
@@ -155,3 +164,4 @@
 - `npm run ui:smoke` now covers main/settings/history/overlay layout with QA mock data; true OS DPI and WebView screenshots still need manual release checks.
 - Packaged builds now include `app/tools/启动语音输入-诊断.bat`; portable root layout still visibly exposes only the main launcher.
 - Packaged builds now include `app/tools/Notepad-Input-Acceptance.ps1`; Notepad has an automated paste-path smoke, while other real apps still need manual coverage.
+- Packaged builds now include `app/tools/Browser-Input-Acceptance.ps1`; Edge/Chrome textarea paste has an automated smoke with an isolated temporary browser profile.
