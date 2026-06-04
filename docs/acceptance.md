@@ -11,6 +11,14 @@
 7. Text appears in the overlay or main confirmation editor.
 8. Confirm input pastes into the focused target and does not send.
 
+## Clipboard-Safe Paste
+
+1. Copy a known text value into the clipboard before confirming input.
+2. Confirm Voice IME text into Notepad or another focused text field.
+3. The recognized text is pasted into the target without sending Enter.
+4. The original text clipboard is restored after paste where Windows allows it.
+5. `input-target-YYYYMMDD.log` records `send_input_events`, `clipboard_restored`, and `clipboard_restore_error`.
+
 ## Audio Device
 
 1. Open Settings / Voice.
@@ -117,3 +125,4 @@
 - Settings / Models now has native file and directory pickers; real removable-drive acceptance should still be tested on target machines.
 - Settings / Shortcuts now shows global-hotkey registration status and re-registers after save; manual conflict coverage is still required with real third-party apps.
 - `--benchmark-asr` now provides a repeatable timing CSV harness; real quality scoring still depends on recorded sample audio.
+- Confirm paste now restores previous text clipboard where feasible and logs restore status; manual image/file clipboard preservation is still future work.

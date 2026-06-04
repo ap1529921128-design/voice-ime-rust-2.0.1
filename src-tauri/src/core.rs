@@ -273,15 +273,23 @@ impl AppState {
             .and_then(|profile| profile.paste_delay_ms)
             .unwrap_or(input_config.paste_delay_ms);
         let paste_result = target.paste_text(&text, delay);
+        let paste_outcome = paste_result.as_ref().ok();
         let error = paste_result.as_ref().err().map(ToString::to_string);
-        let _ = self.write_input_target_log(
-            &target_info,
-            profile_name.as_deref(),
-            text.chars().count(),
-            delay,
-            if paste_result.is_ok() { "ok" } else { "error" },
-            error.as_deref(),
-        );
+        let log_entry = InputTargetLogEntry {
+            created_at: chrono::Local::now().format("%Y-%m-%d %H:%M:%S").to_string(),
+            action: "confirm_input",
+            input_profile: profile_name.as_deref(),
+            text_chars: text.chars().count(),
+            paste_delay_ms: delay,
+            send_input_events: paste_outcome.map(|outcome| outcome.send_input_events),
+            clipboard_restored: paste_outcome.map(|outcome| outcome.clipboard_restored),
+            clipboard_restore_error: paste_outcome
+                .and_then(|outcome| outcome.clipboard_restore_error.as_deref()),
+            result: if paste_result.is_ok() { "ok" } else { "error" },
+            error: error.as_deref(),
+            target: &target_info,
+        };
+        let _ = self.write_input_target_log(&log_entry);
         paste_result?;
         hide_overlay(app);
         {
@@ -375,32 +383,14 @@ impl AppState {
         Ok(self.snapshot())
     }
 
-    fn write_input_target_log(
-        &self,
-        target: &InputTargetInfo,
-        input_profile: Option<&str>,
-        text_chars: usize,
-        paste_delay_ms: u64,
-        result: &str,
-        error: Option<&str>,
-    ) -> Result<()> {
+    fn write_input_target_log(&self, entry: &InputTargetLogEntry<'_>) -> Result<()> {
         fs::create_dir_all(&self.paths.logs_dir)?;
         let path = self.paths.logs_dir.join(format!(
             "input-target-{}.log",
             chrono::Local::now().format("%Y%m%d")
         ));
-        let entry = InputTargetLogEntry {
-            created_at: chrono::Local::now().format("%Y-%m-%d %H:%M:%S").to_string(),
-            action: "confirm_input",
-            input_profile,
-            text_chars,
-            paste_delay_ms,
-            result,
-            error,
-            target,
-        };
         let mut file = OpenOptions::new().create(true).append(true).open(path)?;
-        writeln!(file, "{}", serde_json::to_string(&entry)?)?;
+        writeln!(file, "{}", serde_json::to_string(entry)?)?;
         Ok(())
     }
 
@@ -817,6 +807,9 @@ struct InputTargetLogEntry<'a> {
     input_profile: Option<&'a str>,
     text_chars: usize,
     paste_delay_ms: u64,
+    send_input_events: Option<u32>,
+    clipboard_restored: Option<bool>,
+    clipboard_restore_error: Option<&'a str>,
     result: &'a str,
     error: Option<&'a str>,
     target: &'a InputTargetInfo,

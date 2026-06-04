@@ -46,6 +46,13 @@ pub struct InputTarget {
     info: InputTargetInfo,
 }
 
+#[derive(Debug, Clone)]
+pub struct PasteOutcome {
+    pub send_input_events: u32,
+    pub clipboard_restored: bool,
+    pub clipboard_restore_error: Option<String>,
+}
+
 unsafe impl Send for InputTarget {}
 unsafe impl Sync for InputTarget {}
 
@@ -71,8 +78,9 @@ impl InputTarget {
         &self.info
     }
 
-    pub fn paste_text(&self, text: &str, delay_ms: u64) -> Result<()> {
+    pub fn paste_text(&self, text: &str, delay_ms: u64) -> Result<PasteOutcome> {
         let mut clipboard = Clipboard::new().map_err(|err| anyhow!("剪贴板不可用：{err}"))?;
+        let previous_text = clipboard.get_text().ok();
         clipboard
             .set_text(text.to_string())
             .map_err(|err| anyhow!("写入剪贴板失败：{err}"))?;
@@ -85,8 +93,32 @@ impl InputTarget {
             }
             thread::sleep(Duration::from_millis(80));
         }
-        send_ctrl_v();
-        Ok(())
+        let send_input_events = send_ctrl_v()?;
+        thread::sleep(Duration::from_millis(160));
+        let (clipboard_restored, clipboard_restore_error) =
+            restore_clipboard_text(&mut clipboard, previous_text.as_deref(), text);
+        Ok(PasteOutcome {
+            send_input_events,
+            clipboard_restored,
+            clipboard_restore_error,
+        })
+    }
+}
+
+fn restore_clipboard_text(
+    clipboard: &mut Clipboard,
+    previous_text: Option<&str>,
+    pasted_text: &str,
+) -> (bool, Option<String>) {
+    let Some(previous_text) = previous_text else {
+        return (false, None);
+    };
+    if previous_text == pasted_text {
+        return (true, None);
+    }
+    match clipboard.set_text(previous_text.to_string()) {
+        Ok(()) => (true, None),
+        Err(err) => (false, Some(err.to_string())),
     }
 }
 
@@ -266,7 +298,7 @@ fn caret_rect_gui_thread() -> Option<OverlayRect> {
     }
 }
 
-fn send_ctrl_v() {
+fn send_ctrl_v() -> Result<u32> {
     unsafe {
         let inputs = [
             keyboard_input(VK_CONTROL, false),
@@ -274,11 +306,19 @@ fn send_ctrl_v() {
             keyboard_input(VK_V, true),
             keyboard_input(VK_CONTROL, true),
         ];
-        SendInput(
+        let sent = SendInput(
             inputs.len() as u32,
             inputs.as_ptr(),
             std::mem::size_of::<INPUT>() as i32,
         );
+        if sent != inputs.len() as u32 {
+            return Err(anyhow!(
+                "发送 Ctrl+V 失败：{} / {} 个输入事件",
+                sent,
+                inputs.len()
+            ));
+        }
+        Ok(sent)
     }
 }
 
