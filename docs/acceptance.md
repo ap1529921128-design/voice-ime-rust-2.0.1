@@ -102,9 +102,10 @@
 
 1. Open Settings / Shortcuts.
 2. The page shows a hotkey status panel with one row for recording, language switching, English translation, and Japanese translation.
-3. Duplicated shortcuts or shortcuts already taken by another app show as failure rows instead of preventing GUI startup.
-4. Change a shortcut and click save; the app re-registers global hotkeys immediately without restart.
-5. Running Settings / Data / `诊断` includes the hotkey rows in the diagnostics panel.
+3. Click a keyboard capture button, press a shortcut combination, and verify the matching input field is filled.
+4. Duplicated shortcuts or shortcuts already taken by another app show as failure rows instead of preventing GUI startup.
+5. Change a shortcut and click save; the app re-registers global hotkeys immediately without restart.
+6. Running Settings / Data / `诊断` includes the hotkey rows in the diagnostics panel.
 
 ## ASR Benchmark
 

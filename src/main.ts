@@ -183,6 +183,7 @@ let audioProbeInFlight = false;
 let doctorReport: DoctorReport | null = null;
 let repairReport: RepairReport | null = null;
 let hotkeyRows: HotkeyCheck[] = [];
+let hotkeyCapturePath: string | null = null;
 let activeView: "compose" | "settings" | "history" = "compose";
 let activeSettingsTab: "voice" | "models" | "smart" | "shortcuts" | "data" = "voice";
 let historyQuery = "";
@@ -451,18 +452,10 @@ function voiceSettingsPanel(cfg: AppConfig) {
 function shortcutSettingsPanel(cfg: AppConfig) {
   return `
     <div class="settings-panel">
-      <label>录音热键
-        <input value="${escapeAttr(cfg.input.hotkey_record)}" data-config="input.hotkey_record" />
-      </label>
-      <label>语言切换
-        <input value="${escapeAttr(cfg.input.hotkey_language)}" data-config="input.hotkey_language" />
-      </label>
-      <label>转英文
-        <input value="${escapeAttr(cfg.input.hotkey_english)}" data-config="input.hotkey_english" />
-      </label>
-      <label>转日文
-        <input value="${escapeAttr(cfg.input.hotkey_japanese)}" data-config="input.hotkey_japanese" />
-      </label>
+      ${hotkeyField("录音热键", "input.hotkey_record", cfg.input.hotkey_record)}
+      ${hotkeyField("语言切换", "input.hotkey_language", cfg.input.hotkey_language)}
+      ${hotkeyField("转英文", "input.hotkey_english", cfg.input.hotkey_english)}
+      ${hotkeyField("转日文", "input.hotkey_japanese", cfg.input.hotkey_japanese)}
       <label>按住说话
         <select data-config="input.ptt_enabled">
           ${option("true", String(cfg.input.ptt_enabled), "开启")}
@@ -494,6 +487,18 @@ function shortcutSettingsPanel(cfg: AppConfig) {
       </label>
       ${hotkeyStatusPanel()}
     </div>
+  `;
+}
+
+function hotkeyField(label: string, configPath: string, value: string) {
+  const active = hotkeyCapturePath === configPath;
+  return `
+    <label>${escapeHtml(label)}
+      <div class="hotkey-input">
+        <input value="${escapeAttr(value)}" data-config="${escapeAttr(configPath)}" data-hotkey-capture="${escapeAttr(configPath)}" />
+        <button class="icon-btn tiny ${active ? "active" : ""}" data-action="capture-hotkey" data-config-path="${escapeAttr(configPath)}" title="录入热键">${icon("Keyboard", "录入热键")}</button>
+      </div>
+    </label>
   `;
 }
 
@@ -857,6 +862,7 @@ function wireCommon() {
       if (action === "reset-history-filters") resetHistoryFilters();
       if (action === "save-config") await saveConfig();
       if (action === "refresh-audio-devices") await refreshAudioDevices(true);
+      if (action === "capture-hotkey") captureHotkey(button.dataset.configPath || "");
       if (action === "download-model") await downloadModel(button.dataset.profile || "");
       if (action === "pick-model-file") await pickModelFile(button.dataset.configPath || "");
       if (action === "pick-model-dir") await pickModelDirectory(button.dataset.profile || "");
@@ -944,6 +950,15 @@ function wireMain() {
     input.addEventListener("input", syncDraft);
     input.addEventListener("change", syncDraft);
   });
+  app.querySelectorAll<HTMLInputElement>("[data-hotkey-capture]").forEach((input) => {
+    input.addEventListener("keydown", (event) => handleHotkeyCapture(event, input));
+    input.addEventListener("focus", () => {
+      if (hotkeyCapturePath && input.dataset.hotkeyCapture !== hotkeyCapturePath) {
+        hotkeyCapturePath = null;
+        render();
+      }
+    });
+  });
   app.querySelectorAll<HTMLInputElement | HTMLSelectElement>("[data-history-filter]").forEach((input) => {
     input.addEventListener("input", () => updateHistoryFilter(input));
     input.addEventListener("change", () => updateHistoryFilter(input));
@@ -957,6 +972,100 @@ function wireMain() {
       render();
     });
   });
+}
+
+function captureHotkey(configPath: string) {
+  if (!configPath) return;
+  hotkeyCapturePath = configPath;
+  render();
+  window.setTimeout(() => {
+    const input = app.querySelector<HTMLInputElement>(`[data-hotkey-capture="${cssEscape(configPath)}"]`);
+    input?.focus();
+    input?.select();
+  }, 0);
+}
+
+function handleHotkeyCapture(event: KeyboardEvent, input: HTMLInputElement) {
+  if (hotkeyCapturePath !== input.dataset.hotkeyCapture) return;
+  event.preventDefault();
+  event.stopPropagation();
+  if (event.key === "Escape") {
+    hotkeyCapturePath = null;
+    render();
+    return;
+  }
+  if (event.key === "Backspace" || event.key === "Delete") {
+    input.value = "";
+    syncCapturedHotkey(input);
+    hotkeyCapturePath = null;
+    render();
+    return;
+  }
+  const shortcut = shortcutFromKeyboardEvent(event);
+  if (!shortcut) return;
+  input.value = shortcut;
+  syncCapturedHotkey(input);
+  hotkeyCapturePath = null;
+  render();
+}
+
+function syncCapturedHotkey(input: HTMLInputElement) {
+  if (snapshot && input.dataset.config) setPath(snapshot.config, input.dataset.config, input.value);
+}
+
+function shortcutFromKeyboardEvent(event: KeyboardEvent) {
+  const key = normalizedShortcutKey(event);
+  if (!key) return "";
+  const modifiers = [
+    event.ctrlKey ? "Ctrl" : "",
+    event.altKey ? "Alt" : "",
+    event.shiftKey ? "Shift" : "",
+    event.metaKey ? "Meta" : "",
+  ].filter(Boolean);
+  return [...modifiers, key].join("+");
+}
+
+function normalizedShortcutKey(event: KeyboardEvent) {
+  if (["Control", "Alt", "Shift", "Meta", "AltGraph"].includes(event.key)) return "";
+  if (/^Key[A-Z]$/.test(event.code)) return event.code.slice(3);
+  if (/^Digit\d$/.test(event.code)) return event.code.slice(5);
+  if (/^Numpad\d$/.test(event.code)) return `Numpad${event.code.slice(6)}`;
+  if (/^F\d{1,2}$/.test(event.key)) return event.key.toUpperCase();
+  const named: Record<string, string> = {
+    " ": "Space",
+    Spacebar: "Space",
+    ArrowUp: "ArrowUp",
+    ArrowDown: "ArrowDown",
+    ArrowLeft: "ArrowLeft",
+    ArrowRight: "ArrowRight",
+    Enter: "Enter",
+    Tab: "Tab",
+    Home: "Home",
+    End: "End",
+    PageUp: "PageUp",
+    PageDown: "PageDown",
+    Insert: "Insert",
+    Backquote: "Backquote",
+    Minus: "Minus",
+    Equal: "Equal",
+    BracketLeft: "BracketLeft",
+    BracketRight: "BracketRight",
+    Backslash: "Backslash",
+    Semicolon: "Semicolon",
+    Quote: "Quote",
+    Comma: "Comma",
+    Period: "Period",
+    Slash: "Slash",
+  };
+  if (named[event.key]) return named[event.key];
+  if (named[event.code]) return named[event.code];
+  if (event.key.length === 1) return event.key.toUpperCase();
+  return event.key;
+}
+
+function cssEscape(value: string) {
+  if (window.CSS?.escape) return window.CSS.escape(value);
+  return value.replace(/["\\]/g, "\\$&");
 }
 
 function updateHistoryFilter(input: HTMLInputElement | HTMLSelectElement) {

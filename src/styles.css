@@ -215,6 +215,11 @@ p {
   border-radius: 12px;
 }
 
+.icon-btn.active {
+  background: #315d93;
+  color: #fff;
+}
+
 .tool-btn:hover,
 .icon-btn:hover,
 .mini-action:hover,
@@ -558,6 +563,23 @@ label {
 }
 
 .path-input .icon-btn.tiny {
+  width: 42px;
+  min-height: 44px;
+  border-radius: 14px;
+}
+
+.hotkey-input {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 42px;
+  gap: 8px;
+  min-width: 0;
+}
+
+.hotkey-input input {
+  min-width: 0;
+}
+
+.hotkey-input .icon-btn.tiny {
   width: 42px;
   min-height: 44px;
   border-radius: 14px;

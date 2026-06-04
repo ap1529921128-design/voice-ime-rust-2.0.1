@@ -43,6 +43,7 @@
 - Added a conservative Settings / Data repair action that creates missing runtime directories and default prompt/correction/hotword/rule files without overwriting existing user data.
 - Added a Settings / Models model-pack importer that safely extracts `app/models` or `models` entries from `voice-ime-model-pack-*.zip` into the current portable body.
 - Added CER, edit-distance, expected-character-count, and accuracy columns to the CLI ASR benchmark CSV.
+- Added compact hotkey capture buttons in Settings / Shortcuts so recording, language, and translation shortcuts can be entered by pressing the desired key combination.
 
 ## 2.0.1 - 2026-05-31
 
