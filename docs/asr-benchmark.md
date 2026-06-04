@@ -31,5 +31,7 @@ Suggested Chinese sample set:
 CSV output fields:
 
 ```text
-file,duration_seconds,profile,worker_mode,backend,model,transcribe_seconds,rtf,expected,text,error
+file,duration_seconds,profile,worker_mode,backend,model,transcribe_seconds,rtf,expected_chars,edit_distance,cer,accuracy,expected,text,error
 ```
+
+`cer` is character error rate after lowercasing and removing whitespace only. Punctuation and numbers remain counted, so the score still catches decimal points, units, and sentence marks.

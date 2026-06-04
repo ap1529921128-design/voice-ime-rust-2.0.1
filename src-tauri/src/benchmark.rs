@@ -29,6 +29,10 @@ pub fn run_asr_cli(samples_dir: PathBuf) -> Result<()> {
         "model",
         "transcribe_seconds",
         "rtf",
+        "expected_chars",
+        "edit_distance",
+        "cer",
+        "accuracy",
         "expected",
         "text",
         "error",
@@ -42,6 +46,10 @@ pub fn run_asr_cli(samples_dir: PathBuf) -> Result<()> {
             "",
             &config.asr.profile,
             &config.asr.worker_mode,
+            "",
+            "",
+            "",
+            "",
             "",
             "",
             "",
@@ -74,6 +82,23 @@ pub fn run_asr_cli(samples_dir: PathBuf) -> Result<()> {
                 } else {
                     0.0
                 };
+                let score = score_text(&expected, &outcome.text);
+                let expected_chars = score
+                    .as_ref()
+                    .map(|score| score.expected_chars.to_string())
+                    .unwrap_or_default();
+                let edit_distance = score
+                    .as_ref()
+                    .map(|score| score.edit_distance.to_string())
+                    .unwrap_or_default();
+                let cer = score
+                    .as_ref()
+                    .map(|score| format!("{:.4}", score.char_error_rate))
+                    .unwrap_or_default();
+                let accuracy = score
+                    .as_ref()
+                    .map(|score| format!("{:.4}", score.accuracy))
+                    .unwrap_or_default();
                 rows.push(csv_row(&[
                     &file_label,
                     &format!("{duration_seconds:.3}"),
@@ -83,6 +108,10 @@ pub fn run_asr_cli(samples_dir: PathBuf) -> Result<()> {
                     &outcome.model,
                     &format!("{elapsed:.3}"),
                     &format!("{rtf:.3}"),
+                    &expected_chars,
+                    &edit_distance,
+                    &cer,
+                    &accuracy,
                     &expected,
                     &outcome.text,
                     "",
@@ -96,6 +125,10 @@ pub fn run_asr_cli(samples_dir: PathBuf) -> Result<()> {
                 "",
                 "",
                 &format!("{:.3}", started.elapsed().as_secs_f32()),
+                "",
+                "",
+                "",
+                "",
                 "",
                 &expected,
                 "",
@@ -134,6 +167,59 @@ fn expected_text_for(wav_path: &Path) -> Option<String> {
         .filter(|text| !text.is_empty())
 }
 
+#[derive(Debug, Clone, PartialEq)]
+struct TextScore {
+    expected_chars: usize,
+    edit_distance: usize,
+    char_error_rate: f32,
+    accuracy: f32,
+}
+
+fn score_text(expected: &str, actual: &str) -> Option<TextScore> {
+    let expected_chars = normalized_score_chars(expected);
+    if expected_chars.is_empty() {
+        return None;
+    }
+    let actual_chars = normalized_score_chars(actual);
+    let edit_distance = levenshtein_distance(&expected_chars, &actual_chars);
+    let char_error_rate = edit_distance as f32 / expected_chars.len() as f32;
+    Some(TextScore {
+        expected_chars: expected_chars.len(),
+        edit_distance,
+        char_error_rate,
+        accuracy: (1.0 - char_error_rate).max(0.0),
+    })
+}
+
+fn normalized_score_chars(text: &str) -> Vec<char> {
+    text.chars()
+        .filter(|ch| !ch.is_whitespace())
+        .flat_map(|ch| ch.to_lowercase())
+        .collect()
+}
+
+fn levenshtein_distance(left: &[char], right: &[char]) -> usize {
+    if left.is_empty() {
+        return right.len();
+    }
+    if right.is_empty() {
+        return left.len();
+    }
+    let mut previous = (0..=right.len()).collect::<Vec<_>>();
+    let mut current = vec![0; right.len() + 1];
+    for (left_index, left_char) in left.iter().enumerate() {
+        current[0] = left_index + 1;
+        for (right_index, right_char) in right.iter().enumerate() {
+            let substitution = previous[right_index] + usize::from(left_char != right_char);
+            let insertion = current[right_index] + 1;
+            let deletion = previous[right_index + 1] + 1;
+            current[right_index + 1] = substitution.min(insertion).min(deletion);
+        }
+        std::mem::swap(&mut previous, &mut current);
+    }
+    previous[right.len()]
+}
+
 fn csv_row(cells: &[&str]) -> String {
     cells
         .iter()
@@ -170,5 +256,22 @@ mod tests {
         fs::write(&wav, "").unwrap();
         fs::write(temp.path().join("sample.txt"), "  你好世界  \n").unwrap();
         assert_eq!(expected_text_for(&wav).as_deref(), Some("你好世界"));
+    }
+
+    #[test]
+    fn scores_text_by_character_error_rate() {
+        let score = score_text("你好世界", "你好").unwrap();
+        assert_eq!(score.expected_chars, 4);
+        assert_eq!(score.edit_distance, 2);
+        assert_eq!(score.char_error_rate, 0.5);
+        assert_eq!(score.accuracy, 0.5);
+    }
+
+    #[test]
+    fn score_ignores_spacing_and_case() {
+        let score = score_text("Voice IME", "voiceime").unwrap();
+        assert_eq!(score.edit_distance, 0);
+        assert_eq!(score.char_error_rate, 0.0);
+        assert_eq!(score.accuracy, 1.0);
     }
 }

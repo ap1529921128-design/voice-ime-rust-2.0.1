@@ -140,7 +140,7 @@ ASR 后处理会做基础 ITN，把常见中文数字、百分比、金额、日
 app\VoiceIME.exe --benchmark-asr D:\voice-ime-benchmarks\asr
 ```
 
-结果会写到 `app/.voice_ime/logs/asr-benchmark-YYYYMMDD-HHMMSS.csv`，包含音频时长、当前 profile、worker 模式、后端、模型、耗时、实时率、参考文本、转写文本和错误信息。样本句模板见 [docs/asr-benchmark.md](docs/asr-benchmark.md)。
+结果会写到 `app/.voice_ime/logs/asr-benchmark-YYYYMMDD-HHMMSS.csv`，包含音频时长、当前 profile、worker 模式、后端、模型、耗时、实时率、参考文本、转写文本、字符错误率 CER、accuracy 和错误信息。样本句模板见 [docs/asr-benchmark.md](docs/asr-benchmark.md)。
 
 ## 按应用输入画像
 
