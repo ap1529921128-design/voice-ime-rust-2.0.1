@@ -28,6 +28,8 @@ pub struct AsrConfig {
     pub default_engine: String,
     #[serde(default = "default_asr_profile")]
     pub profile: String,
+    #[serde(default = "default_worker_mode")]
+    pub worker_mode: String,
     #[serde(default = "default_language")]
     pub language: String,
     #[serde(default = "default_sample_rate")]
@@ -143,6 +145,7 @@ impl Default for AsrConfig {
         Self {
             default_engine: default_asr_engine(),
             profile: default_asr_profile(),
+            worker_mode: default_worker_mode(),
             language: default_language(),
             sample_rate: default_sample_rate(),
             min_record_seconds: default_min_record_seconds(),
@@ -314,6 +317,9 @@ fn migrate_legacy_config(value: Value) -> AppConfig {
 
 fn normalize_config(config: &mut AppConfig) {
     config.asr.num_threads = config.asr.num_threads.clamp(1, 4);
+    if !matches!(config.asr.worker_mode.as_str(), "persistent" | "isolated") {
+        config.asr.worker_mode = default_worker_mode();
+    }
     config.translation.timeout_seconds = config.translation.timeout_seconds.clamp(3, 8);
     config.input.hotkey_record = normalize_hotkey(&config.input.hotkey_record);
     config.input.hotkey_english = normalize_hotkey(&config.input.hotkey_english);
@@ -395,6 +401,9 @@ fn default_asr_engine() -> String {
 }
 fn default_asr_profile() -> String {
     "balanced".into()
+}
+fn default_worker_mode() -> String {
+    "persistent".into()
 }
 fn default_language() -> String {
     "zh".into()
@@ -514,6 +523,20 @@ mod tests {
         assert_eq!(cfg.input.hotkey_record, "Alt+R");
         assert_eq!(cfg.input.hotkey_english, "Alt+E");
         assert_eq!(cfg.input.hotkey_japanese, "Alt+J");
+    }
+
+    #[test]
+    fn defaults_to_persistent_asr_worker() {
+        let mut cfg = AppConfig::default();
+        assert_eq!(cfg.asr.worker_mode, "persistent");
+
+        cfg.asr.worker_mode = "unknown".into();
+        normalize_config(&mut cfg);
+        assert_eq!(cfg.asr.worker_mode, "persistent");
+
+        cfg.asr.worker_mode = "isolated".into();
+        normalize_config(&mut cfg);
+        assert_eq!(cfg.asr.worker_mode, "isolated");
     }
 
     #[test]

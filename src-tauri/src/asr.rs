@@ -1,6 +1,7 @@
 use crate::config::{AppConfig, Paths};
 use crate::text;
 use anyhow::{anyhow, Context, Result};
+use once_cell::sync::Lazy;
 use reqwest::blocking::Client;
 use serde::Serialize;
 use sherpa_onnx::{
@@ -9,13 +10,19 @@ use sherpa_onnx::{
 };
 use std::env;
 use std::fs;
-use std::io;
+use std::io::{self, BufRead, BufReader, Write};
 use std::path::{Path, PathBuf};
-use std::process::{self, Command};
+use std::process::{self, Child, ChildStdin, ChildStdout, Command, Stdio};
 use std::time::Instant;
 
 #[cfg(target_os = "windows")]
 use std::os::windows::process::CommandExt;
+
+#[cfg(target_os = "windows")]
+const CREATE_NO_WINDOW: u32 = 0x08000000;
+
+static ASR_DAEMON: Lazy<parking_lot::Mutex<Option<AsrDaemonProcess>>> =
+    Lazy::new(|| parking_lot::Mutex::new(None));
 
 #[derive(Debug, Clone, Serialize)]
 pub struct AsrModelStatus {
@@ -63,7 +70,7 @@ pub fn transcribe(input: &AsrInput, config: &AppConfig, paths: &Paths) -> Result
     let profiles = profile_order(&config.asr.profile);
     let mut last_error: Option<anyhow::Error> = None;
     for profile in profiles {
-        match transcribe_profile_in_worker(input, config, paths, profile) {
+        match transcribe_profile_with_configured_worker(input, config, paths, profile) {
             Ok(mut outcome) => {
                 outcome.elapsed_seconds = started.elapsed().as_secs_f32();
                 return Ok(outcome);
@@ -74,11 +81,38 @@ pub fn transcribe(input: &AsrInput, config: &AppConfig, paths: &Paths) -> Result
     Err(last_error.unwrap_or_else(|| anyhow!("没有可用 ASR 后端")))
 }
 
+fn transcribe_profile_with_configured_worker(
+    input: &AsrInput,
+    config: &AppConfig,
+    paths: &Paths,
+    profile: &str,
+) -> Result<AsrOutcome> {
+    if config.asr.worker_mode == "persistent" {
+        match transcribe_profile_in_daemon(input, config, paths, profile) {
+            Ok(outcome) => return Ok(outcome),
+            Err(daemon_err) => {
+                let isolated = transcribe_profile_in_worker(input, config, paths, profile);
+                return isolated.map_err(|worker_err| {
+                    anyhow!("隔离 worker 也失败：{worker_err}；常驻 worker 失败：{daemon_err}")
+                });
+            }
+        }
+    }
+    transcribe_profile_in_worker(input, config, paths, profile)
+}
+
 pub fn run_worker_cli_if_requested() -> bool {
     let mut args = env::args_os().skip(1);
     let Some(mode) = args.next() else {
         return false;
     };
+    if mode == "--asr-daemon" {
+        if let Err(err) = run_asr_daemon_cli() {
+            eprintln!("{err:?}");
+            process::exit(2);
+        }
+        return true;
+    }
     if mode != "--asr-worker" {
         return false;
     }
@@ -134,6 +168,218 @@ struct AsrWorkerRequest {
     prompt: String,
 }
 
+#[derive(Debug, serde::Serialize, serde::Deserialize)]
+struct AsrDaemonRequest {
+    id: u64,
+    request: AsrWorkerRequest,
+}
+
+#[derive(Debug, serde::Serialize, serde::Deserialize)]
+struct AsrDaemonResponse {
+    id: u64,
+    outcome: Option<AsrOutcome>,
+    error: Option<String>,
+}
+
+struct AsrDaemonProcess {
+    child: Child,
+    stdin: ChildStdin,
+    stdout: BufReader<ChildStdout>,
+    next_id: u64,
+}
+
+impl AsrDaemonProcess {
+    fn spawn(paths: &Paths) -> Result<Self> {
+        let exe = env::current_exe().context("定位 ASR daemon exe 失败")?;
+        let mut command = Command::new(exe);
+        command
+            .arg("--asr-daemon")
+            .current_dir(&paths.root_dir)
+            .env("VOICE_IME_ROOT", &paths.root_dir)
+            .env("VOICE_IME_APP_DIR", &paths.app_dir)
+            .stdin(Stdio::piped())
+            .stdout(Stdio::piped())
+            .stderr(Stdio::null());
+        #[cfg(target_os = "windows")]
+        {
+            command.creation_flags(CREATE_NO_WINDOW);
+        }
+        let mut child = command.spawn().context("启动 ASR 常驻子进程失败")?;
+        let stdin = child
+            .stdin
+            .take()
+            .ok_or_else(|| anyhow!("ASR 常驻子进程 stdin 不可用"))?;
+        let stdout = child
+            .stdout
+            .take()
+            .ok_or_else(|| anyhow!("ASR 常驻子进程 stdout 不可用"))?;
+        Ok(Self {
+            child,
+            stdin,
+            stdout: BufReader::new(stdout),
+            next_id: 1,
+        })
+    }
+
+    fn transcribe(&mut self, request: AsrWorkerRequest) -> Result<AsrOutcome> {
+        if let Some(status) = self.child.try_wait()? {
+            return Err(anyhow!("ASR 常驻子进程已退出：{status}"));
+        }
+        let id = self.next_id;
+        self.next_id = self.next_id.wrapping_add(1).max(1);
+        let request = AsrDaemonRequest { id, request };
+        serde_json::to_writer(&mut self.stdin, &request).context("写入 ASR daemon request")?;
+        self.stdin.write_all(b"\n")?;
+        self.stdin.flush()?;
+
+        let mut line = String::new();
+        let bytes = self.stdout.read_line(&mut line)?;
+        if bytes == 0 {
+            return Err(anyhow!("ASR 常驻子进程没有返回结果"));
+        }
+        let response: AsrDaemonResponse =
+            serde_json::from_str(&line).context("解析 ASR daemon response")?;
+        if response.id != id {
+            return Err(anyhow!(
+                "ASR daemon response id 不匹配：期望 {id}，收到 {}",
+                response.id
+            ));
+        }
+        if let Some(outcome) = response.outcome {
+            Ok(outcome)
+        } else {
+            Err(anyhow!(
+                "{}",
+                response
+                    .error
+                    .unwrap_or_else(|| "ASR daemon 未知错误".into())
+            ))
+        }
+    }
+}
+
+impl Drop for AsrDaemonProcess {
+    fn drop(&mut self) {
+        let _ = self.child.kill();
+        let _ = self.child.wait();
+    }
+}
+
+#[derive(Default)]
+struct DaemonRecognizerCache {
+    current: Option<CachedRecognizer>,
+}
+
+struct CachedRecognizer {
+    key: String,
+    recognizer: OfflineRecognizer,
+    backend: String,
+    model: String,
+}
+
+impl DaemonRecognizerCache {
+    fn transcribe_profile(
+        &mut self,
+        input: &AsrInput,
+        config: &AppConfig,
+        paths: &Paths,
+        profile: &str,
+    ) -> Result<AsrOutcome> {
+        let spec = recognizer_spec(input, config, paths, profile)?;
+        let needs_reload = self
+            .current
+            .as_ref()
+            .map(|cached| cached.key != spec.cache_key)
+            .unwrap_or(true);
+        if needs_reload {
+            let recognizer = OfflineRecognizer::create(&spec.config)
+                .ok_or_else(|| anyhow!("ASR 初始化失败：{}", spec.backend))?;
+            self.current = Some(CachedRecognizer {
+                key: spec.cache_key,
+                recognizer,
+                backend: spec.backend,
+                model: display_path(paths, &spec.model_label),
+            });
+        }
+        let cached = self
+            .current
+            .as_ref()
+            .ok_or_else(|| anyhow!("ASR recognizer 缓存不可用"))?;
+        decode_with_recognizer(&cached.recognizer, input, &cached.backend, &cached.model)
+    }
+}
+
+fn run_asr_daemon_cli() -> Result<()> {
+    let stdin = io::stdin();
+    let mut stdout = io::stdout().lock();
+    let mut cache = DaemonRecognizerCache::default();
+
+    for line in stdin.lock().lines() {
+        let line = line?;
+        if line.trim().is_empty() {
+            continue;
+        }
+        let response = match serde_json::from_str::<AsrDaemonRequest>(&line) {
+            Ok(request) => {
+                let id = request.id;
+                match handle_daemon_request(&mut cache, request.request) {
+                    Ok(outcome) => AsrDaemonResponse {
+                        id,
+                        outcome: Some(outcome),
+                        error: None,
+                    },
+                    Err(err) => AsrDaemonResponse {
+                        id,
+                        outcome: None,
+                        error: Some(format!("{err:?}")),
+                    },
+                }
+            }
+            Err(err) => AsrDaemonResponse {
+                id: 0,
+                outcome: None,
+                error: Some(format!("解析 ASR daemon request 失败：{err}")),
+            },
+        };
+        serde_json::to_writer(&mut stdout, &response)?;
+        stdout.write_all(b"\n")?;
+        stdout.flush()?;
+    }
+    Ok(())
+}
+
+fn handle_daemon_request(
+    cache: &mut DaemonRecognizerCache,
+    request: AsrWorkerRequest,
+) -> Result<AsrOutcome> {
+    let (sample_rate, samples) = read_wav_file(&request.wav_path)?;
+    let paths = paths_from_worker_request(&request);
+    let input = AsrInput {
+        samples,
+        sample_rate,
+        language: request.language,
+        prompt: request.prompt,
+    };
+    let started = Instant::now();
+    let mut outcome =
+        cache.transcribe_profile(&input, &request.config, &paths, &request.profile)?;
+    outcome.elapsed_seconds = started.elapsed().as_secs_f32();
+    outcome.text = text::clean_asr_text(&outcome.text, &paths.corrections_path);
+    Ok(outcome)
+}
+
+fn paths_from_worker_request(request: &AsrWorkerRequest) -> Paths {
+    Paths {
+        root_dir: request.root_dir.clone(),
+        app_dir: request.app_dir.clone(),
+        config_path: request.app_dir.join("config.json"),
+        history_path: request.app_dir.join("history.json"),
+        prompt_path: request.app_dir.join("personal_prompt.txt"),
+        corrections_path: request.app_dir.join("corrections.json"),
+        recordings_dir: request.app_dir.join("recordings"),
+    }
+}
+
 fn transcribe_profile_in_worker(
     input: &AsrInput,
     config: &AppConfig,
@@ -182,7 +428,7 @@ fn transcribe_profile_in_worker(
             .env("VOICE_IME_APP_DIR", &paths.app_dir);
         #[cfg(target_os = "windows")]
         {
-            command.creation_flags(0x08000000);
+            command.creation_flags(CREATE_NO_WINDOW);
         }
         let output = command.output().context("启动 ASR 子进程失败")?;
         if !output.status.success() {
@@ -201,6 +447,56 @@ fn transcribe_profile_in_worker(
     })();
 
     let _ = fs::remove_file(&request_file);
+    let _ = fs::remove_file(&wav_file);
+    let _ = fs::remove_file(&output_file);
+    result
+}
+
+fn transcribe_profile_in_daemon(
+    input: &AsrInput,
+    config: &AppConfig,
+    paths: &Paths,
+    profile: &str,
+) -> Result<AsrOutcome> {
+    let wav_file = tempfile::Builder::new()
+        .prefix("voice_ime_asr_audio_")
+        .suffix(".wav")
+        .tempfile()?
+        .into_temp_path()
+        .keep()?;
+    let output_file = tempfile::Builder::new()
+        .prefix("voice_ime_asr_output_")
+        .suffix(".json")
+        .tempfile()?
+        .into_temp_path()
+        .keep()?;
+
+    let result = (|| -> Result<AsrOutcome> {
+        write_wav_file(&wav_file, &input.samples, input.sample_rate)?;
+        let request = AsrWorkerRequest {
+            wav_path: wav_file.clone(),
+            output_path: output_file.clone(),
+            root_dir: paths.root_dir.clone(),
+            app_dir: paths.app_dir.clone(),
+            config: config.clone(),
+            profile: profile.into(),
+            language: input.language.clone(),
+            prompt: input.prompt.clone(),
+        };
+        let mut daemon = ASR_DAEMON.lock();
+        if daemon.is_none() {
+            *daemon = Some(AsrDaemonProcess::spawn(paths)?);
+        }
+        let response = daemon
+            .as_mut()
+            .ok_or_else(|| anyhow!("ASR 常驻子进程不可用"))?
+            .transcribe(request);
+        if response.is_err() {
+            *daemon = None;
+        }
+        response
+    })();
+
     let _ = fs::remove_file(&wav_file);
     let _ = fs::remove_file(&output_file);
     result
@@ -344,12 +640,36 @@ fn transcribe_profile(
     paths: &Paths,
     profile: &str,
 ) -> Result<AsrOutcome> {
+    let spec = recognizer_spec(input, config, paths, profile)?;
+    let recognizer = OfflineRecognizer::create(&spec.config)
+        .ok_or_else(|| anyhow!("ASR 初始化失败：{}", spec.backend))?;
+    decode_with_recognizer(
+        &recognizer,
+        input,
+        &spec.backend,
+        &display_path(paths, &spec.model_label),
+    )
+}
+
+struct RecognizerSpec {
+    config: OfflineRecognizerConfig,
+    backend: String,
+    model_label: PathBuf,
+    cache_key: String,
+}
+
+fn recognizer_spec(
+    input: &AsrInput,
+    config: &AppConfig,
+    paths: &Paths,
+    profile: &str,
+) -> Result<RecognizerSpec> {
     let mut recognizer_config = OfflineRecognizerConfig::default();
     recognizer_config.feat_config.sample_rate = input.sample_rate as i32;
     recognizer_config.model_config.num_threads = config.asr.num_threads.max(1);
     recognizer_config.model_config.provider = Some("cpu".into());
 
-    let (backend, model_label) = match profile {
+    let (backend, model_label, cache_key) = match profile {
         "fast" => {
             let model = resolve_existing(paths, &config.asr.models.zipformer_ctc_model)?;
             let tokens = resolve_existing(paths, &config.asr.models.zipformer_ctc_tokens)?;
@@ -359,48 +679,93 @@ fn transcribe_profile(
             recognizer_config.model_config.tokens = Some(tokens.to_string_lossy().to_string());
             recognizer_config.model_config.modeling_unit = Some("cjkchar".into());
             recognizer_config.decoding_method = Some("greedy_search".into());
-            ("sherpa-onnx/zipformer-ctc".to_string(), model)
+            (
+                "sherpa-onnx/zipformer-ctc".to_string(),
+                model.clone(),
+                format!(
+                    "fast|sr={}|threads={}|model={}|tokens={}",
+                    input.sample_rate,
+                    config.asr.num_threads.max(1),
+                    model.display(),
+                    tokens.display()
+                ),
+            )
         }
         "balanced" => {
             let model = resolve_existing(paths, &config.asr.models.sense_voice_model)?;
             let tokens = resolve_existing(paths, &config.asr.models.sense_voice_tokens)?;
+            let language = sense_voice_language(&input.language);
             recognizer_config.model_config.sense_voice = OfflineSenseVoiceModelConfig {
                 model: Some(model.to_string_lossy().to_string()),
-                language: Some(sense_voice_language(&input.language)),
+                language: Some(language.clone()),
                 use_itn: true,
             };
             recognizer_config.model_config.tokens = Some(tokens.to_string_lossy().to_string());
-            ("sherpa-onnx/sense-voice".to_string(), model)
+            (
+                "sherpa-onnx/sense-voice".to_string(),
+                model.clone(),
+                format!(
+                    "balanced|sr={}|threads={}|lang={language}|model={}|tokens={}",
+                    input.sample_rate,
+                    config.asr.num_threads.max(1),
+                    model.display(),
+                    tokens.display()
+                ),
+            )
         }
         "fallback" => {
             let encoder = resolve_existing(paths, &config.asr.models.whisper_encoder)?;
             let decoder = resolve_existing(paths, &config.asr.models.whisper_decoder)?;
             let tokens = resolve_existing(paths, &config.asr.models.whisper_tokens)?;
+            let language = whisper_language(&input.language);
             recognizer_config.model_config.whisper = OfflineWhisperModelConfig {
                 encoder: Some(encoder.to_string_lossy().to_string()),
                 decoder: Some(decoder.to_string_lossy().to_string()),
-                language: Some(whisper_language(&input.language)),
+                language: Some(language.clone()),
                 task: Some("transcribe".into()),
                 tail_paddings: -1,
                 enable_token_timestamps: false,
                 enable_segment_timestamps: false,
             };
             recognizer_config.model_config.tokens = Some(tokens.to_string_lossy().to_string());
-            ("sherpa-onnx/whisper".to_string(), encoder)
+            (
+                "sherpa-onnx/whisper".to_string(),
+                encoder.clone(),
+                format!(
+                    "fallback|sr={}|threads={}|lang={language}|encoder={}|decoder={}|tokens={}",
+                    input.sample_rate,
+                    config.asr.num_threads.max(1),
+                    encoder.display(),
+                    decoder.display(),
+                    tokens.display()
+                ),
+            )
         }
         other => return Err(anyhow!("未知 ASR profile：{other}")),
     };
 
-    let recognizer = OfflineRecognizer::create(&recognizer_config)
-        .ok_or_else(|| anyhow!("ASR 初始化失败：{backend}"))?;
+    Ok(RecognizerSpec {
+        config: recognizer_config,
+        backend,
+        model_label,
+        cache_key,
+    })
+}
+
+fn decode_with_recognizer(
+    recognizer: &OfflineRecognizer,
+    input: &AsrInput,
+    backend: &str,
+    model: &str,
+) -> Result<AsrOutcome> {
     let stream = recognizer.create_stream();
     stream.accept_waveform(input.sample_rate as i32, &input.samples);
     recognizer.decode(&stream);
     let result = stream.get_result().context("ASR 没有返回结果")?;
     Ok(AsrOutcome {
         text: result.text,
-        backend,
-        model: display_path(paths, &model_label),
+        backend: backend.into(),
+        model: model.into(),
         elapsed_seconds: 0.0,
     })
 }

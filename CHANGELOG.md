@@ -1,5 +1,11 @@
 # Changelog
 
+## Unreleased
+
+- Added a persistent ASR worker mode that keeps a hidden subprocess alive and reuses the loaded recognizer for the same profile, reducing repeated model cold-start cost.
+- Kept the previous isolated per-request ASR worker as a settings option and automatic fallback if the persistent worker fails.
+- Exposed the ASR worker mode in Settings as "常驻加速" and "隔离稳妥".
+
 ## 2.0.1 - 2026-05-31
 
 - Bumped app, Tauri, Cargo, window, and portable package version from 2.0.0 to 2.0.1.

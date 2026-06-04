@@ -26,6 +26,7 @@ type AppConfig = {
   asr: {
     default_engine: string;
     profile: string;
+    worker_mode: string;
     language: string;
     sample_rate: number;
     min_record_seconds: number;
@@ -116,6 +117,10 @@ function languageLabel(language: string) {
   return language === "en" ? "English" : language === "ja" ? "日本語" : "中文";
 }
 
+function workerModeLabel(mode: string) {
+  return mode === "isolated" ? "隔离" : "常驻";
+}
+
 function stateTone(state: SessionState) {
   if (state === "Recording") return "recording";
   if (state === "Transcribing" || state === "LongTranscribing" || state === "Previewing") return "working";
@@ -194,7 +199,7 @@ function composeView(data: Snapshot) {
         </button>
         <div class="listen-copy">
           <strong>${data.state === "Recording" ? "正在录音" : "准备输入"}</strong>
-          <span>${languageLabel(data.language)} · ${data.config.asr.profile} · ${data.config.asr.default_engine}</span>
+          <span>${languageLabel(data.language)} · ${data.config.asr.profile} · ${workerModeLabel(data.config.asr.worker_mode)}</span>
         </div>
       </div>
       <div class="meta-strip">
@@ -235,6 +240,12 @@ function settingsView(data: Snapshot) {
           ${option("zh", cfg.asr.language, "中文")}
           ${option("en", cfg.asr.language, "English")}
           ${option("ja", cfg.asr.language, "日本語")}
+        </select>
+      </label>
+      <label>ASR 进程
+        <select data-config="asr.worker_mode">
+          ${option("persistent", cfg.asr.worker_mode, "常驻加速")}
+          ${option("isolated", cfg.asr.worker_mode, "隔离稳妥")}
         </select>
       </label>
       <label>最大录音秒数
