@@ -2,18 +2,32 @@ use anyhow::{anyhow, Context, Result};
 use cpal::traits::{DeviceTrait, HostTrait, StreamTrait};
 use cpal::{SampleFormat, Stream};
 use hound::{SampleFormat as WavSampleFormat, WavSpec, WavWriter};
+use once_cell::sync::Lazy;
+use parking_lot::Mutex as GateMutex;
 use serde::Serialize;
 use std::{
     path::PathBuf,
     sync::{Arc, Mutex},
-    time::Instant,
+    time::{Duration, Instant},
 };
+
+static AUDIO_STREAM_OPEN_LOCK: Lazy<GateMutex<()>> = Lazy::new(|| GateMutex::new(()));
 
 #[derive(Debug, Clone, Serialize)]
 pub struct AudioDeviceInfo {
     pub index: usize,
     pub name: String,
     pub is_default: bool,
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub struct AudioLevelInfo {
+    pub device_name: String,
+    pub sample_rate: u32,
+    pub duration_ms: u64,
+    pub peak: f32,
+    pub rms: f32,
+    pub samples: usize,
 }
 
 #[derive(Debug, Clone)]
@@ -46,43 +60,16 @@ impl Recorder {
         self.active.lock().unwrap().is_some()
     }
 
-    pub fn start(&self, input_device_index: Option<usize>) -> Result<()> {
+    pub fn start(&self, input_device_name: Option<&str>) -> Result<()> {
         let mut guard = self.active.lock().unwrap();
         if guard.is_some() {
             return Ok(());
         }
+        let _open_guard = AUDIO_STREAM_OPEN_LOCK.lock();
         let host = cpal::default_host();
-        let device = match input_device_index {
-            Some(index) => host
-                .input_devices()?
-                .nth(index)
-                .ok_or_else(|| anyhow!("找不到麦克风设备：{}", index))?,
-            None => host
-                .default_input_device()
-                .ok_or_else(|| anyhow!("找不到默认麦克风"))?,
-        };
-        let supported = device
-            .default_input_config()
-            .context("读取麦克风配置失败")?;
-        let source_sample_rate = supported.sample_rate().0;
-        let channels = supported.channels() as usize;
-        let stream_config = supported.config();
-        let samples = Arc::new(Mutex::new(Vec::<f32>::with_capacity(
-            source_sample_rate as usize * 8,
-        )));
-        let err_fn = |err| eprintln!("Voice IME audio stream error: {err}");
-        let stream = match supported.sample_format() {
-            SampleFormat::F32 => {
-                build_input_stream_f32(&device, &stream_config, samples.clone(), channels, err_fn)?
-            }
-            SampleFormat::I16 => {
-                build_input_stream_i16(&device, &stream_config, samples.clone(), channels, err_fn)?
-            }
-            SampleFormat::U16 => {
-                build_input_stream_u16(&device, &stream_config, samples.clone(), channels, err_fn)?
-            }
-            other => return Err(anyhow!("暂不支持此麦克风采样格式：{other:?}")),
-        };
+        let (device, _) = select_input_device(&host, input_device_name)?;
+        let samples = Arc::new(Mutex::new(Vec::<f32>::with_capacity(48_000usize * 8)));
+        let (stream, source_sample_rate) = build_capture_stream(&device, samples.clone())?;
         stream.play().context("启动麦克风失败")?;
         *guard = Some(ActiveRecording {
             _stream: stream,
@@ -107,14 +94,7 @@ impl Recorder {
         } else {
             resample_linear(&mono, active.source_sample_rate, target_sample_rate)
         };
-        let peak = samples
-            .iter()
-            .fold(0.0_f32, |acc, item| acc.max(item.abs()));
-        let rms = if samples.is_empty() {
-            0.0
-        } else {
-            (samples.iter().map(|v| v * v).sum::<f32>() / samples.len() as f32).sqrt()
-        };
+        let (peak, rms) = sample_stats(&samples);
         let wav_path = tempfile::Builder::new()
             .prefix("voice_ime_rust_")
             .suffix(".wav")
@@ -162,6 +142,32 @@ pub fn input_devices() -> Result<Vec<AudioDeviceInfo>> {
     Ok(devices)
 }
 
+pub fn measure_input_level(
+    input_device_name: Option<&str>,
+    duration: Duration,
+) -> Result<AudioLevelInfo> {
+    let duration = duration.clamp(Duration::from_millis(80), Duration::from_millis(1000));
+    let _open_guard = AUDIO_STREAM_OPEN_LOCK.lock();
+    let host = cpal::default_host();
+    let (device, device_name) = select_input_device(&host, input_device_name)?;
+    let samples = Arc::new(Mutex::new(Vec::<f32>::with_capacity(24_000)));
+    let (stream, sample_rate) = build_capture_stream(&device, samples.clone())?;
+    stream.play().context("启动麦克风电平检测失败")?;
+    std::thread::sleep(duration);
+    drop(stream);
+
+    let samples = samples.lock().unwrap();
+    let (peak, rms) = sample_stats(&samples);
+    Ok(AudioLevelInfo {
+        device_name,
+        sample_rate,
+        duration_ms: duration.as_millis() as u64,
+        peak,
+        rms,
+        samples: samples.len(),
+    })
+}
+
 pub fn write_wav(path: &PathBuf, samples: &[f32], sample_rate: u32) -> Result<()> {
     let spec = WavSpec {
         channels: 1,
@@ -176,6 +182,68 @@ pub fn write_wav(path: &PathBuf, samples: &[f32], sample_rate: u32) -> Result<()
     }
     writer.finalize()?;
     Ok(())
+}
+
+fn select_input_device(
+    host: &cpal::Host,
+    input_device_name: Option<&str>,
+) -> Result<(cpal::Device, String)> {
+    if let Some(name) = normalized_device_name(input_device_name) {
+        for device in host.input_devices()? {
+            let device_name = device.name().unwrap_or_default();
+            if device_name == name {
+                return Ok((device, device_name));
+            }
+        }
+        return Err(anyhow!("找不到麦克风设备：{}", name));
+    }
+
+    let device = host
+        .default_input_device()
+        .ok_or_else(|| anyhow!("找不到默认麦克风"))?;
+    let name = device.name().unwrap_or_else(|_| "默认麦克风".into());
+    Ok((device, name))
+}
+
+fn normalized_device_name(value: Option<&str>) -> Option<&str> {
+    let value = value?.trim();
+    if value.is_empty()
+        || matches!(
+            value.to_ascii_lowercase().as_str(),
+            "default" | "system-default" | "auto"
+        )
+        || matches!(value, "默认" | "系统默认" | "自动")
+    {
+        None
+    } else {
+        Some(value)
+    }
+}
+
+fn build_capture_stream(
+    device: &cpal::Device,
+    samples: Arc<Mutex<Vec<f32>>>,
+) -> Result<(Stream, u32)> {
+    let supported = device
+        .default_input_config()
+        .context("读取麦克风配置失败")?;
+    let source_sample_rate = supported.sample_rate().0;
+    let channels = supported.channels() as usize;
+    let stream_config = supported.config();
+    let err_fn = |err| eprintln!("Voice IME audio stream error: {err}");
+    let stream = match supported.sample_format() {
+        SampleFormat::F32 => {
+            build_input_stream_f32(device, &stream_config, samples.clone(), channels, err_fn)?
+        }
+        SampleFormat::I16 => {
+            build_input_stream_i16(device, &stream_config, samples.clone(), channels, err_fn)?
+        }
+        SampleFormat::U16 => {
+            build_input_stream_u16(device, &stream_config, samples.clone(), channels, err_fn)?
+        }
+        other => return Err(anyhow!("暂不支持此麦克风采样格式：{other:?}")),
+    };
+    Ok((stream, source_sample_rate))
 }
 
 fn build_input_stream_f32(
@@ -246,6 +314,18 @@ fn push_frames_f32(data: &[f32], channels: usize, samples: &Arc<Mutex<Vec<f32>>>
     }
 }
 
+fn sample_stats(samples: &[f32]) -> (f32, f32) {
+    let peak = samples
+        .iter()
+        .fold(0.0_f32, |acc, item| acc.max(item.abs()));
+    let rms = if samples.is_empty() {
+        0.0
+    } else {
+        (samples.iter().map(|v| v * v).sum::<f32>() / samples.len() as f32).sqrt()
+    };
+    (peak, rms)
+}
+
 fn resample_linear(samples: &[f32], from_rate: u32, to_rate: u32) -> Vec<f32> {
     if samples.is_empty() || from_rate == to_rate {
         return samples.to_vec();
@@ -265,12 +345,32 @@ fn resample_linear(samples: &[f32], from_rate: u32, to_rate: u32) -> Vec<f32> {
 
 #[cfg(test)]
 mod tests {
-    use super::resample_linear;
+    use super::{normalized_device_name, resample_linear, sample_stats};
 
     #[test]
     fn resample_changes_length() {
         let source = vec![0.0; 48_000];
         let out = resample_linear(&source, 48_000, 16_000);
         assert!((15_900..=16_100).contains(&out.len()));
+    }
+
+    #[test]
+    fn default_device_aliases_are_empty_selection() {
+        assert_eq!(normalized_device_name(None), None);
+        assert_eq!(normalized_device_name(Some("")), None);
+        assert_eq!(normalized_device_name(Some(" default ")), None);
+        assert_eq!(normalized_device_name(Some("系统默认")), None);
+        assert_eq!(normalized_device_name(Some("Mic 1")), Some("Mic 1"));
+    }
+
+    #[test]
+    fn sample_stats_report_peak_and_rms() {
+        let (peak, rms) = sample_stats(&[0.0, 0.5, -1.0, 0.5]);
+        assert_eq!(peak, 1.0);
+        assert!((0.60..0.62).contains(&rms));
+
+        let (peak, rms) = sample_stats(&[]);
+        assert_eq!(peak, 0.0);
+        assert_eq!(rms, 0.0);
     }
 }

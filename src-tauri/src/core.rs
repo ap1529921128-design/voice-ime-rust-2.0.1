@@ -103,6 +103,10 @@ impl AppState {
         if self.recorder.is_recording() {
             return Ok(self.snapshot());
         }
+        let config = self.inner.lock().config.clone();
+        self.recorder
+            .start(configured_input_device(&config))
+            .map_err(|err| anyhow!("麦克风启动失败：{err}"))?;
         let session_id = self.next_session_id();
         let target = InputTarget::capture();
         let overlay_rect = win_bridge::overlay_position_from_rect(target.rect());
@@ -115,7 +119,6 @@ impl AppState {
             inner.status = "录音中".into();
             inner.meta = "正在听写".into();
         }
-        self.recorder.start(None)?;
         position_overlay(app, overlay_rect);
         emit_snapshot(app, self);
         Ok(self.snapshot())
@@ -917,6 +920,15 @@ fn current_punctuation_policy(inner: &InnerState) -> String {
     .unwrap_or_else(|| "default".into())
 }
 
+fn configured_input_device(config: &AppConfig) -> Option<&str> {
+    let device = config.asr.input_device_name.trim();
+    if device.is_empty() {
+        None
+    } else {
+        Some(device)
+    }
+}
+
 fn target_label(language: &str) -> &'static str {
     match language {
         "en" => "英语",
@@ -950,5 +962,14 @@ mod tests {
         }
         assert!(!is_busy_state(&SessionState::Idle));
         assert!(!is_busy_state(&SessionState::Error));
+    }
+
+    #[test]
+    fn configured_input_device_uses_empty_as_default() {
+        let mut config = AppConfig::default();
+        assert_eq!(configured_input_device(&config), None);
+
+        config.asr.input_device_name = "USB Mic".into();
+        assert_eq!(configured_input_device(&config), Some("USB Mic"));
     }
 }

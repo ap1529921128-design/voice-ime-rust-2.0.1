@@ -4,11 +4,20 @@
 
 1. Run `启动语音输入.bat` from the portable root.
 2. The main GUI window appears.
-3. Click the large microphone button or press `Alt+R` to start recording.
-4. Speak a short Chinese sentence.
-5. Click the stop button or press `Alt+R` again to stop.
-6. Text appears in the overlay or main confirmation editor.
-7. Confirm input pastes into the focused target and does not send.
+3. The input-level meter appears in the main input view and moves when speaking into the selected microphone.
+4. Click the large microphone button or press `Alt+R` to start recording.
+5. Speak a short Chinese sentence.
+6. Click the stop button or press `Alt+R` again to stop.
+7. Text appears in the overlay or main confirmation editor.
+8. Confirm input pastes into the focused target and does not send.
+
+## Audio Device
+
+1. Open Settings / Voice.
+2. The microphone select lists system default and enumerated input devices.
+3. Pick a non-default microphone, save settings, and restart the app.
+4. The chosen microphone remains selected and recording uses that device.
+5. The meter reports peak/rms/sample-rate values without starting a full recording.
 
 ## Smart Edit
 
@@ -42,3 +51,4 @@
 - Real ASR acceptance requires sherpa-onnx model files matching the 2.0.1 default config. The copied 1.1.5 `faster-whisper-small` folder is reference material only and does not satisfy the new sherpa-onnx model paths.
 - Each missing model row in Settings has clickable download, mirror page, official page, and model-folder actions. The downloader tries `hf-mirror.com` first, then `huggingface.co`.
 - Settings shows download progress/failure in an in-panel notice, not only in the title status chip.
+- Settings / Voice now exposes microphone selection and the main input view shows a pre-recording input meter; real multi-device manual coverage is still required on the target machines.

@@ -32,6 +32,8 @@ pub struct AsrConfig {
     pub worker_mode: String,
     #[serde(default = "default_language")]
     pub language: String,
+    #[serde(default = "default_input_device_name")]
+    pub input_device_name: String,
     #[serde(default = "default_sample_rate")]
     pub sample_rate: u32,
     #[serde(default = "default_min_record_seconds")]
@@ -182,6 +184,7 @@ impl Default for AsrConfig {
             profile: default_asr_profile(),
             worker_mode: default_worker_mode(),
             language: default_language(),
+            input_device_name: default_input_device_name(),
             sample_rate: default_sample_rate(),
             min_record_seconds: default_min_record_seconds(),
             max_record_seconds: default_max_record_seconds(),
@@ -378,6 +381,7 @@ fn normalize_config(config: &mut AppConfig) {
     if !matches!(config.asr.worker_mode.as_str(), "persistent" | "isolated") {
         config.asr.worker_mode = default_worker_mode();
     }
+    config.asr.input_device_name = normalize_input_device_name(&config.asr.input_device_name);
     config.translation.engine = normalize_translation_engine(&config.translation.engine);
     config.translation.timeout_seconds = config.translation.timeout_seconds.clamp(3, 8);
     config.translation.external_command = config.translation.external_command.trim().to_string();
@@ -427,6 +431,21 @@ fn normalize_translation_engine(value: &str) -> String {
     match value.trim().to_ascii_lowercase().as_str() {
         "llm" | "external" | "nllb" | "bergamot" => value.trim().to_ascii_lowercase(),
         _ => default_translation_engine(),
+    }
+}
+
+fn normalize_input_device_name(value: &str) -> String {
+    let value = value.trim();
+    if value.is_empty()
+        || matches!(
+            value.to_ascii_lowercase().as_str(),
+            "default" | "system-default" | "auto"
+        )
+        || matches!(value, "默认" | "系统默认" | "自动")
+    {
+        String::new()
+    } else {
+        value.to_string()
     }
 }
 
@@ -557,6 +576,9 @@ fn default_worker_mode() -> String {
 }
 fn default_language() -> String {
     "zh".into()
+}
+fn default_input_device_name() -> String {
+    String::new()
 }
 fn default_sample_rate() -> u32 {
     16_000
@@ -743,6 +765,18 @@ mod tests {
         cfg.asr.worker_mode = "isolated".into();
         normalize_config(&mut cfg);
         assert_eq!(cfg.asr.worker_mode, "isolated");
+    }
+
+    #[test]
+    fn normalizes_input_device_name() {
+        let mut cfg = AppConfig::default();
+        cfg.asr.input_device_name = "  USB Microphone  ".into();
+        normalize_config(&mut cfg);
+        assert_eq!(cfg.asr.input_device_name, "USB Microphone");
+
+        cfg.asr.input_device_name = "系统默认".into();
+        normalize_config(&mut cfg);
+        assert_eq!(cfg.asr.input_device_name, "");
     }
 
     #[test]

@@ -40,6 +40,7 @@ type AppConfig = {
     profile: string;
     worker_mode: string;
     language: string;
+    input_device_name: string;
     sample_rate: number;
     min_record_seconds: number;
     max_record_seconds: number;
@@ -121,11 +122,32 @@ type AsrModelStatus = {
   missing_files: string[];
 };
 
+type AudioDeviceInfo = {
+  index: number;
+  name: string;
+  is_default: boolean;
+};
+
+type AudioLevelInfo = {
+  device_name: string;
+  sample_rate: number;
+  duration_ms: number;
+  peak: number;
+  rms: number;
+  samples: number;
+};
+
 const app = document.querySelector<HTMLDivElement>("#app")!;
 const currentWindow = getCurrentWindow();
 const isOverlay = currentWindow.label === "overlay";
 let snapshot: Snapshot | null = null;
 let statusRows: AsrModelStatus[] = [];
+let audioDevices: AudioDeviceInfo[] = [];
+let audioLevel: AudioLevelInfo | null = null;
+let audioDeviceError = "";
+let audioLevelError = "";
+let audioProbeTimer: number | undefined;
+let audioProbeInFlight = false;
 let activeView: "compose" | "settings" | "history" = "compose";
 let activeSettingsTab: "voice" | "models" | "smart" | "shortcuts" | "data" = "voice";
 let historyQuery = "";
@@ -160,6 +182,45 @@ function pttLabel(config: AppConfig) {
   return `按住 ${triggers.join(" / ")}`;
 }
 
+function selectedMicrophoneLabel(config: AppConfig) {
+  const configured = config.asr.input_device_name.trim();
+  if (configured) return configured;
+  const current = audioLevel?.device_name || audioDevices.find((device) => device.is_default)?.name;
+  return current ? `系统默认 · ${current}` : "系统默认";
+}
+
+function microphoneOptions(current: string) {
+  const options = [option("", current, "系统默认")];
+  if (current && !audioDevices.some((device) => device.name === current)) {
+    options.push(option(current, current, `${current} · 未枚举`));
+  }
+  for (const device of audioDevices) {
+    const label = device.is_default ? `${device.name} · 默认` : device.name;
+    options.push(option(device.name, current, label));
+  }
+  return options.join("");
+}
+
+function audioMeterMarkup(config: AppConfig) {
+  const percent = audioMeterPercent();
+  const status = audioLevelError || audioDeviceError || selectedMicrophoneLabel(config);
+  const detail = audioLevel
+    ? `peak ${audioLevel.peak.toFixed(3)} · rms ${audioLevel.rms.toFixed(3)} · ${audioLevel.sample_rate}Hz`
+    : "等待麦克风电平";
+  return `
+    <div class="audio-meter" data-audio-meter>
+      <div class="audio-meter-head">
+        <span>输入电平</span>
+        <strong data-audio-meter-label>${escapeHtml(status)}</strong>
+      </div>
+      <div class="audio-meter-track">
+        <i data-audio-meter-fill style="width: ${percent}%"></i>
+      </div>
+      <small data-audio-meter-detail>${escapeHtml(detail)}</small>
+    </div>
+  `;
+}
+
 function stateTone(state: SessionState) {
   if (state === "Recording") return "recording";
   if (
@@ -175,10 +236,12 @@ function stateTone(state: SessionState) {
 
 function render() {
   if (!snapshot) {
+    stopAudioProbe();
     app.innerHTML = `<div class="boot">Voice IME</div>`;
     return;
   }
   if (isOverlay) {
+    stopAudioProbe();
     renderOverlay(snapshot);
   } else {
     renderMain(snapshot);
@@ -233,6 +296,8 @@ function renderMain(data: Snapshot) {
   `;
   wireCommon();
   wireMain();
+  syncAudioProbe(data);
+  paintAudioMeter();
 }
 
 function composeView(data: Snapshot) {
@@ -246,6 +311,7 @@ function composeView(data: Snapshot) {
           <strong>${data.state === "Recording" ? "正在录音" : "准备输入"}</strong>
           <span>${languageLabel(data.language)} · ${data.config.asr.profile} · ${workerModeLabel(data.config.asr.worker_mode)} · ${pttLabel(data.config)}</span>
         </div>
+        ${audioMeterMarkup(data.config)}
       </div>
       <div class="meta-strip">
         <span>${data.word_count} 字</span>
@@ -317,6 +383,11 @@ function voiceSettingsPanel(cfg: AppConfig) {
           ${option("ja", cfg.asr.language, "日本語")}
         </select>
       </label>
+      <label>麦克风
+        <select data-config="asr.input_device_name">
+          ${microphoneOptions(cfg.asr.input_device_name)}
+        </select>
+      </label>
       <label>ASR 进程
         <select data-config="asr.worker_mode">
           ${option("persistent", cfg.asr.worker_mode, "常驻加速")}
@@ -332,6 +403,12 @@ function voiceSettingsPanel(cfg: AppConfig) {
       <label>ASR 线程
         <input type="number" min="1" max="4" value="${cfg.asr.num_threads}" data-config="asr.num_threads" />
       </label>
+      <div class="settings-tools">
+        <button class="tool-btn" data-action="refresh-audio-devices">${icon("RefreshCw", "刷新麦克风")}<span>刷新麦克风</span></button>
+      </div>
+      <div class="settings-meter">
+        ${audioMeterMarkup(cfg)}
+      </div>
     </div>
   `;
 }
@@ -615,7 +692,10 @@ function wireCommon() {
       if (["confirm", "copy", "translate-en", "translate-ja", "translate-zh"].includes(action)) {
         await flushActiveTextField();
       }
-      if (action === "start") await run("start_recording");
+      if (action === "start") {
+        stopAudioProbe();
+        await run("start_recording");
+      }
       if (action === "stop") await run("stop_recording");
       if (action === "confirm") await run("confirm_input");
       if (action === "copy") await run("copy_text");
@@ -627,6 +707,7 @@ function wireCommon() {
       if (action === "clear-history") await run("clear_history");
       if (action === "reset-history-filters") resetHistoryFilters();
       if (action === "save-config") await saveConfig();
+      if (action === "refresh-audio-devices") await refreshAudioDevices(true);
       if (action === "download-model") await downloadModel(button.dataset.profile || "");
       if (action === "prewarm-asr") await run("prewarm_asr");
       if (action === "open-model-mirror") await invoke("open_model_mirror_page", { profile: button.dataset.profile || "" });
@@ -689,14 +770,20 @@ function wireMain() {
     });
   });
   app.querySelectorAll<HTMLButtonElement>("[data-settings-tab]").forEach((tab) => {
-    tab.addEventListener("click", () => {
+    tab.addEventListener("click", async () => {
       activeSettingsTab = tab.dataset.settingsTab as typeof activeSettingsTab;
+      if (activeSettingsTab === "voice") await refreshAudioDevices(false);
       render();
     });
   });
   app.querySelectorAll<HTMLInputElement | HTMLSelectElement>("[data-config]").forEach((input) => {
     const syncDraft = () => {
       if (snapshot) setPath(snapshot.config, input.dataset.config!, input.value);
+      if (input.dataset.config === "asr.input_device_name") {
+        audioLevel = null;
+        paintAudioMeter();
+        void probeAudioLevel();
+      }
     };
     input.addEventListener("input", syncDraft);
     input.addEventListener("change", syncDraft);
@@ -750,6 +837,81 @@ async function saveConfig() {
 
 async function refreshModelStatus() {
   statusRows = await invoke<AsrModelStatus[]>("asr_status");
+}
+
+async function refreshAudioDevices(shouldRender = false) {
+  try {
+    audioDevices = await invoke<AudioDeviceInfo[]>("audio_devices");
+    audioDeviceError = "";
+  } catch (error) {
+    audioDevices = [];
+    audioDeviceError = String(error);
+  }
+  if (shouldRender) render();
+}
+
+function shouldProbeAudio(data: Snapshot) {
+  if (data.state !== "Idle") return false;
+  if (activeView === "compose") return true;
+  return activeView === "settings" && activeSettingsTab === "voice";
+}
+
+function syncAudioProbe(data: Snapshot) {
+  if (!shouldProbeAudio(data)) {
+    stopAudioProbe();
+    return;
+  }
+  if (audioProbeTimer !== undefined) return;
+  void probeAudioLevel();
+  audioProbeTimer = window.setInterval(() => {
+    void probeAudioLevel();
+  }, 1300);
+}
+
+function stopAudioProbe() {
+  if (audioProbeTimer !== undefined) {
+    window.clearInterval(audioProbeTimer);
+    audioProbeTimer = undefined;
+  }
+}
+
+async function probeAudioLevel() {
+  if (audioProbeInFlight || !snapshot || !shouldProbeAudio(snapshot)) return;
+  audioProbeInFlight = true;
+  try {
+    const deviceName = snapshot.config.asr.input_device_name.trim() || null;
+    audioLevel = await invoke<AudioLevelInfo>("audio_level", { deviceName });
+    audioLevelError = "";
+  } catch (error) {
+    audioLevel = null;
+    audioLevelError = String(error);
+  } finally {
+    audioProbeInFlight = false;
+    paintAudioMeter();
+  }
+}
+
+function audioMeterPercent() {
+  if (!audioLevel || audioLevel.samples === 0) return 0;
+  const level = Math.max(audioLevel.peak, audioLevel.rms * 2);
+  return Math.min(100, Math.round(Math.sqrt(Math.max(0, level)) * 100));
+}
+
+function paintAudioMeter() {
+  const percent = audioMeterPercent();
+  app.querySelectorAll<HTMLElement>("[data-audio-meter-fill]").forEach((fill) => {
+    fill.style.width = `${percent}%`;
+  });
+  const status = audioLevelError || audioDeviceError || (snapshot ? selectedMicrophoneLabel(snapshot.config) : "系统默认");
+  app.querySelectorAll<HTMLElement>("[data-audio-meter-label]").forEach((label) => {
+    label.textContent = status;
+  });
+  const detail = audioLevel
+    ? `peak ${audioLevel.peak.toFixed(3)} · rms ${audioLevel.rms.toFixed(3)} · ${audioLevel.sample_rate}Hz`
+    : "等待麦克风电平";
+  app.querySelectorAll<HTMLElement>("[data-audio-meter-detail]").forEach((label) => {
+    label.textContent = audioLevelError || audioDeviceError ? "麦克风不可用" : detail;
+  });
 }
 
 async function downloadModel(profile: string) {
@@ -810,6 +972,7 @@ function shortPath(value: string) {
 
 async function bootstrap() {
   snapshot = await invoke<Snapshot>("get_snapshot");
+  if (!isOverlay) await refreshAudioDevices(false);
   await listen<Snapshot>("voice-ime://snapshot", async (event) => {
     const active = document.activeElement;
     const isEditing =

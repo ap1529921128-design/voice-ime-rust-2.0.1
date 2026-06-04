@@ -104,6 +104,27 @@ fn audio_devices() -> Result<Vec<audio::AudioDeviceInfo>, String> {
 }
 
 #[tauri::command]
+fn audio_level(
+    state: State<'_, AppState>,
+    device_name: Option<String>,
+) -> Result<audio::AudioLevelInfo, String> {
+    let configured = state.snapshot().config.asr.input_device_name;
+    let selected = device_name
+        .as_deref()
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+        .or_else(|| {
+            let configured = configured.trim();
+            if configured.is_empty() {
+                None
+            } else {
+                Some(configured)
+            }
+        });
+    audio::measure_input_level(selected, Duration::from_millis(220)).map_err(to_string)
+}
+
+#[tauri::command]
 fn asr_status(state: State<'_, AppState>) -> Vec<asr::AsrModelStatus> {
     let snapshot = state.snapshot();
     asr::model_status(&snapshot.config, &state.paths)
@@ -276,6 +297,7 @@ pub fn run() {
             save_config,
             clear_history,
             audio_devices,
+            audio_level,
             asr_status,
             download_asr_model,
             prewarm_asr,
