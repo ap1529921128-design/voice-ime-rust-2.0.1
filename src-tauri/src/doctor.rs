@@ -1,6 +1,7 @@
 use crate::{
     asr, audio,
     config::{AppConfig, Paths},
+    translation,
 };
 use anyhow::Result;
 use reqwest::blocking::Client;
@@ -42,7 +43,7 @@ pub fn run(paths: &Paths, config: &AppConfig) -> Result<DoctorReport> {
     check_clipboard(&mut checks);
     check_models(paths, config, &mut checks);
     check_llm_endpoint("智能纠错端点", &config.smart.endpoint, &mut checks);
-    check_llm_endpoint("翻译端点", &config.translation.endpoint, &mut checks);
+    check_translation_backend(config, &mut checks);
     check_user_text_files(paths, &mut checks);
 
     let output_path = write_report(paths, config, &checks, started.elapsed())?;
@@ -145,6 +146,33 @@ fn check_models(paths: &Paths, config: &AppConfig, checks: &mut Vec<DoctorCheck>
     push_check(checks, "ASR 模型", status, detail);
 }
 
+fn check_translation_backend(config: &AppConfig, checks: &mut Vec<DoctorCheck>) {
+    match config.translation.engine.as_str() {
+        "llm" | "" => check_llm_endpoint("翻译端点", &config.translation.endpoint, checks),
+        "external" => match translation::split_command_line(&config.translation.external_command) {
+            Ok(args) => push_check(
+                checks,
+                "外部翻译命令",
+                DoctorStatus::Pass,
+                args.first().cloned().unwrap_or_default(),
+            ),
+            Err(err) => push_check(checks, "外部翻译命令", DoctorStatus::Warn, err.to_string()),
+        },
+        "nllb" | "bergamot" => push_check(
+            checks,
+            "翻译引擎",
+            DoctorStatus::Warn,
+            format!("{} 已预留，当前版本未内置", config.translation.engine),
+        ),
+        other => push_check(
+            checks,
+            "翻译引擎",
+            DoctorStatus::Warn,
+            format!("{other} 未识别"),
+        ),
+    }
+}
+
 fn check_llm_endpoint(name: &str, endpoint: &str, checks: &mut Vec<DoctorCheck>) {
     if endpoint.trim().is_empty() {
         push_check(checks, name, DoctorStatus::Warn, "未配置");
@@ -228,6 +256,10 @@ fn write_report(
         config.input.ptt_enabled,
         config.input.ptt_key,
         config.input.ptt_mouse_button
+    ));
+    lines.push(format!(
+        "Translation: engine={} timeout={}s",
+        config.translation.engine, config.translation.timeout_seconds
     ));
     lines.push(format!("Elapsed: {:.2}s", elapsed.as_secs_f32()));
     lines.push(String::new());

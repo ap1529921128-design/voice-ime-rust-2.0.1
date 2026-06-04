@@ -3,7 +3,7 @@ use crate::{
     audio::{self, Recorder},
     config::{self, AppConfig, Paths},
     history::{HistoryStore, TranscriptRecord},
-    llm, text,
+    llm, text, translation,
     win_bridge::{self, InputTarget, InputTargetInfo, OverlayRect},
 };
 use anyhow::{anyhow, Result};
@@ -319,6 +319,7 @@ impl AppState {
     }
 
     pub fn save_config(&self, app: &AppHandle, config_value: AppConfig) -> Result<UiSnapshot> {
+        let config_value = config::normalized(config_value);
         config::save_config(&self.paths, &config_value)?;
         {
             let mut inner = self.inner.lock();
@@ -555,7 +556,8 @@ impl WorkerState {
     ) {
         let started = Instant::now();
         let prompt = read_prompt(&self.paths);
-        let result = llm::translate(&source, &target_language, &config, &self.paths, &prompt);
+        let result =
+            translation::translate(&source, &target_language, &config, &self.paths, &prompt);
         let elapsed = started.elapsed().as_secs_f32();
         let state = self.app_state();
         {

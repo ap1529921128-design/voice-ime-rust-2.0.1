@@ -8,6 +8,7 @@ mod itn;
 mod llm;
 mod ptt;
 mod text;
+mod translation;
 mod tray;
 mod win_bridge;
 mod window_shape;

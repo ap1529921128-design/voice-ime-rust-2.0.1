@@ -83,7 +83,7 @@ pub fn smart_correct(
     text::apply_corrections(&output, &paths.corrections_path)
 }
 
-pub fn translate(
+pub fn translate_with_llm(
     source: &str,
     target_language: &str,
     config: &AppConfig,

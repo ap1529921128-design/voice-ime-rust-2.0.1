@@ -126,12 +126,16 @@ pub struct SmartConfig {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct TranslationConfig {
+    #[serde(default = "default_translation_engine")]
+    pub engine: String,
     #[serde(default = "default_llm_endpoint")]
     pub endpoint: String,
     #[serde(default = "default_llm_model")]
     pub model: String,
     #[serde(default = "default_translation_timeout")]
     pub timeout_seconds: u64,
+    #[serde(default = "default_external_translation_command")]
+    pub external_command: String,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -236,9 +240,11 @@ impl Default for SmartConfig {
 impl Default for TranslationConfig {
     fn default() -> Self {
         Self {
+            engine: default_translation_engine(),
             endpoint: default_llm_endpoint(),
             model: default_llm_model(),
             timeout_seconds: default_translation_timeout(),
+            external_command: default_external_translation_command(),
         }
     }
 }
@@ -301,9 +307,15 @@ pub fn load_or_create(paths: &Paths) -> Result<AppConfig> {
 
 pub fn save_config(paths: &Paths, config: &AppConfig) -> Result<()> {
     paths.ensure()?;
-    let body = serde_json::to_string_pretty(config)?;
+    let config = normalized(config.clone());
+    let body = serde_json::to_string_pretty(&config)?;
     fs::write(&paths.config_path, body)?;
     Ok(())
+}
+
+pub fn normalized(mut config: AppConfig) -> AppConfig {
+    normalize_config(&mut config);
+    config
 }
 
 fn migrate_legacy_config(value: Value) -> AppConfig {
@@ -345,11 +357,17 @@ fn migrate_legacy_config(value: Value) -> AppConfig {
     if let Some(endpoint) = get_str("translation_endpoint") {
         config.translation.endpoint = endpoint;
     }
+    if let Some(engine) = get_str("translation_engine") {
+        config.translation.engine = engine;
+    }
     if let Some(model) = get_str("translation_model") {
         config.translation.model = model;
     }
     if let Some(timeout) = get_u64("translation_timeout") {
         config.translation.timeout_seconds = timeout;
+    }
+    if let Some(command) = get_str("translation_external_command") {
+        config.translation.external_command = command;
     }
 
     config
@@ -360,7 +378,9 @@ fn normalize_config(config: &mut AppConfig) {
     if !matches!(config.asr.worker_mode.as_str(), "persistent" | "isolated") {
         config.asr.worker_mode = default_worker_mode();
     }
+    config.translation.engine = normalize_translation_engine(&config.translation.engine);
     config.translation.timeout_seconds = config.translation.timeout_seconds.clamp(3, 8);
+    config.translation.external_command = config.translation.external_command.trim().to_string();
     config.input.hotkey_record = normalize_hotkey(&config.input.hotkey_record);
     config.input.hotkey_english = normalize_hotkey(&config.input.hotkey_english);
     config.input.hotkey_japanese = normalize_hotkey(&config.input.hotkey_japanese);
@@ -400,6 +420,13 @@ fn normalize_ptt_mouse_button(value: &str) -> String {
         "x1" | "xbutton1" | "mouse4" | "back" => "X1".into(),
         "x2" | "xbutton2" | "mouse5" | "forward" => "X2".into(),
         _ => default_ptt_mouse_button(),
+    }
+}
+
+fn normalize_translation_engine(value: &str) -> String {
+    match value.trim().to_ascii_lowercase().as_str() {
+        "llm" | "external" | "nllb" | "bergamot" => value.trim().to_ascii_lowercase(),
+        _ => default_translation_engine(),
     }
 }
 
@@ -634,6 +661,12 @@ fn default_smart_timeout() -> u64 {
 fn default_translation_timeout() -> u64 {
     8
 }
+fn default_translation_engine() -> String {
+    "llm".into()
+}
+fn default_external_translation_command() -> String {
+    String::new()
+}
 fn default_theme() -> String {
     "indigo-porcelain-glass".into()
 }
@@ -672,12 +705,16 @@ mod tests {
             "language": "ja",
             "max_record_seconds": 60,
             "smart_correction_enabled": false,
+            "translation_engine": "external",
+            "translation_external_command": "translator.exe --compact",
             "translation_model": "local"
         });
         let cfg = migrate_legacy_config(value);
         assert_eq!(cfg.asr.language, "ja");
         assert_eq!(cfg.asr.max_record_seconds, 60);
         assert!(!cfg.smart.enabled);
+        assert_eq!(cfg.translation.engine, "external");
+        assert_eq!(cfg.translation.external_command, "translator.exe --compact");
         assert_eq!(cfg.translation.model, "local");
         assert_eq!(cfg.input.mode, "floating-overlay");
     }
@@ -799,5 +836,21 @@ mod tests {
         cfg.translation.timeout_seconds = 1;
         normalize_config(&mut cfg);
         assert_eq!(cfg.translation.timeout_seconds, 3);
+    }
+
+    #[test]
+    fn normalizes_translation_engine() {
+        let mut cfg = AppConfig::default();
+        assert_eq!(cfg.translation.engine, "llm");
+
+        cfg.translation.engine = "EXTERNAL".into();
+        cfg.translation.external_command = "  translator.exe --json  ".into();
+        normalize_config(&mut cfg);
+        assert_eq!(cfg.translation.engine, "external");
+        assert_eq!(cfg.translation.external_command, "translator.exe --json");
+
+        cfg.translation.engine = "bad".into();
+        normalize_config(&mut cfg);
+        assert_eq!(cfg.translation.engine, "llm");
     }
 }

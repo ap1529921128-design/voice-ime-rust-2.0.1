@@ -73,9 +73,11 @@ type AppConfig = {
     timeout_seconds: number;
   };
   translation: {
+    engine: string;
     endpoint: string;
     model: string;
     timeout_seconds: number;
+    external_command: string;
   };
   ui: {
     theme: string;
@@ -318,11 +320,25 @@ function settingsView(data: Snapshot) {
       <label>纠错模型
         <input value="${escapeAttr(cfg.smart.model)}" data-config="smart.model" />
       </label>
+      <label>翻译引擎
+        <select data-config="translation.engine">
+          ${option("llm", cfg.translation.engine, "本地 LLM")}
+          ${option("external", cfg.translation.engine, "外部命令")}
+          ${option("nllb", cfg.translation.engine, "NLLB 预留")}
+          ${option("bergamot", cfg.translation.engine, "Bergamot 预留")}
+        </select>
+      </label>
+      <label>翻译端点
+        <input value="${escapeAttr(cfg.translation.endpoint)}" data-config="translation.endpoint" />
+      </label>
       <label>翻译模型
         <input value="${escapeAttr(cfg.translation.model)}" data-config="translation.model" />
       </label>
       <label>翻译超时
         <input type="number" min="3" max="8" value="${cfg.translation.timeout_seconds}" data-config="translation.timeout_seconds" />
+      </label>
+      <label>外部翻译命令
+        <input value="${escapeAttr(cfg.translation.external_command)}" data-config="translation.external_command" />
       </label>
       <div class="model-status">
         ${statusRows

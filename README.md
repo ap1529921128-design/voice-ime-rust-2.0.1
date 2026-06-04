@@ -79,7 +79,9 @@ app/models/
 
 ## 智能纠错和翻译
 
-智能纠错与翻译依赖本地 `llama-server`，默认端点是：
+智能纠错依赖本地 `llama-server`。翻译默认也走本地 LLM，但设置页可以把“翻译引擎”切到 `external`，接入 NLLB、Bergamot 或其他本地机器翻译命令。
+
+默认端点是：
 
 ```text
 http://127.0.0.1:18080/v1/chat/completions
@@ -94,6 +96,20 @@ app/tools/Start-MiniCPM-Translate.ps1
 ```
 
 如果本地服务不可用，语音转写仍可使用；智能纠错会退回到确定性词表修正，翻译会提示服务不可用。
+
+外部翻译命令通过标准输入接收 JSON：
+
+```json
+{"source":"非洲之星和海洋之泪","target_language":"en","target_name":"英语"}
+```
+
+标准输出可以返回纯文本，也可以返回 JSON：
+
+```json
+{"text":"The Star of Africa and the Tear of the Ocean"}
+```
+
+当前内置引擎为 `llm` 和 `external`；`nllb`、`bergamot` 是后续内置适配预留。
 
 ## 热词和规则
 
