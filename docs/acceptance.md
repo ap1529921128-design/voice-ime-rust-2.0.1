@@ -160,6 +160,7 @@
 - Settings / Shortcuts now shows global-hotkey registration status and re-registers after save; manual conflict coverage is still required with real third-party apps.
 - `--benchmark-asr` now provides a repeatable timing CSV harness; real quality scoring still depends on recorded sample audio.
 - Confirm paste now restores previous text clipboard where feasible and logs restore status; manual image/file clipboard preservation is still future work.
+- Cursor positioning now logs `uia-caret` when UI Automation exposes text-range caret rectangles, then falls back to `uia-element`, `gui-thread`, or `fallback`; real overlay placement still needs visual target-machine coverage.
 - Clipboard failure can now fall back to direct Unicode typing for short single-line text; broad app coverage still needs manual acceptance.
 - `npm run ui:smoke` now covers main/settings/history/overlay layout with QA mock data; true OS DPI and WebView screenshots still need manual release checks.
 - Packaged builds now include `app/tools/启动语音输入-诊断.bat`; portable root layout still visibly exposes only the main launcher.

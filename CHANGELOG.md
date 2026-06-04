@@ -35,6 +35,7 @@
 - Added a packaged `app/tools/启动语音输入-诊断.bat` helper while keeping the portable root limited to the single main launcher.
 - Added a packaged `app/tools/Notepad-Input-Acceptance.ps1` smoke test that exercises the same foreground-window paste path as confirm input.
 - Added a packaged `app/tools/Browser-Input-Acceptance.ps1` smoke test for Edge/Chrome text areas using an isolated temporary browser profile.
+- Improved cursor overlay placement by using UI Automation text-range bounding rectangles before falling back to enclosing element bounds or `GetGUIThreadInfo`.
 
 ## 2.0.1 - 2026-05-31
 

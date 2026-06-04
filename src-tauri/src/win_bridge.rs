@@ -2,9 +2,17 @@ use anyhow::{anyhow, Result};
 use arboard::Clipboard;
 use serde::Serialize;
 use std::{path::Path, thread, time::Duration};
-use uiautomation::patterns::UITextPattern;
+use uiautomation::patterns::{UITextPattern, UITextRange};
 use uiautomation::types::Rect as UiRect;
 use uiautomation::UIAutomation;
+use windows::Win32::System::{
+    Com::SAFEARRAY,
+    Ole::{
+        SafeArrayDestroy, SafeArrayGetDim, SafeArrayGetElement, SafeArrayGetLBound,
+        SafeArrayGetUBound, SafeArrayGetVartype,
+    },
+    Variant::VT_R8,
+};
 use windows_sys::Win32::Foundation::{CloseHandle, HWND, POINT, RECT};
 use windows_sys::Win32::Graphics::Gdi::ClientToScreen;
 use windows_sys::Win32::System::Threading::{
@@ -61,7 +69,7 @@ impl InputTarget {
     pub fn capture() -> Self {
         let hwnd = unsafe { GetForegroundWindow() };
         let (rect, caret_source) = match caret_rect_uia() {
-            Some(rect) => (Some(rect), "uia"),
+            Some((rect, source)) => (Some(rect), source),
             None => match caret_rect_gui_thread() {
                 Some(rect) => (Some(rect), "gui-thread"),
                 None => (None, "fallback"),
@@ -254,14 +262,17 @@ pub fn overlay_position_from_rect(rect: Option<OverlayRect>) -> OverlayRect {
     }
 }
 
-fn caret_rect_uia() -> Option<OverlayRect> {
+fn caret_rect_uia() -> Option<(OverlayRect, &'static str)> {
     let automation = UIAutomation::new().ok()?;
     let element = automation.get_focused_element().ok()?;
     let text_pattern: UITextPattern = element.get_pattern().ok()?;
     let (_active, range) = text_pattern.get_caret_range().ok()?;
+    if let Some(rect) = caret_rect_from_text_range(&range) {
+        return Some((rect, "uia-caret"));
+    }
     let enclosing = range.get_enclosing_element().ok()?;
     let rect = enclosing.get_bounding_rectangle().ok()?;
-    valid_ui_rect(rect)
+    valid_ui_rect(rect).map(|rect| (rect, "uia-element"))
 }
 
 fn valid_ui_rect(rect: UiRect) -> Option<OverlayRect> {
@@ -279,6 +290,69 @@ fn valid_ui_rect(rect: UiRect) -> Option<OverlayRect> {
             height: height.min(48),
         })
     }
+}
+
+fn caret_rect_from_text_range(range: &UITextRange) -> Option<OverlayRect> {
+    let values = bounding_rect_values(range)?;
+    caret_rect_from_bounding_values(&values)
+}
+
+fn bounding_rect_values(range: &UITextRange) -> Option<Vec<f64>> {
+    let array = unsafe { range.as_ref().GetBoundingRectangles().ok()? };
+    if array.is_null() {
+        return None;
+    }
+    let values = unsafe { safe_array_f64_values(array) };
+    unsafe {
+        let _ = SafeArrayDestroy(array);
+    }
+    values
+}
+
+unsafe fn safe_array_f64_values(array: *mut SAFEARRAY) -> Option<Vec<f64>> {
+    if SafeArrayGetDim(array) != 1 || SafeArrayGetVartype(array).ok()? != VT_R8 {
+        return None;
+    }
+    let lower = SafeArrayGetLBound(array, 1).ok()?;
+    let upper = SafeArrayGetUBound(array, 1).ok()?;
+    if upper < lower {
+        return None;
+    }
+    let mut values = Vec::with_capacity((upper - lower + 1) as usize);
+    for index in lower..=upper {
+        let indices = [index];
+        let mut value = 0.0_f64;
+        SafeArrayGetElement(
+            array,
+            indices.as_ptr(),
+            (&mut value as *mut f64).cast::<std::ffi::c_void>(),
+        )
+        .ok()?;
+        values.push(value);
+    }
+    Some(values)
+}
+
+fn caret_rect_from_bounding_values(values: &[f64]) -> Option<OverlayRect> {
+    values
+        .chunks_exact(4)
+        .filter_map(|chunk| valid_uia_caret_rect(chunk[0], chunk[1], chunk[2], chunk[3]))
+        .min_by_key(|rect| i64::from(rect.width) * i64::from(rect.height))
+}
+
+fn valid_uia_caret_rect(left: f64, top: f64, width: f64, height: f64) -> Option<OverlayRect> {
+    if !left.is_finite() || !top.is_finite() || !width.is_finite() || !height.is_finite() {
+        return None;
+    }
+    if left <= -32_000.0 || top <= -32_000.0 || height <= 1.0 {
+        return None;
+    }
+    Some(OverlayRect {
+        x: left.round() as i32,
+        y: top.round() as i32,
+        width: (width.round() as i32).clamp(2, 48),
+        height: (height.round() as i32).clamp(18, 64),
+    })
 }
 
 fn caret_rect_gui_thread() -> Option<OverlayRect> {
@@ -427,5 +501,32 @@ mod tests {
         assert!(!can_direct_type("第一行\n第二行"));
         assert!(!can_direct_type(&"长".repeat(161)));
         assert!(!can_direct_type("   "));
+    }
+
+    #[test]
+    fn uia_caret_rect_accepts_zero_width_insertion_point() {
+        let rect = caret_rect_from_bounding_values(&[100.2, 200.4, 0.0, 17.6]).unwrap();
+        assert_eq!(rect.x, 100);
+        assert_eq!(rect.y, 200);
+        assert_eq!(rect.width, 2);
+        assert_eq!(rect.height, 18);
+    }
+
+    #[test]
+    fn uia_caret_rect_chooses_smallest_valid_rect() {
+        let rect =
+            caret_rect_from_bounding_values(&[10.0, 20.0, 300.0, 80.0, 120.0, 240.0, 0.0, 22.0])
+                .unwrap();
+        assert_eq!(rect.x, 120);
+        assert_eq!(rect.y, 240);
+        assert_eq!(rect.width, 2);
+        assert_eq!(rect.height, 22);
+    }
+
+    #[test]
+    fn uia_caret_rect_rejects_offscreen_or_empty_values() {
+        assert!(caret_rect_from_bounding_values(&[]).is_none());
+        assert!(caret_rect_from_bounding_values(&[-40_000.0, 10.0, 2.0, 18.0]).is_none());
+        assert!(caret_rect_from_bounding_values(&[10.0, 10.0, 2.0, 0.5]).is_none());
     }
 }

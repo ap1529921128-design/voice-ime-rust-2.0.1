@@ -37,6 +37,12 @@ tempfile = "3"
 thiserror = "2"
 uiautomation = { version = "0.25.0", default-features = false, features = ["input", "pattern", "control"] }
 uuid = { version = "1", features = ["v4", "serde"] }
+windows = { version = "0.62.2", features = [
+  "Win32_System_Com",
+  "Win32_System_Ole",
+  "Win32_System_Variant",
+  "Win32_UI_Accessibility"
+] }
 windows-sys = { version = "0.59", features = [
   "Win32_Foundation",
   "Win32_Graphics_Gdi",
