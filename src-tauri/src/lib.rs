@@ -2,6 +2,7 @@ mod asr;
 mod audio;
 mod config;
 mod core;
+mod doctor;
 mod history;
 mod llm;
 mod ptt;
@@ -148,6 +149,17 @@ fn open_logs_dir(app: AppHandle, state: State<'_, AppState>) -> Result<(), Strin
 }
 
 #[tauri::command]
+fn run_doctor(app: AppHandle, state: State<'_, AppState>) -> Result<UiSnapshot, String> {
+    let snapshot = state.snapshot();
+    let report = doctor::run(&state.paths, &snapshot.config).map_err(to_string)?;
+    Ok(state.set_runtime_notice(
+        &app,
+        "诊断完成",
+        format!("{}；报告：{}", report.summary, report.output_path),
+    ))
+}
+
+#[tauri::command]
 fn open_hotwords_file(app: AppHandle, state: State<'_, AppState>) -> Result<(), String> {
     ensure_text_file(&state.paths.hotwords_path, "# hot.txt\n").map_err(to_string)?;
     app.opener()
@@ -208,6 +220,7 @@ pub fn run() {
             open_model_mirror_page,
             open_models_dir,
             open_logs_dir,
+            run_doctor,
             open_hotwords_file,
             open_hot_rules_file,
             hide_overlay,
@@ -217,6 +230,16 @@ pub fn run() {
 }
 
 pub fn run_cli_worker_if_requested() -> bool {
+    let is_doctor = std::env::args_os()
+        .nth(1)
+        .is_some_and(|arg| arg == std::ffi::OsStr::new("--doctor"));
+    if is_doctor {
+        if let Err(err) = doctor::run_cli() {
+            eprintln!("{err:?}");
+            std::process::exit(2);
+        }
+        return true;
+    }
     asr::run_worker_cli_if_requested()
 }
 

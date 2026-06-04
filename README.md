@@ -103,6 +103,14 @@ app/tools/Start-MiniCPM-Translate.ps1
 
 每次点击“确认输入”后，会在 `app/.voice_ime/logs/input-target-YYYYMMDD.log` 追加一行目标窗口日志，包含进程名、窗口类名、标题、光标来源、粘贴结果和粘贴延迟。设置页的“日志”按钮可以直接打开日志目录。
 
+## 本地诊断
+
+设置页的“诊断”按钮会生成 `app/.voice_ime/logs/doctor-YYYYMMDD-HHMMSS.txt`，检查应用目录、日志写入、麦克风、剪贴板、ASR 模型、本地 LLM 端点和用户词表文件。也可以运行：
+
+```powershell
+app\VoiceIME.exe --doctor
+```
+
 ## 设置建议
 
 - 普通电脑：ASR 档位选 `balanced`。
