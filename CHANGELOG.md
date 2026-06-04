@@ -28,6 +28,7 @@
 - Added native model file and profile-directory pickers in Settings / Models for external or removable model packs.
 - Added visible global-hotkey registration status in Settings / Shortcuts and Doctor, and re-register hotkeys immediately after saving settings.
 - Added a CLI ASR benchmark harness that scans wav samples and writes timing, realtime factor, model, transcript, expected text, and errors to CSV.
+- Added a model-pack packaging script that creates standalone `voice-ime-model-pack-*.zip` archives from the manifest and an existing models directory.
 
 ## 2.0.1 - 2026-05-31
 

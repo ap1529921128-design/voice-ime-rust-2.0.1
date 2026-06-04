@@ -89,6 +89,14 @@
 4. The CSV includes file, duration, profile, worker mode, backend, model, transcribe seconds, realtime factor, expected text, transcript text, and error.
 5. If the sample directory is missing or empty, the command still writes a CSV row with `no wav samples found`.
 
+## Model Pack Script
+
+1. Prepare a models directory containing the required files for one profile from `packaging/model-manifest.json`.
+2. Run `packaging/package-model-pack.ps1 -Profile <profile> -SourceModelsDir <models-dir> -OutputRoot <out-dir>`.
+3. A `voice-ime-model-pack-<id>.zip` file is created.
+4. The zip contains `app/models/...`, `app/models/MODELS.json`, and `MODEL_PACK.txt`.
+5. Missing required files fail the script before a model pack is produced.
+
 ## Current 2.0.1 Test Boundary
 
 - Automated regression covers Rust unit tests, Rust compile, clippy, frontend build, release build, and portable packaging.
