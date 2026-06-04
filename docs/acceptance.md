@@ -29,9 +29,17 @@
 ## Long Transcript
 
 1. Record longer than `long_transcript_seconds`.
-2. Audio is copied to `.voice_ime/recordings`.
+2. If Settings / Data / long recording retention is enabled, audio is copied to `.voice_ime/recordings`.
 3. Status shows segmented long transcription progress.
 4. Clear cancels the current session and stale results cannot overwrite the next session.
+
+## Retention
+
+1. Open Settings / Data.
+2. `短录音留存` is shown as disabled and `永不保存`.
+3. Set `长录音留存` to `不保存`, save settings, and complete a long transcription.
+4. The long transcription still produces text, but no new long-recording file is kept.
+5. Click `清理录音`; existing audio files directly under `.voice_ime/recordings` are removed.
 
 ## Package
 
@@ -61,3 +69,4 @@
 - Settings shows download progress/failure in an in-panel notice, not only in the title status chip.
 - Settings / Voice now exposes microphone selection and the main input view shows a pre-recording input meter; real multi-device manual coverage is still required on the target machines.
 - History CSV export is automated and unit-tested for escaping; real spreadsheet review still depends on manual sample data from target machines.
+- Long recording retention can be disabled and existing long recordings can be cleared from Settings / Data; short recordings remain non-retained by design.

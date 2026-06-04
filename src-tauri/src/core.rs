@@ -476,7 +476,9 @@ impl WorkerState {
         let app_state = self.app_state();
         if recording.duration_seconds >= config.asr.long_transcript_seconds as f32 {
             app_state.set_long_status(app, session_id, "长文转录中：0/0".into());
-            self.save_long_recording(&recording)?;
+            if config.asr.save_long_recordings {
+                self.save_long_recording(&recording)?;
+            }
             let chunks = asr::split_samples(
                 &recording.samples,
                 recording.sample_rate,

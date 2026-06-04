@@ -450,6 +450,13 @@ select {
   background: rgba(255, 255, 255, 0.62);
 }
 
+input:disabled,
+select:disabled {
+  cursor: default;
+  color: #5f6d78;
+  background: rgba(255, 255, 255, 0.38);
+}
+
 .model-status {
   display: grid;
   grid-column: 1 / -1;

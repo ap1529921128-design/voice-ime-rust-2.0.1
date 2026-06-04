@@ -46,6 +46,7 @@ type AppConfig = {
     max_record_seconds: number;
     long_transcript_seconds: number;
     long_transcript_chunk_seconds: number;
+    save_long_recordings: boolean;
     num_threads: number;
     models: {
       sense_voice_model: string;
@@ -557,11 +558,23 @@ function dataSettingsPanel(cfg: AppConfig) {
       <label>历史上限
         <input type="number" min="0" max="500" value="${cfg.history_limit}" data-config="history_limit" />
       </label>
+      <label>长录音留存
+        <select data-config="asr.save_long_recordings">
+          ${option("true", String(cfg.asr.save_long_recordings), "保存")}
+          ${option("false", String(cfg.asr.save_long_recordings), "不保存")}
+        </select>
+      </label>
+      <label>短录音留存
+        <select disabled>
+          <option>永不保存</option>
+        </select>
+      </label>
       <div class="settings-tools">
         <button class="tool-btn" data-action="open-logs-dir">${icon("FileText", "打开日志")}<span>日志</span></button>
         <button class="tool-btn" data-action="run-doctor">${icon("Stethoscope", "运行诊断")}<span>诊断</span></button>
         <button class="tool-btn" data-action="export-diagnostics">${icon("Archive", "导出诊断")}<span>导出</span></button>
         <button class="tool-btn" data-action="export-history-csv">${icon("Download", "导出历史")}<span>历史 CSV</span></button>
+        <button class="tool-btn danger" data-action="clear-recordings">${icon("Trash2", "清理录音")}<span>清理录音</span></button>
         <button class="tool-btn" data-action="open-hotwords">${icon("BookOpen", "打开热词")}<span>热词</span></button>
         <button class="tool-btn" data-action="open-hot-rules">${icon("ListChecks", "打开规则")}<span>规则</span></button>
         <button class="tool-btn danger" data-action="clear-history">${icon("Eraser", "清空历史")}<span>清空历史</span></button>
@@ -709,6 +722,7 @@ function wireCommon() {
       if (action === "translate-zh") await run("translate_text", { targetLanguage: "zh" });
       if (action === "hide") await run("hide_overlay");
       if (action === "clear-history") await run("clear_history");
+      if (action === "clear-recordings") await run("clear_recordings");
       if (action === "reset-history-filters") resetHistoryFilters();
       if (action === "save-config") await saveConfig();
       if (action === "refresh-audio-devices") await refreshAudioDevices(true);

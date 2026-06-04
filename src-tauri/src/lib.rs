@@ -7,6 +7,7 @@ mod history;
 mod itn;
 mod llm;
 mod ptt;
+mod retention;
 mod support_bundle;
 mod text;
 mod translation;
@@ -96,6 +97,17 @@ fn save_config(
 #[tauri::command]
 fn clear_history(app: AppHandle, state: State<'_, AppState>) -> Result<UiSnapshot, String> {
     state.clear_history(&app).map_err(to_string)
+}
+
+#[tauri::command]
+fn clear_recordings(app: AppHandle, state: State<'_, AppState>) -> Result<UiSnapshot, String> {
+    let removed =
+        retention::clear_recording_files(&state.paths.recordings_dir).map_err(to_string)?;
+    Ok(state.set_runtime_notice(
+        &app,
+        "录音已清理",
+        format!("已删除 {} 个长录音文件", removed),
+    ))
 }
 
 #[tauri::command]
@@ -321,6 +333,7 @@ pub fn run() {
             translate_text,
             save_config,
             clear_history,
+            clear_recordings,
             audio_devices,
             audio_level,
             asr_status,

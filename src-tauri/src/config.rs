@@ -44,6 +44,8 @@ pub struct AsrConfig {
     pub long_transcript_seconds: u32,
     #[serde(default = "default_long_chunk_seconds")]
     pub long_transcript_chunk_seconds: u32,
+    #[serde(default = "default_save_long_recordings")]
+    pub save_long_recordings: bool,
     #[serde(default = "default_num_threads")]
     pub num_threads: i32,
     #[serde(default)]
@@ -190,6 +192,7 @@ impl Default for AsrConfig {
             max_record_seconds: default_max_record_seconds(),
             long_transcript_seconds: default_long_transcript_seconds(),
             long_transcript_chunk_seconds: default_long_chunk_seconds(),
+            save_long_recordings: default_save_long_recordings(),
             num_threads: default_num_threads(),
             models: AsrModels::default(),
         }
@@ -338,6 +341,9 @@ fn migrate_legacy_config(value: Value) -> AppConfig {
     }
     if let Some(chunk) = get_u64("long_transcript_chunk_seconds") {
         config.asr.long_transcript_chunk_seconds = chunk as u32;
+    }
+    if let Some(save_long) = get_bool("save_long_recordings") {
+        config.asr.save_long_recordings = save_long;
     }
     if let Some(delay) = get_u64("paste_delay_ms") {
         config.input.paste_delay_ms = delay;
@@ -595,6 +601,9 @@ fn default_long_transcript_seconds() -> u32 {
 fn default_long_chunk_seconds() -> u32 {
     10
 }
+fn default_save_long_recordings() -> bool {
+    true
+}
 fn default_num_threads() -> i32 {
     2
 }
@@ -729,7 +738,8 @@ mod tests {
             "smart_correction_enabled": false,
             "translation_engine": "external",
             "translation_external_command": "translator.exe --compact",
-            "translation_model": "local"
+            "translation_model": "local",
+            "save_long_recordings": false
         });
         let cfg = migrate_legacy_config(value);
         assert_eq!(cfg.asr.language, "ja");
@@ -738,6 +748,7 @@ mod tests {
         assert_eq!(cfg.translation.engine, "external");
         assert_eq!(cfg.translation.external_command, "translator.exe --compact");
         assert_eq!(cfg.translation.model, "local");
+        assert!(!cfg.asr.save_long_recordings);
         assert_eq!(cfg.input.mode, "floating-overlay");
     }
 
