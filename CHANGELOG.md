@@ -26,6 +26,7 @@
 - Added portable packaging release gates for root layout, forbidden runtime folders, core-model cleanliness, required app files, and a generated `BUILD.txt` build stamp.
 - Added an inline Settings / Data diagnostics panel showing pass, warning, and failure rows while still writing a shareable doctor report file.
 - Added native model file and profile-directory pickers in Settings / Models for external or removable model packs.
+- Added visible global-hotkey registration status in Settings / Shortcuts and Doctor, and re-register hotkeys immediately after saving settings.
 
 ## 2.0.1 - 2026-05-31
 

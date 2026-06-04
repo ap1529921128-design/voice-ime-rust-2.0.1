@@ -151,6 +151,14 @@ type DoctorReport = {
   checks: DoctorCheck[];
 };
 
+type HotkeyCheck = {
+  name: string;
+  shortcut: string;
+  normalized: string;
+  status: "pass" | "warn" | "fail";
+  detail: string;
+};
+
 type ModelProfile = "fast" | "balanced" | "fallback";
 
 const app = document.querySelector<HTMLDivElement>("#app")!;
@@ -165,6 +173,7 @@ let audioLevelError = "";
 let audioProbeTimer: number | undefined;
 let audioProbeInFlight = false;
 let doctorReport: DoctorReport | null = null;
+let hotkeyRows: HotkeyCheck[] = [];
 let activeView: "compose" | "settings" | "history" = "compose";
 let activeSettingsTab: "voice" | "models" | "smart" | "shortcuts" | "data" = "voice";
 let historyQuery = "";
@@ -474,6 +483,44 @@ function shortcutSettingsPanel(cfg: AppConfig) {
           ${option("false", String(cfg.input.ptt_suppress), "关闭")}
         </select>
       </label>
+      ${hotkeyStatusPanel()}
+    </div>
+  `;
+}
+
+function hotkeyStatusPanel() {
+  if (hotkeyRows.length === 0) {
+    return `
+      <div class="hotkey-panel empty-diagnostics">
+        <div class="doctor-head">
+          <strong>热键状态</strong>
+          <span>等待注册</span>
+        </div>
+      </div>
+    `;
+  }
+  return `
+    <div class="hotkey-panel">
+      <div class="doctor-head">
+        <strong>热键状态</strong>
+        <span>${hotkeyRows.filter((row) => row.status === "pass").length}/${hotkeyRows.length} 可用</span>
+      </div>
+      <div class="doctor-list">
+        ${hotkeyRows.map((row) => hotkeyRow(row)).join("")}
+      </div>
+    </div>
+  `;
+}
+
+function hotkeyRow(row: HotkeyCheck) {
+  const statusIcon = row.status === "pass" ? "CheckCircle2" : row.status === "warn" ? "TriangleAlert" : "CircleX";
+  const label = row.status === "pass" ? "通过" : row.status === "warn" ? "提醒" : "失败";
+  const detail = `${row.normalized || row.shortcut} · ${row.detail}`;
+  return `
+    <div class="doctor-row ${row.status}">
+      ${icon(statusIcon as IconName, label)}
+      <strong>${escapeHtml(row.name)}</strong>
+      <span title="${escapeAttr(detail)}">${escapeHtml(detail)}</span>
     </div>
   `;
 }
@@ -837,6 +884,7 @@ function wireMain() {
       activeView = tab.dataset.view as typeof activeView;
       if (activeView === "settings") {
         statusRows = await invoke<AsrModelStatus[]>("asr_status");
+        await refreshHotkeyStatus();
       }
       render();
     });
@@ -845,6 +893,7 @@ function wireMain() {
     tab.addEventListener("click", async () => {
       activeSettingsTab = tab.dataset.settingsTab as typeof activeSettingsTab;
       if (activeSettingsTab === "voice") await refreshAudioDevices(false);
+      if (activeSettingsTab === "shortcuts") await refreshHotkeyStatus();
       render();
     });
   });
@@ -915,13 +964,18 @@ function collectConfigDraft() {
 async function saveConfigDraft(next: AppConfig) {
   await run("save_config", { config: next });
   if (activeView === "settings") {
-    await refreshModelStatus();
+    if (activeSettingsTab === "models") await refreshModelStatus();
+    if (activeSettingsTab === "shortcuts") await refreshHotkeyStatus();
     render();
   }
 }
 
 async function refreshModelStatus() {
   statusRows = await invoke<AsrModelStatus[]>("asr_status");
+}
+
+async function refreshHotkeyStatus() {
+  hotkeyRows = await invoke<HotkeyCheck[]>("hotkey_status");
 }
 
 async function pickModelFile(configPath: string) {

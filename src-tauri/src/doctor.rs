@@ -275,7 +275,7 @@ fn write_report(
     Ok(output_path)
 }
 
-fn summarize(checks: &[DoctorCheck]) -> String {
+pub(crate) fn summarize(checks: &[DoctorCheck]) -> String {
     let failed = checks
         .iter()
         .filter(|check| check.status == DoctorStatus::Fail)

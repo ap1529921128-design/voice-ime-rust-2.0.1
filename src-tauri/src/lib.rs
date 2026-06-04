@@ -18,10 +18,32 @@ mod window_shape;
 use crate::config::{AppConfig, Paths};
 use crate::core::{AppState, SessionState, UiSnapshot};
 use anyhow::Result;
-use std::{fs, time::Duration};
+use once_cell::sync::Lazy;
+use serde::Serialize;
+use std::{collections::HashSet, fs, time::Duration};
 use tauri::{AppHandle, Manager, State};
 use tauri_plugin_global_shortcut::{GlobalShortcutExt, ShortcutState};
 use tauri_plugin_opener::OpenerExt;
+
+static HOTKEY_STATUS: Lazy<parking_lot::Mutex<Vec<HotkeyCheck>>> =
+    Lazy::new(|| parking_lot::Mutex::new(Vec::new()));
+
+#[derive(Debug, Clone, Serialize)]
+struct HotkeyCheck {
+    name: String,
+    shortcut: String,
+    normalized: String,
+    status: HotkeyCheckStatus,
+    detail: String,
+}
+
+#[derive(Debug, Clone, Copy, Serialize, PartialEq, Eq)]
+#[serde(rename_all = "lowercase")]
+enum HotkeyCheckStatus {
+    Pass,
+    Warn,
+    Fail,
+}
 
 #[tauri::command]
 fn get_snapshot(state: State<'_, AppState>) -> UiSnapshot {
@@ -91,6 +113,10 @@ fn save_config(
 ) -> Result<UiSnapshot, String> {
     let snapshot = state.save_config(&app, config).map_err(to_string)?;
     ptt::update_config(&snapshot.config);
+    if let Err(err) = app.global_shortcut().unregister_all() {
+        state.set_runtime_notice(&app, "热键刷新失败", err.to_string());
+    }
+    register_hotkeys(&app, &state);
     Ok(snapshot)
 }
 
@@ -229,13 +255,19 @@ fn doctor_report(
     state: State<'_, AppState>,
 ) -> Result<doctor::DoctorReport, String> {
     let snapshot = state.snapshot();
-    let report = doctor::run(&state.paths, &snapshot.config).map_err(to_string)?;
+    let mut report = doctor::run(&state.paths, &snapshot.config).map_err(to_string)?;
+    append_hotkey_checks(&mut report);
     state.set_runtime_notice(
         &app,
         "诊断完成",
         format!("{}；报告：{}", report.summary, report.output_path),
     );
     Ok(report)
+}
+
+#[tauri::command]
+fn hotkey_status() -> Vec<HotkeyCheck> {
+    HOTKEY_STATUS.lock().clone()
 }
 
 #[tauri::command]
@@ -361,6 +393,7 @@ pub fn run() {
             open_logs_dir,
             run_doctor,
             doctor_report,
+            hotkey_status,
             export_diagnostics,
             export_history_csv,
             open_hotwords_file,
@@ -428,20 +461,76 @@ fn schedule_idle_asr_prewarm(app: AppHandle, paths: Paths, config: AppConfig) {
 fn register_hotkeys(app: &AppHandle, state: &State<'_, AppState>) {
     let config = state.snapshot().config;
     let shortcuts = [
-        (config.input.hotkey_record, HotkeyAction::ToggleRecording),
-        (config.input.hotkey_language, HotkeyAction::CycleLanguage),
-        (config.input.hotkey_english, HotkeyAction::TranslateEnglish),
         (
+            "录音",
+            config.input.hotkey_record,
+            HotkeyAction::ToggleRecording,
+        ),
+        (
+            "语言切换",
+            config.input.hotkey_language,
+            HotkeyAction::CycleLanguage,
+        ),
+        (
+            "转英文",
+            config.input.hotkey_english,
+            HotkeyAction::TranslateEnglish,
+        ),
+        (
+            "转日文",
             config.input.hotkey_japanese,
             HotkeyAction::TranslateJapanese,
         ),
     ];
     let mut failed = Vec::new();
-    for (shortcut, action) in shortcuts {
-        if let Err(err) = register_hotkey(app, &shortcut, action) {
-            failed.push(format!("{shortcut}: {err}"));
+    let mut checks = Vec::new();
+    let mut seen = HashSet::new();
+    for (name, shortcut, action) in shortcuts {
+        let normalized = normalize_shortcut(&shortcut);
+        if normalized.trim().is_empty() || normalized.eq_ignore_ascii_case("off") {
+            checks.push(HotkeyCheck {
+                name: name.into(),
+                shortcut,
+                normalized,
+                status: HotkeyCheckStatus::Warn,
+                detail: "已关闭".into(),
+            });
+            continue;
+        }
+        let dedupe_key = normalized.to_ascii_lowercase();
+        if !seen.insert(dedupe_key) {
+            let detail = "和其他动作重复".to_string();
+            failed.push(format!("{name} {normalized}: {detail}"));
+            checks.push(HotkeyCheck {
+                name: name.into(),
+                shortcut,
+                normalized,
+                status: HotkeyCheckStatus::Fail,
+                detail,
+            });
+            continue;
+        }
+        match register_hotkey(app, &normalized, action) {
+            Ok(()) => checks.push(HotkeyCheck {
+                name: name.into(),
+                shortcut,
+                normalized,
+                status: HotkeyCheckStatus::Pass,
+                detail: "已注册".into(),
+            }),
+            Err(err) => {
+                failed.push(format!("{name} {normalized}: {err}"));
+                checks.push(HotkeyCheck {
+                    name: name.into(),
+                    shortcut,
+                    normalized,
+                    status: HotkeyCheckStatus::Fail,
+                    detail: err,
+                });
+            }
         }
     }
+    *HOTKEY_STATUS.lock() = checks;
     if !failed.is_empty() {
         state.set_runtime_notice(
             app,
@@ -449,6 +538,22 @@ fn register_hotkeys(app: &AppHandle, state: &State<'_, AppState>) {
             format!("GUI 已启动；请先用窗口按钮。{}", failed.join("；")),
         );
     }
+}
+
+fn append_hotkey_checks(report: &mut doctor::DoctorReport) {
+    let checks = hotkey_status();
+    report
+        .checks
+        .extend(checks.into_iter().map(|check| doctor::DoctorCheck {
+            name: format!("热键 {}", check.name),
+            status: match check.status {
+                HotkeyCheckStatus::Pass => doctor::DoctorStatus::Pass,
+                HotkeyCheckStatus::Warn => doctor::DoctorStatus::Warn,
+                HotkeyCheckStatus::Fail => doctor::DoctorStatus::Fail,
+            },
+            detail: format!("{}；{}", check.normalized, check.detail),
+        }));
+    report.summary = doctor::summarize(&report.checks);
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -459,10 +564,13 @@ enum HotkeyAction {
     TranslateJapanese,
 }
 
-fn register_hotkey(app: &AppHandle, shortcut: &str, action: HotkeyAction) -> Result<(), String> {
-    let normalized = normalize_shortcut(shortcut);
+fn register_hotkey(
+    app: &AppHandle,
+    normalized_shortcut: &str,
+    action: HotkeyAction,
+) -> Result<(), String> {
     app.global_shortcut()
-        .on_shortcut(normalized.as_str(), move |app, shortcut, event| {
+        .on_shortcut(normalized_shortcut, move |app, shortcut, event| {
             if event.state != ShortcutState::Released {
                 return;
             }

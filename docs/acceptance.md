@@ -73,6 +73,14 @@
 4. Each individual model path has a file-picker icon that updates only that config field.
 5. After selecting a directory or file, the config is saved and the ready/missing rows refresh.
 
+## Hotkey Status
+
+1. Open Settings / Shortcuts.
+2. The page shows a hotkey status panel with one row for recording, language switching, English translation, and Japanese translation.
+3. Duplicated shortcuts or shortcuts already taken by another app show as failure rows instead of preventing GUI startup.
+4. Change a shortcut and click save; the app re-registers global hotkeys immediately without restart.
+5. Running Settings / Data / `诊断` includes the hotkey rows in the diagnostics panel.
+
 ## Current 2.0.1 Test Boundary
 
 - Automated regression covers Rust unit tests, Rust compile, clippy, frontend build, release build, and portable packaging.
@@ -91,3 +99,4 @@
 - Portable packaging now includes an automated layout/release gate and `BUILD.txt`; manual smoke is still useful after packaging because it proves WebView startup on this machine.
 - Settings / Data now shows an inline diagnostics panel after running Doctor; one-click repair actions are still future work.
 - Settings / Models now has native file and directory pickers; real removable-drive acceptance should still be tested on target machines.
+- Settings / Shortcuts now shows global-hotkey registration status and re-registers after save; manual conflict coverage is still required with real third-party apps.

@@ -430,7 +430,8 @@ p {
   background: rgba(255, 255, 255, 0.46);
 }
 
-.doctor-panel {
+.doctor-panel,
+.hotkey-panel {
   display: grid;
   grid-column: 1 / -1;
   gap: 10px;
