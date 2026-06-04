@@ -39,6 +39,14 @@
 2. Runtime `.voice_ime` data is not included in the release.
 3. Hidden `app` folder contains `VoiceIME.exe`, README, acceptance notes, 2.0.1 roadmap, optional local model/runtime folders, and bundled Tauri frontend resources inside the exe.
 
+## History Export
+
+1. Complete at least one transcription so History has a row.
+2. Open History and click `导出 CSV`.
+3. A `history-export-YYYYMMDD-HHMMSS.csv` file appears under `.voice_ime/logs`.
+4. The CSV includes final text, raw ASR, deterministic stages, LLM text, backend, model, session id, and timing columns.
+5. Text that starts with spreadsheet formula trigger characters is exported safely for table tools.
+
 ## Current 2.0.1 Test Boundary
 
 - Automated regression covers Rust unit tests, Rust compile, clippy, frontend build, release build, and portable packaging.
@@ -52,3 +60,4 @@
 - Each missing model row in Settings has clickable download, mirror page, official page, and model-folder actions. The downloader tries `hf-mirror.com` first, then `huggingface.co`.
 - Settings shows download progress/failure in an in-panel notice, not only in the title status chip.
 - Settings / Voice now exposes microphone selection and the main input view shows a pre-recording input meter; real multi-device manual coverage is still required on the target machines.
+- History CSV export is automated and unit-tested for escaping; real spreadsheet review still depends on manual sample data from target machines.

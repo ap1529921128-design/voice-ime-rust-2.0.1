@@ -229,6 +229,31 @@ fn export_diagnostics(app: AppHandle, state: State<'_, AppState>) -> Result<UiSn
 }
 
 #[tauri::command]
+fn export_history_csv(app: AppHandle, state: State<'_, AppState>) -> Result<UiSnapshot, String> {
+    fs::create_dir_all(&state.paths.logs_dir).map_err(to_string)?;
+    let snapshot = state.snapshot();
+    let output_path = state.paths.logs_dir.join(format!(
+        "history-export-{}.csv",
+        chrono::Local::now().format("%Y%m%d-%H%M%S")
+    ));
+    history::export_csv_file(&output_path, &snapshot.history).map_err(to_string)?;
+    if let Some(parent) = output_path.parent() {
+        let _ = app
+            .opener()
+            .open_path(parent.to_string_lossy().to_string(), None::<&str>);
+    }
+    Ok(state.set_runtime_notice(
+        &app,
+        "历史已导出",
+        format!(
+            "{} 条 / {}",
+            snapshot.history.len(),
+            output_path.to_string_lossy()
+        ),
+    ))
+}
+
+#[tauri::command]
 fn open_hotwords_file(app: AppHandle, state: State<'_, AppState>) -> Result<(), String> {
     ensure_text_file(&state.paths.hotwords_path, "# hot.txt\n").map_err(to_string)?;
     app.opener()
@@ -307,6 +332,7 @@ pub fn run() {
             open_logs_dir,
             run_doctor,
             export_diagnostics,
+            export_history_csv,
             open_hotwords_file,
             open_hot_rules_file,
             hide_overlay,

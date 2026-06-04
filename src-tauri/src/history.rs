@@ -3,6 +3,27 @@ use chrono::Local;
 use serde::{Deserialize, Serialize};
 use std::{fs, path::Path};
 
+const CSV_HEADERS: [&str; 18] = [
+    "session_id",
+    "created_at",
+    "text",
+    "raw_text",
+    "normalized_text",
+    "dictionary_text",
+    "hotword_text",
+    "rule_text",
+    "itn_text",
+    "llm_text",
+    "punctuation_policy",
+    "duration_seconds",
+    "transcribe_seconds",
+    "deterministic_seconds",
+    "llm_seconds",
+    "total_seconds",
+    "backend",
+    "model",
+];
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct TranscriptRecord {
     #[serde(default)]
@@ -84,6 +105,64 @@ impl TranscriptRecord {
         self.llm_seconds = llm_seconds;
         self.total_seconds = total_seconds;
     }
+}
+
+pub fn export_csv_file(path: &Path, records: &[TranscriptRecord]) -> Result<()> {
+    if let Some(parent) = path.parent() {
+        fs::create_dir_all(parent)?;
+    }
+    let mut body = String::from('\u{feff}');
+    body.push_str(&records_to_csv(records));
+    fs::write(path, body)?;
+    Ok(())
+}
+
+fn records_to_csv(records: &[TranscriptRecord]) -> String {
+    let mut output = String::new();
+    output.push_str(&CSV_HEADERS.join(","));
+    output.push('\n');
+    for record in records {
+        let row = [
+            record.session_id.to_string(),
+            record.created_at.clone(),
+            record.text.clone(),
+            record.raw_text.clone(),
+            record.normalized_text.clone(),
+            record.dictionary_text.clone(),
+            record.hotword_text.clone(),
+            record.rule_text.clone(),
+            record.itn_text.clone(),
+            record.llm_text.clone(),
+            record.punctuation_policy.clone(),
+            format!("{:.3}", record.duration_seconds),
+            format!("{:.3}", record.transcribe_seconds),
+            format!("{:.3}", record.deterministic_seconds),
+            format!("{:.3}", record.llm_seconds),
+            format!("{:.3}", record.total_seconds),
+            record.backend.clone(),
+            record.model.clone(),
+        ];
+        output.push_str(
+            &row.iter()
+                .map(|value| csv_cell(value))
+                .collect::<Vec<_>>()
+                .join(","),
+        );
+        output.push('\n');
+    }
+    output
+}
+
+fn csv_cell(value: &str) -> String {
+    let mut value = value.replace("\r\n", "\n").replace('\r', "\n");
+    if value
+        .chars()
+        .next()
+        .is_some_and(|ch| matches!(ch, '=' | '+' | '-' | '@' | '\t'))
+    {
+        value.insert(0, '\'');
+    }
+    format!("\"{}\"", value.replace('"', "\"\""))
 }
 
 #[derive(Debug, Clone)]
@@ -196,5 +275,35 @@ mod tests {
         assert_eq!(store.records[0].llm_text, "最终");
         assert_eq!(store.records[0].llm_seconds, 0.2);
         assert_eq!(store.records[0].total_seconds, 0.8);
+    }
+
+    #[test]
+    fn exports_full_trace_csv_with_safe_cells() {
+        let record = TranscriptRecord {
+            session_id: 7,
+            text: "=cmd".into(),
+            raw_text: "hello, \"world\"".into(),
+            normalized_text: "line\r\nnext".into(),
+            dictionary_text: String::new(),
+            hotword_text: String::new(),
+            rule_text: String::new(),
+            itn_text: String::new(),
+            llm_text: String::new(),
+            punctuation_policy: "default".into(),
+            created_at: "2026-06-05 12:00:00".into(),
+            duration_seconds: 1.23456,
+            transcribe_seconds: 0.5,
+            deterministic_seconds: 0.01,
+            llm_seconds: 0.2,
+            total_seconds: 0.71,
+            backend: "sherpa".into(),
+            model: "balanced".into(),
+        };
+        let csv = records_to_csv(&[record]);
+        assert!(csv.starts_with("session_id,created_at,text,raw_text"));
+        assert!(csv.contains("\"'=cmd\""));
+        assert!(csv.contains("\"hello, \"\"world\"\"\""));
+        assert!(csv.contains("\"line\nnext\""));
+        assert!(csv.contains("\"1.235\""));
     }
 }

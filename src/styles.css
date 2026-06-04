@@ -546,6 +546,12 @@ select {
   font-size: 12px;
 }
 
+.history-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+
 .history-item {
   display: grid;
   gap: 8px;

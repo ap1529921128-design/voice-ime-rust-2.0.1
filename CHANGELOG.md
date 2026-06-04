@@ -21,6 +21,7 @@
 - Added history filters for text/stage content, backend, model, and date so trace records can be located quickly during accuracy and latency debugging.
 - Added a real backend `Cancelling` state and worker-update token checks so clear/re-record actions ignore stale ASR, correction, translation, and error results.
 - Added persisted microphone selection and a pre-recording peak/rms input meter in the main input view and Settings / Voice, with audio-device probing serialized against real recording startup.
+- Added one-click history CSV export from History and Settings / Data, including raw ASR, deterministic stages, LLM text, model/backend, session id, and timing columns.
 
 ## 2.0.1 - 2026-05-31
 
