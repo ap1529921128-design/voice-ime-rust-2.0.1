@@ -322,6 +322,11 @@ function qaLlmServiceStatus() {
     script_exists: true,
     model_path: "D:/voice-ime/app/models/minicpm5-1b-q4.gguf",
     model_exists: true,
+    model_bytes: 688065920,
+    model_size_ok: true,
+    model_size_detail: "656.2 MB，大小正常",
+    model_checksum_ok: null,
+    model_checksum_detail: "未提供 .sha256 sidecar",
     server_path: "D:/voice-ime/app/llama.cpp/cpu/llama-server.exe",
     server_exists: true,
   };

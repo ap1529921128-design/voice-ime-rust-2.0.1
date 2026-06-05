@@ -3,8 +3,11 @@ use anyhow::{anyhow, Result};
 use reqwest::blocking::Client;
 use serde::Serialize;
 use serde_json::{json, Value};
+use sha2::{Digest, Sha256};
 use std::{
-    path::PathBuf,
+    fs::File,
+    io::Read,
+    path::{Path, PathBuf},
     process::{Command, Stdio},
     sync::{Mutex, OnceLock},
     time::{Duration, Instant},
@@ -14,6 +17,7 @@ use std::{
 use std::os::windows::process::CommandExt;
 
 static LAST_SERVICE_START: OnceLock<Mutex<Option<Instant>>> = OnceLock::new();
+const MINICPM_MIN_BYTES: u64 = 512 * 1024 * 1024;
 
 #[derive(Debug, Clone, Serialize)]
 pub struct LocalServiceStatus {
@@ -28,6 +32,11 @@ pub struct LocalServiceStatus {
     pub script_exists: bool,
     pub model_path: String,
     pub model_exists: bool,
+    pub model_bytes: Option<u64>,
+    pub model_size_ok: bool,
+    pub model_size_detail: String,
+    pub model_checksum_ok: Option<bool>,
+    pub model_checksum_detail: String,
     pub server_path: String,
     pub server_exists: bool,
 }
@@ -48,6 +57,8 @@ pub fn local_service_status(
     let model = local_model_path(paths, config);
     let server = local_server_path(paths);
     let process = llama_server_process_status();
+    let model_size = model_size_status(&model);
+    let model_checksum = model_checksum_status(&model);
     LocalServiceStatus {
         endpoint: endpoint.to_string(),
         models_url: models_url.clone(),
@@ -60,6 +71,11 @@ pub fn local_service_status(
         script_path: script.to_string_lossy().to_string(),
         model_exists: model.exists(),
         model_path: model.to_string_lossy().to_string(),
+        model_bytes: model_size.bytes,
+        model_size_ok: model_size.ok,
+        model_size_detail: model_size.detail,
+        model_checksum_ok: model_checksum.ok,
+        model_checksum_detail: model_checksum.detail,
         server_exists: server.exists(),
         server_path: server.to_string_lossy().to_string(),
     }
@@ -357,6 +373,107 @@ fn local_model_path(paths: &Paths, config: &AppConfig) -> PathBuf {
     config::resolve_model_path(config, paths, "models/minicpm5-1b-q4.gguf")
 }
 
+struct ModelSizeStatus {
+    bytes: Option<u64>,
+    ok: bool,
+    detail: String,
+}
+
+struct ModelChecksumStatus {
+    ok: Option<bool>,
+    detail: String,
+}
+
+fn model_size_status(path: &Path) -> ModelSizeStatus {
+    match path.metadata() {
+        Ok(metadata) => {
+            let bytes = metadata.len();
+            let ok = bytes >= MINICPM_MIN_BYTES;
+            ModelSizeStatus {
+                bytes: Some(bytes),
+                ok,
+                detail: if ok {
+                    format!("{}，大小正常", human_bytes(bytes))
+                } else {
+                    format!("{}，小于 512 MB，可能是不完整文件", human_bytes(bytes))
+                },
+            }
+        }
+        Err(_) => ModelSizeStatus {
+            bytes: None,
+            ok: false,
+            detail: "模型文件不存在".into(),
+        },
+    }
+}
+
+fn model_checksum_status(path: &Path) -> ModelChecksumStatus {
+    if !path.exists() {
+        return ModelChecksumStatus {
+            ok: None,
+            detail: "模型不存在，未校验 sha256".into(),
+        };
+    }
+    let sidecar = path.with_extension("gguf.sha256");
+    if !sidecar.exists() {
+        return ModelChecksumStatus {
+            ok: None,
+            detail: "未提供 .sha256 sidecar".into(),
+        };
+    }
+    let expected = match std::fs::read_to_string(&sidecar)
+        .ok()
+        .and_then(|body| first_sha256_hex(&body))
+    {
+        Some(hash) => hash,
+        None => {
+            return ModelChecksumStatus {
+                ok: Some(false),
+                detail: format!("sha256 sidecar 格式无效：{}", sidecar.to_string_lossy()),
+            };
+        }
+    };
+    match sha256_file(path) {
+        Ok(actual) if actual.eq_ignore_ascii_case(&expected) => ModelChecksumStatus {
+            ok: Some(true),
+            detail: "sha256 匹配".into(),
+        },
+        Ok(actual) => ModelChecksumStatus {
+            ok: Some(false),
+            detail: format!("sha256 不匹配：expected {expected} actual {actual}"),
+        },
+        Err(err) => ModelChecksumStatus {
+            ok: Some(false),
+            detail: format!("sha256 读取失败：{err}"),
+        },
+    }
+}
+
+fn first_sha256_hex(body: &str) -> Option<String> {
+    body.split_whitespace()
+        .find(|part| part.len() == 64 && part.chars().all(|ch| ch.is_ascii_hexdigit()))
+        .map(str::to_string)
+}
+
+fn sha256_file(path: &Path) -> Result<String> {
+    let mut file = File::open(path)?;
+    let mut hasher = Sha256::new();
+    let mut buffer = [0_u8; 64 * 1024];
+    loop {
+        let read = file.read(&mut buffer)?;
+        if read == 0 {
+            break;
+        }
+        hasher.update(&buffer[..read]);
+    }
+    Ok(format!("{:x}", hasher.finalize()))
+}
+
+fn human_bytes(bytes: u64) -> String {
+    let mib = bytes as f64 / 1024.0 / 1024.0;
+    format!("{mib:.1} MB")
+}
+
 fn local_server_path(paths: &Paths) -> PathBuf {
     [
         paths
@@ -562,6 +679,42 @@ mod tests {
 
         assert!(status.model_exists);
         assert_eq!(status.model_path, model.to_string_lossy().to_string());
+    }
+
+    #[test]
+    fn model_size_status_warns_for_tiny_files() {
+        let temp = tempfile::tempdir().unwrap();
+        let path = temp.path().join("minicpm5-1b-q4.gguf");
+        std::fs::write(&path, b"tiny").unwrap();
+
+        let status = model_size_status(&path);
+
+        assert_eq!(status.bytes, Some(4));
+        assert!(!status.ok);
+        assert!(status.detail.contains("小于 512 MB"));
+    }
+
+    #[test]
+    fn model_checksum_status_uses_optional_sidecar() {
+        let temp = tempfile::tempdir().unwrap();
+        let path = temp.path().join("minicpm5-1b-q4.gguf");
+        std::fs::write(&path, b"abc").unwrap();
+
+        let no_sidecar = model_checksum_status(&path);
+        assert_eq!(no_sidecar.ok, None);
+
+        std::fs::write(
+            path.with_extension("gguf.sha256"),
+            "ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad  minicpm5-1b-q4.gguf",
+        )
+        .unwrap();
+        let matched = model_checksum_status(&path);
+        assert_eq!(matched.ok, Some(true));
+
+        std::fs::write(path.with_extension("gguf.sha256"), "0".repeat(64)).unwrap();
+        let mismatched = model_checksum_status(&path);
+        assert_eq!(mismatched.ok, Some(false));
+        assert!(mismatched.detail.contains("不匹配"));
     }
 
     #[test]

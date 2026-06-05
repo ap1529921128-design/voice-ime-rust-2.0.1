@@ -178,6 +178,11 @@ type LlmServiceStatus = {
   script_exists: boolean;
   model_path: string;
   model_exists: boolean;
+  model_bytes: number | null;
+  model_size_ok: boolean;
+  model_size_detail: string;
+  model_checksum_ok: boolean | null;
+  model_checksum_detail: string;
   server_path: string;
   server_exists: boolean;
 };
@@ -752,6 +757,16 @@ function llmServicePanel() {
       name: "模型",
       status: llmServiceStatus.model_exists ? "pass" : "warn",
       detail: llmServiceStatus.model_path,
+    },
+    {
+      name: "模型大小",
+      status: llmServiceStatus.model_size_ok ? "pass" : "warn",
+      detail: llmServiceStatus.model_size_detail,
+    },
+    {
+      name: "sha256",
+      status: llmServiceStatus.model_checksum_ok === false ? "warn" : "pass",
+      detail: llmServiceStatus.model_checksum_detail,
     },
     {
       name: "服务端",

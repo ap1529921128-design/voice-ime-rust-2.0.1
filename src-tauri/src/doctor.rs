@@ -328,6 +328,10 @@ fn check_llm_artifacts(paths: &Paths, config: &AppConfig, checks: &mut Vec<Docto
     let missing = [
         (!status.script_exists).then(|| format!("script={}", status.script_path)),
         (!status.model_exists).then(|| format!("model={}", status.model_path)),
+        (status.model_exists && !status.model_size_ok)
+            .then(|| format!("model_size={}", status.model_size_detail)),
+        (status.model_checksum_ok == Some(false))
+            .then(|| format!("model_sha256={}", status.model_checksum_detail)),
         (!status.server_exists).then(|| format!("server={}", status.server_path)),
     ]
     .into_iter()
@@ -342,7 +346,10 @@ fn check_llm_artifacts(paths: &Paths, config: &AppConfig, checks: &mut Vec<Docto
             DoctorStatus::Warn
         },
         if missing.is_empty() {
-            "启动脚本、MiniCPM 模型、llama-server 均存在".to_string()
+            format!(
+                "启动脚本、MiniCPM 模型、llama-server 均存在；{}；{}",
+                status.model_size_detail, status.model_checksum_detail
+            )
         } else {
             missing.join("; ")
         },
