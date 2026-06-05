@@ -10,6 +10,8 @@ use zip::{write::FileOptions, ZipWriter};
 pub fn export(paths: &Paths, config: &AppConfig) -> Result<PathBuf> {
     paths.ensure()?;
     fs::create_dir_all(&paths.logs_dir)?;
+    let models_json_source = first_existing_model_manifest(paths, config, "MODELS.json");
+    let models_md_source = first_existing_model_manifest(paths, config, "MODELS.md");
     let output_path = paths.logs_dir.join(format!(
         "voice-ime-support-{}.zip",
         chrono::Local::now().format("%Y%m%d-%H%M%S")
@@ -23,7 +25,12 @@ pub fn export(paths: &Paths, config: &AppConfig) -> Result<PathBuf> {
     add_text(
         &mut zip,
         "summary.txt",
-        &support_summary(paths, config),
+        &support_summary(
+            paths,
+            config,
+            models_json_source.as_deref(),
+            models_md_source.as_deref(),
+        ),
         options,
     )?;
     add_optional_file(&mut zip, &paths.config_path, "config/config.json", options)?;
@@ -47,25 +54,24 @@ pub fn export(paths: &Paths, config: &AppConfig) -> Result<PathBuf> {
         "data/hot-rule.txt",
         options,
     )?;
-    let model_root = config::effective_model_root(config, paths);
-    add_optional_file(
+    add_optional_file_from_candidates(
         &mut zip,
-        &model_root.join("MODELS.json"),
+        &models_json_source,
         "models/MODELS.json",
         options,
     )?;
-    add_optional_file(
-        &mut zip,
-        &model_root.join("MODELS.md"),
-        "models/MODELS.md",
-        options,
-    )?;
+    add_optional_file_from_candidates(&mut zip, &models_md_source, "models/MODELS.md", options)?;
     add_log_files(&mut zip, &paths.logs_dir, options)?;
     zip.finish().context("写入诊断导出包")?;
     Ok(output_path)
 }
 
-fn support_summary(paths: &Paths, config: &AppConfig) -> String {
+fn support_summary(
+    paths: &Paths,
+    config: &AppConfig,
+    models_json_source: Option<&Path>,
+    models_md_source: Option<&Path>,
+) -> String {
     [
         "Voice IME Support Bundle".to_string(),
         format!(
@@ -77,6 +83,22 @@ fn support_summary(paths: &Paths, config: &AppConfig) -> String {
         format!(
             "Models: {}",
             config::effective_model_root(config, paths).to_string_lossy()
+        ),
+        format!(
+            "Model root source: {}",
+            config::effective_model_root_source(config, paths)
+        ),
+        format!(
+            "Model manifest JSON: {}",
+            models_json_source
+                .map(|path| path.to_string_lossy().to_string())
+                .unwrap_or_else(|| "missing".into())
+        ),
+        format!(
+            "Model manifest Markdown: {}",
+            models_md_source
+                .map(|path| path.to_string_lossy().to_string())
+                .unwrap_or_else(|| "missing".into())
         ),
         format!(
             "ASR: profile={} worker={} threads={}",
@@ -98,6 +120,23 @@ fn support_summary(paths: &Paths, config: &AppConfig) -> String {
         "Excluded: recordings and model binary files.".to_string(),
     ]
     .join("\n")
+}
+
+fn first_existing_model_manifest(
+    paths: &Paths,
+    config: &AppConfig,
+    file_name: &str,
+) -> Option<PathBuf> {
+    let model_root = config::effective_model_root(config, paths);
+    let effective = model_root.join(file_name);
+    if effective.is_file() {
+        return Some(effective);
+    }
+    let packaged = paths.model_dir.join(file_name);
+    if packaged != effective && packaged.is_file() {
+        return Some(packaged);
+    }
+    None
 }
 
 fn add_log_files(zip: &mut ZipWriter<File>, logs_dir: &Path, options: FileOptions) -> Result<()> {
@@ -137,6 +176,18 @@ fn add_optional_file(
     Ok(())
 }
 
+fn add_optional_file_from_candidates(
+    zip: &mut ZipWriter<File>,
+    path: &Option<PathBuf>,
+    archive_name: &str,
+    options: FileOptions,
+) -> Result<()> {
+    let Some(path) = path.as_deref() else {
+        return Ok(());
+    };
+    add_optional_file(zip, path, archive_name, options)
+}
+
 fn add_text(
     zip: &mut ZipWriter<File>,
     archive_name: &str,
@@ -158,6 +209,7 @@ fn normalize_archive_name(name: &str) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::io::Read;
 
     fn test_paths(root: &Path) -> Paths {
         let app_dir = root.join(".voice_ime");
@@ -201,6 +253,44 @@ mod tests {
         assert!(names.contains(&"models/MODELS.json".to_string()));
         assert!(!names.iter().any(|name| name.contains("recordings")));
         assert!(!names.iter().any(|name| name.ends_with(".zip")));
+    }
+
+    #[test]
+    fn support_bundle_falls_back_to_packaged_model_manifest() {
+        let temp = tempfile::tempdir().unwrap();
+        let paths = test_paths(temp.path());
+        paths.ensure().unwrap();
+        fs::create_dir_all(temp.path().join("models")).unwrap();
+        fs::write(
+            temp.path().join("models").join("MODELS.json"),
+            "{\"packaged\":true}",
+        )
+        .unwrap();
+        fs::write(temp.path().join("models").join("MODELS.md"), "# Packaged").unwrap();
+        let external = temp.path().join("external-models");
+        fs::create_dir_all(&external).unwrap();
+        let mut config = AppConfig::default();
+        config.asr.model_root = external.to_string_lossy().to_string();
+
+        let output = export(&paths, &config).unwrap();
+        let file = File::open(output).unwrap();
+        let mut archive = zip::ZipArchive::new(file).unwrap();
+        let mut models_json = String::new();
+        archive
+            .by_name("models/MODELS.json")
+            .unwrap()
+            .read_to_string(&mut models_json)
+            .unwrap();
+        assert_eq!(models_json, "{\"packaged\":true}");
+        let mut summary = String::new();
+        archive
+            .by_name("summary.txt")
+            .unwrap()
+            .read_to_string(&mut summary)
+            .unwrap();
+        assert!(summary.contains("Model root source: asr.model_root"));
+        assert!(summary.contains("Model manifest JSON:"));
+        assert!(summary.contains("models\\MODELS.json") || summary.contains("models/MODELS.json"));
     }
 
     #[test]

@@ -90,6 +90,7 @@
 3. The rows cover app/log paths, microphone, clipboard, ASR models, smart-correction endpoint, local LLM files, translation backend, prompt, correction table, hotwords, and hot rules.
 4. A `doctor-YYYYMMDD-HHMMSS.txt` report path is shown in the panel and the file exists under `.voice_ime/logs`.
 5. Clicking `导出` still creates the support zip and includes the latest doctor output without including recordings or model binaries.
+6. If the effective external model root has no `MODELS.json/md`, the support zip falls back to the packaged model manifest and records the model root source and manifest source paths in `summary.txt`.
 6. `app/tools/启动语音输入-诊断.bat` exists in packaged builds and runs `VoiceIME.exe --doctor` without adding another visible root launcher.
 
 ## Conservative Repair
@@ -275,7 +276,7 @@
 - History CSV export is automated and unit-tested for escaping; real spreadsheet review still depends on manual sample data from target machines.
 - Long recording retention can be disabled and existing long recordings can be cleared from Settings / Data; short recordings remain non-retained by design.
 - Portable packaging now includes an automated layout/release gate and `BUILD.txt`; manual smoke is still useful after packaging because it proves WebView startup on this machine.
-- Settings / Data now shows an inline diagnostics panel after running Doctor; one-click repair actions are still future work.
+- Settings / Data now shows an inline diagnostics panel after running Doctor; support export records the effective model root source and falls back to packaged model manifests when an external model root lacks `MODELS.json/md`; one-click repair actions are still future work.
 - Settings / Models now has native file and directory pickers; real removable-drive acceptance should still be tested on target machines.
 - Settings / Shortcuts now shows global-hotkey registration status and re-registers after save; manual conflict coverage is still required with real third-party apps.
 - `--benchmark-asr` and Settings / Data / `ASR 基准` now provide a repeatable timing and CER/accuracy CSV harness; real quality still depends on recorded sample audio from target machines.

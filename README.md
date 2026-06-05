@@ -193,7 +193,7 @@ Notepad 脚本会自动打开记事本、粘贴一段测试文本、读回内容
 Translation 脚本使用包内 `Mock-External-Translate.ps1` 临时切到 `external` 翻译引擎，跑 3 条中日英 benchmark 样例，验证 stdin JSON、stdout JSON、语言匹配、hint 命中和错误列，不依赖真实 NLLB/Bergamot/MiniCPM 服务。
 Model Pack Import 脚本会复制一份 core 包到临时目录，调用 `VoiceIME.exe --install-model-pack` 导入 fallback 小模型包，并按 `MODEL_PACK.json` 校验导入后的文件大小和 SHA-256，不污染正式 core 包。
 
-设置页“数据 / 导出”会先运行诊断，再生成 `app/.voice_ime/logs/voice-ime-support-YYYYMMDD-HHMMSS.zip`。导出包包含配置、历史、个人提示词、纠错表、热词/规则、日志和模型说明，不包含录音文件和模型二进制。“历史 CSV”只导出表格格式的历史记录。
+设置页“数据 / 导出”会先运行诊断，再生成 `app/.voice_ime/logs/voice-ime-support-YYYYMMDD-HHMMSS.zip`。导出包包含配置、历史、个人提示词、纠错表、热词/规则、日志、模型根目录来源和模型说明；如果外置模型根目录缺少 `MODELS.json/md`，会回退到主体包自带清单。不包含录音文件和模型二进制。“历史 CSV”只导出表格格式的历史记录。
 “数据”页还能控制长录音是否留存，并一键清理 `app/.voice_ime/recordings` 下的长录音文件。短录音只用于当次转写，默认不留存。
 
 ## 托盘
