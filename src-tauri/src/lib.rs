@@ -14,6 +14,7 @@ mod retention;
 mod support_bundle;
 mod text;
 mod translation;
+mod translation_benchmark;
 mod tray;
 mod win_bridge;
 mod window_shape;
@@ -426,6 +427,48 @@ fn run_asr_benchmark(
 }
 
 #[tauri::command]
+fn run_translation_benchmark(
+    app: AppHandle,
+    state: State<'_, AppState>,
+    samples_path: String,
+) -> UiSnapshot {
+    let samples = samples_path.trim().to_string();
+    let label = if samples.is_empty() {
+        "内置样例".to_string()
+    } else {
+        samples.clone()
+    };
+    let snapshot = state.set_runtime_notice(&app, "翻译基准中", format!("样本：{label}"));
+    let config = snapshot.config.clone();
+    let paths = state.paths.clone();
+    let app_handle = app.clone();
+    std::thread::spawn(move || {
+        let sample_path = (!samples.trim().is_empty()).then(|| PathBuf::from(samples));
+        let result =
+            translation_benchmark::run_translation(sample_path.as_deref(), &paths, &config);
+        let Some(state) = app_handle.try_state::<AppState>() else {
+            return;
+        };
+        match result {
+            Ok(report) => {
+                state.set_runtime_notice(
+                    &app_handle,
+                    "翻译基准完成",
+                    format!(
+                        "{} 个样例，{} 个错误；{}",
+                        report.sample_count, report.error_count, report.output_path
+                    ),
+                );
+            }
+            Err(err) => {
+                state.set_runtime_notice(&app_handle, "翻译基准失败", err.to_string());
+            }
+        }
+    });
+    snapshot
+}
+
+#[tauri::command]
 fn open_hotwords_file(app: AppHandle, state: State<'_, AppState>) -> Result<(), String> {
     ensure_text_file(&state.paths.hotwords_path, "# hot.txt\n").map_err(to_string)?;
     app.opener()
@@ -514,6 +557,7 @@ pub fn run() {
             llm_service_status,
             start_llm_service,
             run_asr_benchmark,
+            run_translation_benchmark,
             open_hotwords_file,
             open_hot_rules_file,
             hide_overlay,
@@ -540,6 +584,14 @@ pub fn run_cli_worker_if_requested() -> bool {
             .map(std::path::PathBuf::from)
             .unwrap_or_else(|| std::path::PathBuf::from("benchmarks/asr"));
         if let Err(err) = benchmark::run_asr_cli(samples_dir) {
+            eprintln!("{err:?}");
+            std::process::exit(2);
+        }
+        return true;
+    }
+    if first == std::ffi::OsStr::new("--benchmark-translation") {
+        let samples_path = args.next().map(std::path::PathBuf::from);
+        if let Err(err) = translation_benchmark::run_translation_cli(samples_path) {
             eprintln!("{err:?}");
             std::process::exit(2);
         }

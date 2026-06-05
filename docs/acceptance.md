@@ -123,6 +123,15 @@
 4. The CSV includes file, duration, profile, worker mode, backend, model, transcribe seconds, realtime factor, expected text, transcript text, expected character count, edit distance, CER, accuracy, and error.
 5. If the sample directory is missing or empty, the command still writes a CSV row with `no wav samples found`.
 
+## Translation Benchmark
+
+1. Run `app\VoiceIME.exe --benchmark-translation` from a portable package, or open Settings / Data and click `翻译基准`.
+2. A `translation-benchmark-YYYYMMDD-HHMMSS.csv` file appears under `.voice_ime/logs`.
+3. The built-in samples cover `zh`, `en`, and `ja` targets, including translation-label cleanup cases.
+4. Custom TSV/CSV samples can be passed as `app\VoiceIME.exe --benchmark-translation <samples-file>`.
+5. The CSV includes target language, engine, model, timeout, elapsed seconds, language match, optional hint match, source, output, and error.
+6. Backend failures and prompt-like explanatory output are recorded as error rows instead of closing the GUI.
+
 ## Model Pack Script
 
 1. Prepare a models directory containing the required files for one profile from `packaging/model-manifest.json`.
@@ -219,6 +228,7 @@
 - Settings / Models now has native file and directory pickers; real removable-drive acceptance should still be tested on target machines.
 - Settings / Shortcuts now shows global-hotkey registration status and re-registers after save; manual conflict coverage is still required with real third-party apps.
 - `--benchmark-asr` and Settings / Data / `ASR 基准` now provide a repeatable timing and CER/accuracy CSV harness; real quality still depends on recorded sample audio from target machines.
+- `--benchmark-translation` and Settings / Data / `翻译基准` now provide a repeatable CSV harness for translation latency, backend errors, target-language hints, and prompt-like chatter filtering.
 - Confirm paste now restores previous text clipboard where feasible and logs restore status; manual image/file clipboard preservation is still future work.
 - Cursor positioning now logs `uia-caret` when UI Automation exposes text-range caret rectangles, then falls back to `uia-element`, guarded `uia-focused`, `gui-thread`, or `fallback`; real overlay placement still needs visual target-machine coverage.
 - Clipboard failure can now fall back to direct Unicode typing for short single-line text; broad app coverage still needs manual acceptance.

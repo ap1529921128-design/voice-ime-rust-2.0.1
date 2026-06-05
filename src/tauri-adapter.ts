@@ -57,6 +57,13 @@ function qaInvoke(command: string, args?: Record<string, unknown>) {
       meta: String(args?.samplesDir || "QA samples"),
     };
   }
+  if (command === "run_translation_benchmark") {
+    return {
+      ...qaSnapshot,
+      status: "翻译基准中",
+      meta: String(args?.samplesPath || "QA built-in samples"),
+    };
+  }
   if (command === "set_text") {
     const text = String(args?.text || "");
     qaSnapshot = { ...qaSnapshot, text, word_count: Array.from(text).length };

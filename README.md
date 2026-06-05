@@ -146,6 +146,16 @@ app\VoiceIME.exe --benchmark-asr D:\voice-ime-benchmarks\asr
 
 也可以在“设置 / 数据”点击“ASR 基准”，选择同样的样本目录后后台生成 CSV。
 
+## 翻译基准
+
+运行内置中日英短句样例：
+
+```powershell
+app\VoiceIME.exe --benchmark-translation
+```
+
+结果会写到 `app/.voice_ime/logs/translation-benchmark-YYYYMMDD-HHMMSS.csv`，包含目标语言、翻译引擎、模型、耗时、输出、错误、语言匹配和可选提示词命中。也可以在“设置 / 数据”点击“翻译基准”后台生成同样的 CSV。自定义样本格式见 [docs/translation-benchmark.md](docs/translation-benchmark.md)。
+
 ## 按应用输入画像
 
 内置了微信、飞书/Lark、Word、Chrome/Edge、VS Code 和 JetBrains 的输入 profile。当前版本只自动应用更稳妥的粘贴延迟，并把命中的 profile 写入输入目标日志；不会自动发送 Enter。
@@ -250,6 +260,7 @@ powershell -NoProfile -ExecutionPolicy Bypass -File .\packaging\Test-PortableRel
 2.0.1 的验收、风险和 100 项优化 backlog 见 [docs/2.0.1-roadmap.md](docs/2.0.1-roadmap.md)。
 CapsWriter-Offline v2.6 的对照落地计划见 [docs/capswriter-adaptation-plan.md](docs/capswriter-adaptation-plan.md)。
 模型与主体分离策略见 [docs/model-pack-strategy.md](docs/model-pack-strategy.md)。维护者可以用 `packaging/package-model-pack.ps1` 从现有模型目录生成单独的 `voice-ime-model-pack-*.zip`，或用 `packaging/package-available-model-packs.ps1` 一次生成当前机器已有的全部非 planned 模型包和发布清单。
+翻译基准见 [docs/translation-benchmark.md](docs/translation-benchmark.md)。
 热词和规则词表见 [docs/hotwords.md](docs/hotwords.md)。
 
 英文说明保留在 [README.en.md](README.en.md)。

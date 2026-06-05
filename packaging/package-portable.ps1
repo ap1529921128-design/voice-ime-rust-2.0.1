@@ -234,6 +234,7 @@ function Copy-PortableBody {
         "acceptance.md",
         "2.0.1-roadmap.md",
         "model-pack-strategy.md",
+        "translation-benchmark.md",
         "hotwords.md"
     )) {
         $source = Join-Path $AppRoot $item
@@ -325,6 +326,7 @@ Copy-Item -LiteralPath (Join-Path $Root "README.md") -Destination $AppRoot
 Copy-Item -LiteralPath (Join-Path $Root "docs\acceptance.md") -Destination $AppRoot
 Copy-Item -LiteralPath (Join-Path $Root "docs\2.0.1-roadmap.md") -Destination $AppRoot
 Copy-Item -LiteralPath (Join-Path $Root "docs\model-pack-strategy.md") -Destination $AppRoot
+Copy-Item -LiteralPath (Join-Path $Root "docs\translation-benchmark.md") -Destination $AppRoot
 Copy-Item -LiteralPath (Join-Path $Root "docs\hotwords.md") -Destination $AppRoot
 if (Test-Path -LiteralPath (Join-Path $Root "CHANGELOG.md")) {
     Copy-Item -LiteralPath (Join-Path $Root "CHANGELOG.md") -Destination $AppRoot

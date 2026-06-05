@@ -75,6 +75,16 @@ try {
       ],
     });
     await runScenario(browser, {
+      name: "main-settings-data-125",
+      path: "/?qa=main",
+      viewport: { width: 900, height: 640 },
+      deviceScaleFactor: 1.25,
+      actions: [
+        ["click", "[data-view='settings']"],
+        ["click", "[data-settings-tab='data']"],
+      ],
+    });
+    await runScenario(browser, {
       name: "main-history-125",
       path: "/?qa=main",
       viewport: { width: 820, height: 580 },
