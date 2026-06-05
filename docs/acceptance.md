@@ -131,6 +131,15 @@
 4. The zip contains `app/models/...`, `app/models/MODELS.json`, `MODEL_PACK.txt`, and `MODEL_PACK.json`.
 5. Missing required files fail the script before a model pack is produced.
 
+## Model Pack Batch Script
+
+1. Prepare a full portable package or another models directory containing available model files.
+2. Run `powershell -NoProfile -ExecutionPolicy Bypass -File .\packaging\package-available-model-packs.ps1`.
+3. The script generates every non-`planned` pack whose required files exist, and skips missing packs with explicit missing-file paths.
+4. Each generated zip is reopened to verify root `MODEL_PACK.json`; the batch manifest records zip bytes, zip SHA-256, target dir, source dir, and metadata file count.
+5. `voice-ime-model-packs-<version>.json` and `.md` are written to the output root.
+6. Passing `-FailOnMissing` makes any missing requested pack fail the batch after writing the manifest.
+
 ## Model Pack Import
 
 1. Open Settings / Models and click `导入包`.

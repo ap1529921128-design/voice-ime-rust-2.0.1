@@ -80,3 +80,18 @@ powershell -NoProfile -ExecutionPolicy Bypass -File .\packaging\package-model-pa
 ```
 
 生成的 zip 根目录包含 `app/models/...`、`MODEL_PACK.txt` 和 `MODEL_PACK.json`。`MODEL_PACK.json` 记录包内文件的大小与 SHA-256；Settings / Models 里的 `导入包` 会先校验这些条目，再写入 `app/models` 对应目录，并拒绝绝对路径、盘符路径和 `..` 路径。旧的无 metadata 模型包仍可导入，但不会显示校验数量。
+
+从当前机器已有模型批量生成所有非 `planned` 包：
+
+```powershell
+powershell -NoProfile -ExecutionPolicy Bypass -File .\packaging\package-available-model-packs.ps1
+```
+
+该脚本会调用单包脚本生成可用的 `voice-ime-model-pack-*.zip`，跳过缺文件的包，并额外写出：
+
+```text
+voice-ime-model-packs-2.0.1.json
+voice-ime-model-packs-2.0.1.md
+```
+
+批量清单记录每个 zip 的大小、SHA-256、源目录、目标目录和 `MODEL_PACK.json` 文件数。需要严格发布时加 `-FailOnMissing`，这样任何请求的模型包缺文件都会让命令失败。
