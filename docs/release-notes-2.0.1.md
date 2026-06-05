@@ -40,6 +40,8 @@ Settings / Data now shows hotword and hot-rule stats, including hotword entries,
 
 Settings / Data also includes `词表试算`. Paste or type a sentence, click `试算`, and the app shows normalization, built-in corrections, hotword aliases, regex rules, ITN, and final cleanup with per-stage change and hit counts.
 
+Settings / Shortcuts now gives clearer guidance when a shortcut is duplicated, unavailable, or not recognized. Doctor includes the same suggestion text so hotkey failures are actionable instead of only reporting a raw registration error.
+
 ## Verification
 
 The release gate passed on the build machine for:

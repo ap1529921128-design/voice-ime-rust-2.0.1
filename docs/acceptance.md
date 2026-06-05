@@ -133,9 +133,10 @@
 1. Open Settings / Shortcuts.
 2. The page shows a hotkey status panel with one row for recording, language switching, English translation, and Japanese translation.
 3. Click a keyboard capture button, press a shortcut combination, and verify the matching input field is filled.
-4. Duplicated shortcuts or shortcuts already taken by another app show as failure rows instead of preventing GUI startup.
-5. Change a shortcut and click save; the app re-registers global hotkeys immediately without restart.
-6. Running Settings / Data / `诊断` includes the hotkey rows in the diagnostics panel.
+4. Duplicated shortcuts show which action they conflict with and suggest using another unused combination.
+5. Shortcuts already taken by another app or not recognized by the hotkey library show failure rows with a short recovery suggestion instead of preventing GUI startup.
+6. Change a shortcut and click save; the app re-registers global hotkeys immediately without restart.
+7. Running Settings / Data / `诊断` includes the hotkey rows and the same suggestion text in the diagnostics panel.
 
 ## Push To Talk
 
@@ -295,7 +296,7 @@
 - Settings / Data now shows an inline diagnostics panel after running Doctor; support export records the effective model root source and falls back to packaged model manifests when an external model root lacks `MODELS.json/md`; repair can also copy packaged model manifests into the effective model root without overwriting or copying model binaries.
 - Settings / Data now includes `词表试算`, which previews a sentence through normalization, built-in corrections, hotwords, hot rules, ITN, and final cleanup with per-stage change and match rows.
 - Settings / Models now has native file and directory pickers; real removable-drive acceptance should still be tested on target machines.
-- Settings / Shortcuts now shows global-hotkey registration status and re-registers after save; manual conflict coverage is still required with real third-party apps.
+- Settings / Shortcuts now shows global-hotkey registration status, duplicate/invalid/taken-key suggestions, and re-registers after save; manual conflict coverage is still required with real third-party apps.
 - `--benchmark-asr` and Settings / Data / `ASR 基准` now provide a repeatable timing and CER/accuracy CSV harness; real quality still depends on recorded sample audio from target machines.
 - `--benchmark-translation` and Settings / Data / `翻译基准` now provide a repeatable CSV harness for translation latency, backend errors, target-language hints, and prompt-like chatter filtering.
 - Confirm paste now restores previous text clipboard where feasible, retries focus recovery before Ctrl+V, logs previous clipboard format/status, and exposes a short "pasted" UI state; manual image/file clipboard preservation is still future work.

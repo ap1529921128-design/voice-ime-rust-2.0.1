@@ -351,10 +351,24 @@ function qaAudioLevel() {
 
 function qaHotkeys() {
   return [
-    { name: "录音", shortcut: "Alt+R", normalized: "Alt+R", status: "pass", detail: "已注册" },
-    { name: "语言切换", shortcut: "Alt+Space", normalized: "Alt+Space", status: "pass", detail: "已注册" },
-    { name: "转英文", shortcut: "Alt+E", normalized: "Alt+E", status: "pass", detail: "已注册" },
-    { name: "转日文", shortcut: "Alt+J", normalized: "Alt+J", status: "warn", detail: "QA 冲突样例" },
+    { name: "录音", shortcut: "Alt+R", normalized: "Alt+R", status: "pass", detail: "已注册", suggestion: "" },
+    {
+      name: "语言切换",
+      shortcut: "Alt+Space",
+      normalized: "Alt+Space",
+      status: "fail",
+      detail: "可能被系统或其他软件占用：QA mock",
+      suggestion: "先用窗口按钮继续；换成 Ctrl+Alt+字母，或关闭占用该组合的软件后保存",
+    },
+    { name: "转英文", shortcut: "Alt+E", normalized: "Alt+E", status: "pass", detail: "已注册", suggestion: "" },
+    {
+      name: "转日文",
+      shortcut: "off",
+      normalized: "off",
+      status: "warn",
+      detail: "已关闭",
+      suggestion: "需要 转日文 时，点键盘按钮录入一个新组合后保存",
+    },
   ];
 }
 

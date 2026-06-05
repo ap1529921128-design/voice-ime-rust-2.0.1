@@ -508,6 +508,30 @@ p {
   font-size: 12px;
 }
 
+.hotkey-row {
+  align-items: start;
+}
+
+.hotkey-row span {
+  display: grid;
+  gap: 2px;
+  white-space: normal;
+  overflow-wrap: anywhere;
+}
+
+.hotkey-row span b {
+  min-width: 0;
+  color: #5f6d78;
+  font-weight: 650;
+}
+
+.hotkey-row span small {
+  min-width: 0;
+  color: #6f7d88;
+  font-size: 11px;
+  line-height: 1.35;
+}
+
 .doctor-row.pass svg {
   color: #2e6b4f;
 }

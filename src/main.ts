@@ -232,6 +232,7 @@ type HotkeyCheck = {
   normalized: string;
   status: "pass" | "warn" | "fail";
   detail: string;
+  suggestion?: string;
 };
 
 type ModelProfile = "fast" | "balanced" | "fallback";
@@ -641,11 +642,13 @@ function hotkeyRow(row: HotkeyCheck) {
   const statusIcon = row.status === "pass" ? "CheckCircle2" : row.status === "warn" ? "TriangleAlert" : "CircleX";
   const label = row.status === "pass" ? "通过" : row.status === "warn" ? "提醒" : "失败";
   const detail = `${row.normalized || row.shortcut} · ${row.detail}`;
+  const suggestion = row.suggestion?.trim() || "";
+  const title = suggestion ? `${detail}\n${suggestion}` : detail;
   return `
-    <div class="doctor-row ${row.status}">
+    <div class="doctor-row hotkey-row ${row.status}">
       ${icon(statusIcon as IconName, label)}
       <strong>${escapeHtml(row.name)}</strong>
-      <span title="${escapeAttr(detail)}">${escapeHtml(detail)}</span>
+      <span title="${escapeAttr(title)}"><b>${escapeHtml(detail)}</b>${suggestion ? `<small>${escapeHtml(suggestion)}</small>` : ""}</span>
     </div>
   `;
 }

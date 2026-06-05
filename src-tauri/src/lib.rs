@@ -28,7 +28,7 @@ use anyhow::Result;
 use once_cell::sync::Lazy;
 use serde::Serialize;
 use std::{
-    collections::HashSet,
+    collections::HashMap,
     fs,
     panic::{self, AssertUnwindSafe},
     path::PathBuf,
@@ -48,6 +48,7 @@ struct HotkeyCheck {
     normalized: String,
     status: HotkeyCheckStatus,
     detail: String,
+    suggestion: String,
 }
 
 #[derive(Debug, Clone, Copy, Serialize, PartialEq, Eq)]
@@ -883,7 +884,7 @@ fn register_hotkeys(app: &AppHandle, state: &State<'_, AppState>) {
     ];
     let mut failed = Vec::new();
     let mut checks = Vec::new();
-    let mut seen = HashSet::new();
+    let mut seen = HashMap::new();
     for (name, shortcut, action) in shortcuts {
         let normalized = normalize_shortcut(&shortcut);
         if normalized.trim().is_empty() || normalized.eq_ignore_ascii_case("off") {
@@ -893,12 +894,14 @@ fn register_hotkeys(app: &AppHandle, state: &State<'_, AppState>) {
                 normalized,
                 status: HotkeyCheckStatus::Warn,
                 detail: "已关闭".into(),
+                suggestion: hotkey_disabled_suggestion(name),
             });
             continue;
         }
         let dedupe_key = normalized.to_ascii_lowercase();
-        if !seen.insert(dedupe_key) {
-            let detail = "和其他动作重复".to_string();
+        if let Some(previous) = seen.get(&dedupe_key) {
+            let detail = format!("和 {previous} 重复");
+            let suggestion = hotkey_duplicate_suggestion(&normalized);
             failed.push(format!("{name} {normalized}: {detail}"));
             checks.push(HotkeyCheck {
                 name: name.into(),
@@ -906,9 +909,11 @@ fn register_hotkeys(app: &AppHandle, state: &State<'_, AppState>) {
                 normalized,
                 status: HotkeyCheckStatus::Fail,
                 detail,
+                suggestion,
             });
             continue;
         }
+        seen.insert(dedupe_key, name.to_string());
         match register_hotkey(app, &normalized, action) {
             Ok(()) => checks.push(HotkeyCheck {
                 name: name.into(),
@@ -916,15 +921,19 @@ fn register_hotkeys(app: &AppHandle, state: &State<'_, AppState>) {
                 normalized,
                 status: HotkeyCheckStatus::Pass,
                 detail: "已注册".into(),
+                suggestion: String::new(),
             }),
             Err(err) => {
-                failed.push(format!("{name} {normalized}: {err}"));
+                let detail = hotkey_failure_detail(&err);
+                let suggestion = hotkey_failure_suggestion(&err);
+                failed.push(format!("{name} {normalized}: {detail}"));
                 checks.push(HotkeyCheck {
                     name: name.into(),
                     shortcut,
                     normalized,
                     status: HotkeyCheckStatus::Fail,
-                    detail: err,
+                    detail,
+                    suggestion,
                 });
             }
         }
@@ -950,7 +959,7 @@ fn append_hotkey_checks(report: &mut doctor::DoctorReport) {
                 HotkeyCheckStatus::Warn => doctor::DoctorStatus::Warn,
                 HotkeyCheckStatus::Fail => doctor::DoctorStatus::Fail,
             },
-            detail: format!("{}；{}", check.normalized, check.detail),
+            detail: hotkey_doctor_detail(&check),
         }));
     report.summary = doctor::summarize(&report.checks);
 }
@@ -1005,5 +1014,122 @@ fn normalize_shortcut(shortcut: &str) -> String {
         "Alt+KeyE" => "Alt+E".into(),
         "Alt+KeyJ" => "Alt+J".into(),
         other => other.to_string(),
+    }
+}
+
+fn hotkey_disabled_suggestion(name: &str) -> String {
+    format!("需要 {name} 时，点键盘按钮录入一个新组合后保存")
+}
+
+fn hotkey_duplicate_suggestion(normalized: &str) -> String {
+    format!(
+        "给其中一个动作换成未使用组合，例如 Ctrl+Alt+{}，或关闭不常用动作",
+        hotkey_key_hint(normalized)
+    )
+}
+
+fn hotkey_key_hint(normalized: &str) -> &str {
+    normalized
+        .rsplit('+')
+        .next()
+        .map(str::trim)
+        .filter(|key| !key.is_empty())
+        .unwrap_or("R")
+}
+
+fn hotkey_failure_detail(error: &str) -> String {
+    if hotkey_error_looks_unrecognized(error) {
+        format!("热键格式不可识别：{}", compact_hotkey_error(error))
+    } else if hotkey_error_looks_taken(error) {
+        format!("可能被系统或其他软件占用：{}", compact_hotkey_error(error))
+    } else {
+        compact_hotkey_error(error)
+    }
+}
+
+fn hotkey_failure_suggestion(error: &str) -> String {
+    if hotkey_error_looks_unrecognized(error) {
+        "点击键盘按钮重新录入；避免 AltRight、KeyE 这类物理键名，使用 Alt+R 或 Ctrl+Alt+R".into()
+    } else if hotkey_error_looks_taken(error) {
+        "先用窗口按钮继续；换成 Ctrl+Alt+字母，或关闭占用该组合的软件后保存".into()
+    } else {
+        "先用窗口按钮继续；换一个组合后保存，诊断会重新检查".into()
+    }
+}
+
+fn hotkey_doctor_detail(check: &HotkeyCheck) -> String {
+    if check.suggestion.trim().is_empty() {
+        format!("{}；{}", check.normalized, check.detail)
+    } else {
+        format!(
+            "{}；{}；{}",
+            check.normalized, check.detail, check.suggestion
+        )
+    }
+}
+
+fn compact_hotkey_error(error: &str) -> String {
+    let error = error.trim().replace(['\r', '\n'], " ");
+    if error.chars().count() <= 160 {
+        error
+    } else {
+        let mut compact = error.chars().take(157).collect::<String>();
+        compact.push_str("...");
+        compact
+    }
+}
+
+fn hotkey_error_looks_unrecognized(error: &str) -> bool {
+    let lower = error.to_ascii_lowercase();
+    lower.contains("couldn't recognize")
+        || lower.contains("valid key")
+        || lower.contains("unrecognized")
+        || lower.contains("invalid key")
+}
+
+fn hotkey_error_looks_taken(error: &str) -> bool {
+    let lower = error.to_ascii_lowercase();
+    lower.contains("already registered")
+        || lower.contains("already in use")
+        || lower.contains("taken")
+        || lower.contains("占用")
+        || lower.contains("已注册")
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn hotkey_guidance_explains_unrecognized_keys() {
+        let error = "Couldn't recognize \"AltRight\" as a valid key for hotkey";
+
+        assert!(hotkey_failure_detail(error).contains("热键格式不可识别"));
+        assert!(hotkey_failure_suggestion(error).contains("重新录入"));
+        assert!(hotkey_failure_suggestion(error).contains("Alt+R"));
+    }
+
+    #[test]
+    fn hotkey_guidance_names_duplicate_action() {
+        assert_eq!(hotkey_key_hint("Ctrl+Alt+J"), "J");
+        assert!(hotkey_duplicate_suggestion("Ctrl+Alt+J").contains("Ctrl+Alt+J"));
+        assert!(hotkey_disabled_suggestion("转英文").contains("转英文"));
+    }
+
+    #[test]
+    fn hotkey_doctor_detail_includes_suggestion_when_available() {
+        let check = HotkeyCheck {
+            name: "录音".into(),
+            shortcut: "Alt+R".into(),
+            normalized: "Alt+R".into(),
+            status: HotkeyCheckStatus::Fail,
+            detail: "可能被系统或其他软件占用".into(),
+            suggestion: "换一个组合".into(),
+        };
+
+        assert_eq!(
+            hotkey_doctor_detail(&check),
+            "Alt+R；可能被系统或其他软件占用；换一个组合"
+        );
     }
 }

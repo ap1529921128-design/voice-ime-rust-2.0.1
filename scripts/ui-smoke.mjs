@@ -62,6 +62,7 @@ try {
       actions: [
         ["click", "[data-view='settings']"],
         ["click", "[data-settings-tab='shortcuts']"],
+        ["scroll", ".settings-grid"],
       ],
     });
     await runScenario(browser, {
@@ -136,6 +137,12 @@ async function runScenario(browser, scenario) {
     for (const [action, selector] of scenario.actions || []) {
       if (action === "click") {
         await page.click(selector);
+        await page.waitForTimeout(150);
+      }
+      if (action === "scroll") {
+        await page.locator(selector).evaluate((element) => {
+          element.scrollTop = element.scrollHeight;
+        });
         await page.waitForTimeout(150);
       }
     }
