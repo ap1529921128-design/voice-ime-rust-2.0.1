@@ -11,6 +11,7 @@ use serde::Serialize;
 use std::{
     fs::{self, OpenOptions},
     io::Write,
+    ops::Deref,
     path::PathBuf,
     sync::atomic::{AtomicU64, Ordering},
     sync::Arc,
@@ -42,7 +43,12 @@ pub struct UiSnapshot {
     pub history: Vec<TranscriptRecord>,
 }
 
+#[derive(Clone)]
 pub struct AppState {
+    runtime: Arc<AppRuntime>,
+}
+
+pub struct AppRuntime {
     pub paths: Paths,
     pub recorder: Recorder,
     pub inner: parking_lot::Mutex<InnerState>,
@@ -66,22 +72,28 @@ impl AppState {
         let paths = Paths::discover()?;
         let config = config::load_or_create(&paths)?;
         let history = HistoryStore::load(&paths.history_path, config.history_limit);
-        Ok(Self {
-            paths,
-            recorder: Recorder::default(),
-            inner: parking_lot::Mutex::new(InnerState {
-                config,
-                history,
-                state: SessionState::Idle,
-                text: String::new(),
-                status: "待命".into(),
-                meta: "Alt+R 录音 / Alt+E 英文 / Alt+J 日文".into(),
-                session_id: 0,
-                target: None,
-                overlay_rect: None,
+        Ok(Self::from_parts(paths, config, history))
+    }
+
+    fn from_parts(paths: Paths, config: AppConfig, history: HistoryStore) -> Self {
+        Self {
+            runtime: Arc::new(AppRuntime {
+                paths,
+                recorder: Recorder::default(),
+                inner: parking_lot::Mutex::new(InnerState {
+                    config,
+                    history,
+                    state: SessionState::Idle,
+                    text: String::new(),
+                    status: "待命".into(),
+                    meta: "Alt+R 录音 / Alt+E 英文 / Alt+J 日文".into(),
+                    session_id: 0,
+                    target: None,
+                    overlay_rect: None,
+                }),
+                session_counter: AtomicU64::new(1),
             }),
-            session_counter: AtomicU64::new(1),
-        })
+        }
     }
 
     pub fn snapshot(&self) -> UiSnapshot {
@@ -173,7 +185,7 @@ impl AppState {
             return Ok(self.snapshot());
         }
 
-        let state = Arc::new(self.clone_for_worker());
+        let state = self.clone_for_worker();
         let app_handle = app.clone();
         std::thread::spawn(move || {
             if let Err(err) =
@@ -377,7 +389,7 @@ impl AppState {
             (session_id, inner.text.clone(), inner.config.clone())
         };
         emit_snapshot(app, self);
-        let state = Arc::new(self.clone_for_worker());
+        let state = self.clone_for_worker();
         let app_handle = app.clone();
         std::thread::spawn(move || {
             state.process_translation(&app_handle, session_id, text, target_language, config);
@@ -426,7 +438,7 @@ impl AppState {
             inner.config.clone()
         };
         emit_snapshot(app, self);
-        let state = Arc::new(self.clone_for_worker());
+        let state = self.clone_for_worker();
         let app_handle = app.clone();
         std::thread::spawn(move || {
             let paths = state.paths.clone();
@@ -454,7 +466,7 @@ impl AppState {
     fn clone_for_worker(&self) -> WorkerState {
         WorkerState {
             paths: self.paths.clone(),
-            inner_ptr: self as *const AppState,
+            app_state: self.clone(),
         }
     }
 
@@ -463,18 +475,23 @@ impl AppState {
     }
 }
 
+impl Deref for AppState {
+    type Target = AppRuntime;
+
+    fn deref(&self) -> &Self::Target {
+        &self.runtime
+    }
+}
+
 #[derive(Clone)]
 struct WorkerState {
     paths: Paths,
-    inner_ptr: *const AppState,
+    app_state: AppState,
 }
-
-unsafe impl Send for WorkerState {}
-unsafe impl Sync for WorkerState {}
 
 impl WorkerState {
     fn app_state(&self) -> &AppState {
-        unsafe { &*self.inner_ptr }
+        &self.app_state
     }
 
     fn process_recording(
@@ -983,6 +1000,7 @@ fn target_label(language: &str) -> &'static str {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::path::{Path, PathBuf};
 
     #[test]
     fn cancelling_rejects_stale_worker_updates() {
@@ -1013,5 +1031,40 @@ mod tests {
 
         config.asr.input_device_name = "USB Mic".into();
         assert_eq!(configured_input_device(&config), Some("USB Mic"));
+    }
+
+    #[test]
+    fn cloned_app_state_shares_runtime_and_session_counter() {
+        let temp = tempfile::tempdir().unwrap();
+        let paths = test_paths(temp.path());
+        let history = HistoryStore::load(&paths.history_path, 10);
+        let state = AppState::from_parts(paths, AppConfig::default(), history);
+        let cloned = state.clone();
+
+        assert!(Arc::ptr_eq(&state.runtime, &cloned.runtime));
+        assert_eq!(state.next_session_id(), 1);
+        assert_eq!(cloned.next_session_id(), 2);
+
+        {
+            let mut inner = state.inner.lock();
+            inner.status = "共享运行时".into();
+        }
+        assert_eq!(cloned.snapshot().status, "共享运行时");
+    }
+
+    fn test_paths(root: &Path) -> Paths {
+        let app_dir = root.join(".voice_ime");
+        Paths {
+            config_path: app_dir.join("config.json"),
+            history_path: app_dir.join("history.json"),
+            prompt_path: app_dir.join("personal_prompt.txt"),
+            corrections_path: app_dir.join("corrections.json"),
+            hotwords_path: app_dir.join("hot.txt"),
+            hot_rules_path: app_dir.join("hot-rule.txt"),
+            recordings_dir: app_dir.join("recordings"),
+            logs_dir: app_dir.join("logs"),
+            root_dir: PathBuf::from(root),
+            app_dir,
+        }
     }
 }
