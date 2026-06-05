@@ -18,6 +18,14 @@ app\VoiceIME.exe --benchmark-translation D:\voice-ime-benchmarks\translation-sam
 
 The GUI exposes the built-in benchmark from Settings / Data / `翻译基准`.
 
+Portable packages also include an offline external-backend acceptance helper:
+
+```powershell
+powershell -NoProfile -ExecutionPolicy Bypass -File .\app\tools\Translation-Acceptance.ps1
+```
+
+It uses the packaged `Mock-External-Translate.ps1` command with a temporary `VOICE_IME_APP_DIR`, so it verifies the external JSON pipeline without requiring a real MT model.
+
 ## Sample Format
 
 The sample file can be TSV or simple CSV. Each non-empty, non-comment row is:

@@ -51,6 +51,7 @@
 - Added `packaging/Test-PortableRelease.ps1` for one-command full/core portable layout, startup, Doctor, Notepad, and Browser verification, and expanded UI smoke coverage to 200% device scale.
 - Added `packaging/package-available-model-packs.ps1` to batch-create all currently available non-planned model packs and write a zip checksum release manifest.
 - Added CLI and Settings / Data translation benchmark CSV output for built-in or custom zh/en/ja samples, including latency, backend errors, hint matches, and prompt-like chatter detection.
+- Added packaged external translation acceptance helpers and included them in the portable release gate, using a mock JSON translator to verify the `external` backend without real MT models.
 
 ## 2.0.1 - 2026-05-31
 

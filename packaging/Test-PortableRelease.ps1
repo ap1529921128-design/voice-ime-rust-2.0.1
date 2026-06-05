@@ -3,6 +3,7 @@ param(
     [string]$CoreReleaseRoot = "D:\voice-ime-build-release\voice-ime-2.0.1-rust-portable-core",
     [switch]$SkipNotepad,
     [switch]$SkipBrowser,
+    [switch]$SkipTranslation,
     [switch]$KeepRuntimeData
 )
 
@@ -185,6 +186,9 @@ if (-not $SkipNotepad) {
 }
 if (-not $SkipBrowser) {
     Invoke-AcceptanceScript -Root $ReleaseRoot -ScriptName "Browser-Input-Acceptance.ps1"
+}
+if (-not $SkipTranslation) {
+    Invoke-AcceptanceScript -Root $ReleaseRoot -ScriptName "Translation-Acceptance.ps1"
 }
 if (-not $KeepRuntimeData) {
     Remove-PackageRuntimeData -Root $ReleaseRoot

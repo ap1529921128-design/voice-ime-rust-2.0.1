@@ -132,6 +132,15 @@
 5. The CSV includes target language, engine, model, timeout, elapsed seconds, language match, optional hint match, source, output, and error.
 6. Backend failures and prompt-like explanatory output are recorded as error rows instead of closing the GUI.
 
+## Translation External Acceptance
+
+1. Build or unpack a portable package.
+2. From the package root, run `powershell -NoProfile -ExecutionPolicy Bypass -File .\app\tools\Translation-Acceptance.ps1`.
+3. The script creates a temporary `VOICE_IME_APP_DIR`, writes a 2.0 config that selects `translation.engine=external`, and points it at packaged `Mock-External-Translate.ps1`.
+4. It runs `VoiceIME.exe --benchmark-translation` with 3 zh/en/ja samples.
+5. The benchmark CSV must contain 3 rows, no error values, `language_match=true`, and matching optional hints.
+6. The script does not require a real MT model or MiniCPM service and deletes its temporary app data unless `-KeepAppDir` is passed.
+
 ## Model Pack Script
 
 1. Prepare a models directory containing the required files for one profile from `packaging/model-manifest.json`.
@@ -174,7 +183,7 @@
 3. The script checks the full and core root layouts, hidden `app` directory, required app files, `BUILD.txt`, and core model cleanliness.
 4. It starts the full and core apps with temporary `VOICE_IME_APP_DIR` values and requires each GUI process to stay alive for 5 seconds.
 5. It runs packaged `VoiceIME.exe --doctor` with a temporary app data directory and requires a doctor report containing the local LLM file check.
-6. Unless skipped, it runs the packaged Notepad and Browser input acceptance scripts.
+6. Unless skipped, it runs the packaged Notepad, Browser, and Translation acceptance scripts.
 7. At the end it removes any `.voice_ime` runtime data created under the portable package.
 
 ## Notepad Input Acceptance
@@ -237,4 +246,5 @@
 - Packaged builds now include `app/tools/Notepad-Input-Acceptance.ps1`; Notepad has an automated paste-path smoke, while other real apps still need manual coverage.
 - Packaged builds now include `app/tools/Browser-Input-Acceptance.ps1`; Edge/Chrome textarea paste has an automated smoke with an isolated temporary browser profile.
 - Packaged builds now include `app/tools/Foreground-Input-Acceptance.ps1`; WeChat/Feishu, Word/document editors, and IDEs can be checked with the same foreground paste path and target-log validation.
-- Repo packaging now includes `packaging/Test-PortableRelease.ps1`, which runs the full/core package layout gate, startup smoke, doctor report check, and automated Notepad/Browser acceptance in one pass.
+- Packaged builds now include `app/tools/Translation-Acceptance.ps1` and `Mock-External-Translate.ps1`; the external translation JSON path has an offline acceptance smoke.
+- Repo packaging now includes `packaging/Test-PortableRelease.ps1`, which runs the full/core package layout gate, startup smoke, doctor report check, and automated Notepad/Browser/Translation acceptance in one pass.
