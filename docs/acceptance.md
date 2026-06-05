@@ -279,6 +279,7 @@
 - Overlay placement now clamps to the nearest monitor work area and flips above the caret when the lower edge would run off-screen; multi-monitor and unusual taskbar layouts still need manual target-machine coverage.
 - Settings / Input now controls whether the overlay auto-hides after confirmation and the hide delay; default behavior remains auto-hide after 650ms.
 - Clipboard failure can now fall back to direct Unicode typing for short single-line text; broad app coverage still needs manual acceptance.
+- Smart correction now skips LLM rewriting for obvious code snippets, shell commands, URLs, and file paths, and edit commands do not rewrite code-like confirmation text.
 - Task-style background workers now catch unwind panics in release builds, update the UI with a worker error, and write JSON rows to `worker-error-YYYYMMDD.log`; low-level OS hook loop panic coverage is still future work.
 - A global panic hook now writes `panic-YYYYMMDD.log` with thread, location, payload, and backtrace; Doctor warns when panic or worker-error logs exist, and `Test-PortableRelease.ps1` runs `VoiceIME.exe --panic-smoke` to prove the packaged panic log path.
 - Tray quit and Tauri exit events now run graceful shutdown: active recording is cancelled, stale worker sessions are invalidated, overlay state is hidden, history is flushed, and `shutdown-YYYYMMDD.log` is written. `Test-PortableRelease.ps1` also runs `VoiceIME.exe --shutdown-smoke` against a temporary app dir.

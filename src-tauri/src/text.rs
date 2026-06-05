@@ -34,6 +34,29 @@ static TRANSLATION_META_LINE_RE: Lazy<Regex> = Lazy::new(|| {
     )
     .unwrap()
 });
+static WINDOWS_PATH_RE: Lazy<Regex> =
+    Lazy::new(|| Regex::new(r#"(?i)\b[a-z]:[\\/][^\s，。；；：:"'<>|]+"#).unwrap());
+static UNIX_PATH_RE: Lazy<Regex> =
+    Lazy::new(|| Regex::new(r#"(?i)(?:^|\s)(?:[.~]{1,2}/|/)[^\s，。；；：]+"#).unwrap());
+static ENV_PATH_RE: Lazy<Regex> = Lazy::new(|| {
+    Regex::new(r#"(?i)(?:%[a-z0-9_]+%|\$env:[a-z0-9_]+|\$\{?[a-z0-9_]+\}?)"#).unwrap()
+});
+static URL_RE: Lazy<Regex> =
+    Lazy::new(|| Regex::new(r#"(?i)\b(?:https?|file)://[^\s，。；；：]+"#).unwrap());
+static SHELL_COMMAND_RE: Lazy<Regex> = Lazy::new(|| {
+    Regex::new(
+        r"(?i)^\s*(?:cargo|npm|pnpm|yarn|git|gh|rustup|python|py|node|deno|uv|pip|docker|kubectl|ssh|scp|ffmpeg|winget|choco|scoop|powershell|pwsh|cmd|cd|dir|ls|mkdir|copy|xcopy|del|rm|mv|cp|set|start-process)\b",
+    )
+    .unwrap()
+});
+static CODE_KEYWORD_RE: Lazy<Regex> = Lazy::new(|| {
+    Regex::new(
+        r"(?i)\b(?:fn|let|mut|const|var|function|class|struct|enum|impl|async|await|import|export|from|return|select|insert|update|delete|where)\b",
+    )
+    .unwrap()
+});
+static CODE_OPERATOR_RE: Lazy<Regex> =
+    Lazy::new(|| Regex::new(r"(?:->|=>|::|==|!=|<=|>=|&&|\|\||[{};])").unwrap());
 
 pub fn default_corrections() -> BTreeMap<String, String> {
     BTreeMap::from([
@@ -384,6 +407,41 @@ pub fn is_likely_chinese_text(text: &str) -> bool {
     han >= 2 && kana == 0 && han >= latin
 }
 
+pub fn looks_like_code_command_or_path(text: &str) -> bool {
+    let normalized = normalize_text(text);
+    if normalized.trim().is_empty() {
+        return false;
+    }
+    if normalized.contains("```") || normalized.contains('`') {
+        return true;
+    }
+    if WINDOWS_PATH_RE.is_match(&normalized)
+        || UNIX_PATH_RE.is_match(&normalized)
+        || ENV_PATH_RE.is_match(&normalized)
+        || URL_RE.is_match(&normalized)
+    {
+        return true;
+    }
+    if normalized
+        .lines()
+        .any(|line| SHELL_COMMAND_RE.is_match(line))
+    {
+        return true;
+    }
+    let ascii_alnum = normalized
+        .chars()
+        .filter(|ch| ch.is_ascii_alphanumeric())
+        .count();
+    if ascii_alnum < 3 {
+        return false;
+    }
+    CODE_OPERATOR_RE.is_match(&normalized)
+        && (CODE_KEYWORD_RE.is_match(&normalized)
+            || normalized.contains('=')
+            || normalized.contains('(')
+            || normalized.contains(')'))
+}
+
 pub fn join_transcript_chunks(chunks: &[String], corrections_path: &Path) -> String {
     let mut result = String::new();
     for chunk in chunks {
@@ -679,5 +737,27 @@ mod tests {
         assert!(is_likely_chinese_text("非洲之星和海洋之泪"));
         assert!(!is_likely_chinese_text("アフリカの星と海の涙"));
         assert!(!is_likely_chinese_text("The Star of Africa"));
+    }
+
+    #[test]
+    fn detects_code_commands_and_paths() {
+        assert!(looks_like_code_command_or_path("cargo test -- --nocapture"));
+        assert!(looks_like_code_command_or_path(
+            r#"D:\voice-ime-build-rust\src-tauri\Cargo.toml"#
+        ));
+        assert!(looks_like_code_command_or_path(
+            "./packaging/package-portable.ps1"
+        ));
+        assert!(looks_like_code_command_or_path(
+            "fn main() { println!(\"hi\"); }"
+        ));
+        assert!(looks_like_code_command_or_path(
+            "https://github.com/ap1529921128-design/voice-ime-rust-2.0.1"
+        ));
+
+        assert!(!looks_like_code_command_or_path(
+            "今天下午三点开会，记得带电脑。"
+        ));
+        assert!(!looks_like_code_command_or_path("打开设置里面的路径配置"));
     }
 }

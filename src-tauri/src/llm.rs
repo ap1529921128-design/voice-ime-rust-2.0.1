@@ -83,6 +83,12 @@ pub fn smart_correct(
             String::new()
         };
     }
+    if edit_existing && text::looks_like_code_command_or_path(&base_text) {
+        return base_text;
+    }
+    if !edit_existing && text::looks_like_code_command_or_path(&corrected) {
+        return corrected;
+    }
     if !config.smart.enabled {
         return if edit_existing { base_text } else { corrected };
     }
@@ -423,5 +429,37 @@ mod tests {
         assert!(status.model_exists);
         assert!(status.server_exists);
         assert!(status.models_url.ends_with("/v1/models"));
+    }
+
+    #[test]
+    fn smart_correct_preserves_code_commands_and_paths() {
+        let temp = tempfile::tempdir().unwrap();
+        let paths = temp_paths(&temp);
+        let mut config = AppConfig::default();
+        config.smart.enabled = true;
+        config.smart.endpoint = "http://203.0.113.1:65535/v1/chat/completions".into();
+
+        assert_eq!(
+            smart_correct(
+                "cargo test -- --nocapture",
+                "",
+                &config,
+                &paths,
+                "",
+                &CancellationToken::new(),
+            ),
+            "cargo test -- --nocapture"
+        );
+        assert_eq!(
+            smart_correct(
+                "帮我改得更正式一点",
+                "fn main() { println!(\"hi\"); }",
+                &config,
+                &paths,
+                "",
+                &CancellationToken::new(),
+            ),
+            "fn main() { println!(\"hi\"); }"
+        );
     }
 }
