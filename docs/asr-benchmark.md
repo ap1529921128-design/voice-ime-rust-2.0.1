@@ -23,6 +23,19 @@ app\VoiceIME.exe --benchmark-asr-profile balanced D:\voice-ime-benchmarks\asr
 app\VoiceIME.exe --benchmark-asr-profile fallback D:\voice-ime-benchmarks\asr
 ```
 
+For deterministic release or CI checks, set `.voice_ime/config.json` temporarily:
+
+```json
+{
+  "asr": {
+    "default_engine": "mock",
+    "profile": "balanced"
+  }
+}
+```
+
+In mock mode the app does not load ASR model files. During benchmark, each same-name `.txt` file is used as the transcript for that `.wav`, so the CSV pipeline can be checked without a real model. This only validates app plumbing and scoring; it does not measure recognition quality.
+
 Suggested Chinese sample set:
 
 1. 今天下午三点半我们开一个十分钟的短会。

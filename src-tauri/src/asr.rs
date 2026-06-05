@@ -79,6 +79,11 @@ pub struct ModelDownloadSpec {
 
 pub fn transcribe(input: &AsrInput, config: &AppConfig, paths: &Paths) -> Result<AsrOutcome> {
     let started = Instant::now();
+    if is_mock_engine(&config.asr.default_engine) {
+        let mut outcome = transcribe_mock(input, &config.asr.profile);
+        outcome.elapsed_seconds = started.elapsed().as_secs_f32();
+        return Ok(outcome);
+    }
     let profiles = profile_order(&config.asr.profile);
     let mut last_error: Option<anyhow::Error> = None;
     for profile in profiles {
@@ -96,6 +101,14 @@ pub fn transcribe(input: &AsrInput, config: &AppConfig, paths: &Paths) -> Result
 pub fn prewarm(config: &AppConfig, paths: &Paths) -> Result<AsrPrewarmStatus> {
     if config.asr.worker_mode != "persistent" {
         return Err(anyhow!("ASR 进程不是常驻模式"));
+    }
+    if is_mock_engine(&config.asr.default_engine) {
+        return Ok(AsrPrewarmStatus {
+            profile: config.asr.profile.clone(),
+            backend: "mock-asr".into(),
+            model: format!("mock/{}", config.asr.profile),
+            elapsed_seconds: 0.0,
+        });
     }
     let profile = prewarm_profile(config, paths)
         .ok_or_else(|| anyhow!("没有可预热的 ASR 模型，请先下载模型"))?;
@@ -339,6 +352,9 @@ impl DaemonRecognizerCache {
         paths: &Paths,
         profile: &str,
     ) -> Result<AsrOutcome> {
+        if is_mock_engine(&config.asr.default_engine) {
+            return Ok(transcribe_mock(input, profile));
+        }
         let spec = recognizer_spec(input, config, paths, profile)?;
         let needs_reload = self
             .current
@@ -569,6 +585,20 @@ pub fn model_status(config: &AppConfig, paths: &Paths) -> Vec<AsrModelStatus> {
     ["fast", "balanced", "fallback"]
         .into_iter()
         .map(|profile| {
+            if is_mock_engine(&config.asr.default_engine) {
+                return AsrModelStatus {
+                    engine: "mock-asr".into(),
+                    profile: profile.into(),
+                    description: profile_description(profile).into(),
+                    expected_latency: "测试后端，立即返回".into(),
+                    ready: true,
+                    download_url: String::new(),
+                    mirror_url: String::new(),
+                    target_dir: String::new(),
+                    required_files: Vec::new(),
+                    missing_files: Vec::new(),
+                };
+            }
             let required_files = required_files_for_profile(config, paths, profile);
             let target_dir = model_target_dir(config, paths, profile)
                 .map(|path| path.to_string_lossy().to_string())
@@ -723,6 +753,9 @@ fn transcribe_profile(
     paths: &Paths,
     profile: &str,
 ) -> Result<AsrOutcome> {
+    if is_mock_engine(&config.asr.default_engine) {
+        return Ok(transcribe_mock(input, profile));
+    }
     let spec = recognizer_spec(input, config, paths, profile)?;
     let recognizer = OfflineRecognizer::create(&spec.config)
         .ok_or_else(|| anyhow!("ASR 初始化失败：{}", spec.backend))?;
@@ -732,6 +765,36 @@ fn transcribe_profile(
         &spec.backend,
         &display_path(paths, &spec.model_label),
     )
+}
+
+pub(crate) fn is_mock_engine(engine: &str) -> bool {
+    matches!(
+        engine.trim().to_ascii_lowercase().as_str(),
+        "mock" | "fake" | "test"
+    )
+}
+
+fn transcribe_mock(input: &AsrInput, profile: &str) -> AsrOutcome {
+    let text = mock_asr_text(input);
+    AsrOutcome {
+        raw_text: text.clone(),
+        text,
+        backend: "mock-asr".into(),
+        model: format!("mock/{profile}"),
+        elapsed_seconds: 0.0,
+    }
+}
+
+fn mock_asr_text(input: &AsrInput) -> String {
+    for line in input.prompt.lines() {
+        let trimmed = line.trim();
+        for prefix in ["mock-asr:", "mock_asr:", "mock:"] {
+            if let Some(text) = trimmed.strip_prefix(prefix) {
+                return text.trim().to_string();
+            }
+        }
+    }
+    "Voice IME mock transcript".into()
 }
 
 struct RecognizerSpec {
@@ -1133,5 +1196,44 @@ mod tests {
         let temp = tempfile::tempdir().unwrap();
         let paths = test_paths(temp.path());
         assert_eq!(prewarm_profile(&AppConfig::default(), &paths), None);
+    }
+
+    #[test]
+    fn mock_engine_transcribes_without_model_files() {
+        let temp = tempfile::tempdir().unwrap();
+        let paths = test_paths(temp.path());
+        let mut config = AppConfig::default();
+        config.asr.default_engine = "mock".into();
+        config.asr.profile = "fast".into();
+        let input = AsrInput {
+            samples: vec![0.0; 1600],
+            sample_rate: 16_000,
+            language: "zh".into(),
+            prompt: "mock-asr:非洲之星和海洋之泪".into(),
+        };
+
+        let outcome = transcribe(&input, &config, &paths).unwrap();
+
+        assert_eq!(outcome.text, "非洲之星和海洋之泪");
+        assert_eq!(outcome.raw_text, outcome.text);
+        assert_eq!(outcome.backend, "mock-asr");
+        assert_eq!(outcome.model, "mock/fast");
+    }
+
+    #[test]
+    fn mock_model_status_is_ready_without_files() {
+        let temp = tempfile::tempdir().unwrap();
+        let paths = test_paths(temp.path());
+        let mut config = AppConfig::default();
+        config.asr.default_engine = "mock".into();
+
+        let statuses = model_status(&config, &paths);
+
+        assert_eq!(statuses.len(), 3);
+        assert!(statuses.iter().all(|status| status.ready));
+        assert!(statuses.iter().all(|status| status.engine == "mock-asr"));
+        assert!(statuses
+            .iter()
+            .all(|status| status.required_files.is_empty()));
     }
 }

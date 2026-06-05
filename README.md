@@ -163,6 +163,8 @@ app\VoiceIME.exe --benchmark-asr-profile fallback D:\voice-ime-benchmarks\asr
 
 也可以在“设置 / 数据”点击“ASR 基准”，或在“设置 / 模型”点击某个档位行里的“基准”，选择同样的样本目录后后台生成 CSV。
 
+开发和发布验收可以把 `.voice_ime/config.json` 里的 `asr.default_engine` 临时设为 `mock`。此时 ASR 不加载模型；benchmark 会把同名 `.txt` 作为可控转写结果写入 CSV，用来验证主体程序、配置、CSV、打包脚本和 UI 管道，不代表真实识别质量。
+
 ## 翻译基准
 
 运行内置中日英短句样例：
@@ -200,6 +202,7 @@ powershell -NoProfile -ExecutionPolicy Bypass -File .\app\tools\Foreground-Input
 Notepad 脚本会自动打开记事本、粘贴一段测试文本、读回内容并在 `app/.voice_ime/logs/notepad-acceptance-YYYYMMDD-HHMMSS.txt` 写入结果。Browser 脚本会用独立临时 Edge/Chrome profile 打开一个本地文本框页面，并为该临时浏览器强制启用 renderer accessibility，粘贴后通过窗口标题回读结果，并写入 `browser-acceptance-YYYYMMDD-HHMMSS.txt`。两者都会校验 `input-target` 日志里的目标进程，避免前台窗口被抢走时误报通过。Foreground 脚本用于微信、飞书、Word、IDE 等真实 App：运行后按倒计时把光标放进目标输入框，脚本会记录目标进程、窗口类名、标题、光标来源和输入方式；是否真的出现在目标文本框里仍需要肉眼确认。
 Translation 脚本使用包内 `Mock-External-Translate.ps1` 临时切到 `external` 翻译引擎，跑 3 条中日英 benchmark 样例，验证 stdin JSON、stdout JSON、语言匹配、hint 命中和错误列，不依赖真实 NLLB/Bergamot/MiniCPM 服务。
 Model Pack Import 脚本会复制一份 core 包到临时目录，调用 `VoiceIME.exe --install-model-pack` 导入 fallback 小模型包，并按 `MODEL_PACK.json` 校验导入后的文件大小和 SHA-256，不污染正式 core 包。
+发布门禁还会跑一次 mock ASR benchmark：临时生成 wav/txt 样本，确认无模型环境下也能得到 `mock-asr`、`accuracy=1.0000` 的 CSV。
 
 设置页“数据 / 导出”会先运行诊断，再生成 `app/.voice_ime/logs/voice-ime-support-YYYYMMDD-HHMMSS.zip`。导出包包含配置、历史、个人提示词、纠错表、热词/规则、日志、模型根目录来源和模型说明；如果外置模型根目录缺少 `MODELS.json/md`，会回退到主体包自带清单。不包含录音文件和模型二进制。“历史 CSV”只导出表格格式的历史记录。
 “数据”页还能控制长录音是否留存，并一键清理 `app/.voice_ime/recordings` 下的长录音文件。短录音只用于当次转写，默认不留存。

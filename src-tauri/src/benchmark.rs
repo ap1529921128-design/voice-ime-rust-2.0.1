@@ -105,11 +105,17 @@ pub fn run_asr(
         let started = Instant::now();
         let result = asr::read_wav_file(&file).and_then(|(sample_rate, samples)| {
             let duration_seconds = samples.len() as f32 / sample_rate.max(1) as f32;
+            let prompt = if asr::is_mock_engine(&config.asr.default_engine) && !expected.is_empty()
+            {
+                format!("mock-asr:{expected}")
+            } else {
+                String::new()
+            };
             let input = AsrInput {
                 samples,
                 sample_rate,
                 language: config.asr.language.clone(),
-                prompt: String::new(),
+                prompt,
             };
             asr::transcribe(&input, config, paths).map(|outcome| (duration_seconds, outcome))
         });
@@ -282,6 +288,36 @@ fn csv_cell(value: &str) -> String {
 mod tests {
     use super::*;
 
+    fn temp_paths(temp: &tempfile::TempDir) -> Paths {
+        Paths {
+            root_dir: temp.path().join("root"),
+            app_dir: temp.path().join(".voice_ime"),
+            model_dir: temp.path().join("root/models"),
+            config_path: temp.path().join(".voice_ime/config.json"),
+            history_path: temp.path().join(".voice_ime/history.json"),
+            prompt_path: temp.path().join(".voice_ime/personal_prompt.txt"),
+            corrections_path: temp.path().join(".voice_ime/corrections.json"),
+            hotwords_path: temp.path().join(".voice_ime/hot.txt"),
+            hot_rules_path: temp.path().join(".voice_ime/hot-rule.txt"),
+            recordings_dir: temp.path().join(".voice_ime/recordings"),
+            logs_dir: temp.path().join(".voice_ime/logs"),
+        }
+    }
+
+    fn write_silent_wav(path: &Path) {
+        let spec = hound::WavSpec {
+            channels: 1,
+            sample_rate: 16_000,
+            bits_per_sample: 16,
+            sample_format: hound::SampleFormat::Int,
+        };
+        let mut writer = hound::WavWriter::create(path, spec).unwrap();
+        for _ in 0..1600 {
+            writer.write_sample(0_i16).unwrap();
+        }
+        writer.finalize().unwrap();
+    }
+
     #[test]
     fn collects_wav_files_sorted() {
         let temp = tempfile::tempdir().unwrap();
@@ -323,19 +359,7 @@ mod tests {
     #[test]
     fn benchmark_empty_directory_writes_no_samples_row() {
         let temp = tempfile::tempdir().unwrap();
-        let paths = Paths {
-            root_dir: temp.path().join("root"),
-            app_dir: temp.path().join(".voice_ime"),
-            model_dir: temp.path().join("root/models"),
-            config_path: temp.path().join(".voice_ime/config.json"),
-            history_path: temp.path().join(".voice_ime/history.json"),
-            prompt_path: temp.path().join(".voice_ime/personal_prompt.txt"),
-            corrections_path: temp.path().join(".voice_ime/corrections.json"),
-            hotwords_path: temp.path().join(".voice_ime/hot.txt"),
-            hot_rules_path: temp.path().join(".voice_ime/hot-rule.txt"),
-            recordings_dir: temp.path().join(".voice_ime/recordings"),
-            logs_dir: temp.path().join(".voice_ime/logs"),
-        };
+        let paths = temp_paths(&temp);
         let samples = temp.path().join("samples");
         fs::create_dir_all(&samples).unwrap();
 
@@ -346,6 +370,30 @@ mod tests {
         let csv = fs::read_to_string(report.output_path).unwrap();
         assert!(csv.contains("expected_chars,edit_distance,cer,accuracy"));
         assert!(csv.contains("no wav samples found"));
+    }
+
+    #[test]
+    fn benchmark_mock_engine_scores_expected_text() {
+        let temp = tempfile::tempdir().unwrap();
+        let paths = temp_paths(&temp);
+        let samples = temp.path().join("samples");
+        fs::create_dir_all(&samples).unwrap();
+        let wav = samples.join("001.wav");
+        write_silent_wav(&wav);
+        fs::write(samples.join("001.txt"), "非洲之星和海洋之泪").unwrap();
+        let mut config = config::AppConfig::default();
+        config.asr.default_engine = "mock".into();
+        config.asr.profile = "balanced".into();
+
+        let report = run_asr(&samples, &paths, &config).unwrap();
+
+        assert_eq!(report.sample_count, 1);
+        assert_eq!(report.error_count, 0);
+        let csv = fs::read_to_string(report.output_path).unwrap();
+        assert!(csv.contains("mock-asr"));
+        assert!(csv.contains("mock/balanced"));
+        assert!(csv.contains("1.0000"));
+        assert!(csv.contains("非洲之星和海洋之泪"));
     }
 
     #[test]

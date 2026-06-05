@@ -251,6 +251,37 @@ function Invoke-PanicSmoke {
     Write-Host "Panic smoke passed: $appDir"
 }
 
+function New-TestWavFile {
+    param([Parameter(Mandatory = $true)][string]$Path)
+
+    $sampleRate = 16000
+    $sampleCount = 1600
+    $dataSize = $sampleCount * 2
+    $writer = [System.IO.BinaryWriter]::new([System.IO.File]::Create($Path))
+    try {
+        $ascii = [System.Text.Encoding]::ASCII
+        $writer.Write($ascii.GetBytes("RIFF"))
+        $writer.Write([int](36 + $dataSize))
+        $writer.Write($ascii.GetBytes("WAVE"))
+        $writer.Write($ascii.GetBytes("fmt "))
+        $writer.Write([int]16)
+        $writer.Write([int16]1)
+        $writer.Write([int16]1)
+        $writer.Write([int]$sampleRate)
+        $writer.Write([int]($sampleRate * 2))
+        $writer.Write([int16]2)
+        $writer.Write([int16]16)
+        $writer.Write($ascii.GetBytes("data"))
+        $writer.Write([int]$dataSize)
+        for ($i = 0; $i -lt $sampleCount; $i++) {
+            $writer.Write([int16]0)
+        }
+    }
+    finally {
+        $writer.Dispose()
+    }
+}
+
 function Invoke-AsrBenchmarkProfileSmoke {
     param([Parameter(Mandatory = $true)][string]$Root)
 
@@ -291,6 +322,64 @@ function Invoke-AsrBenchmarkProfileSmoke {
         throw "ASR benchmark profile CSV did not record the empty-sample error"
     }
     Write-Host "ASR benchmark profile smoke passed: $($report.FullName)"
+}
+
+function Invoke-MockAsrBenchmarkSmoke {
+    param([Parameter(Mandatory = $true)][string]$Root)
+
+    $app = Join-Path $Root "app"
+    $exe = Join-Path $app "VoiceIME.exe"
+    $appDir = Join-Path ([System.IO.Path]::GetTempPath()) ("voice-ime-mock-asr-" + [guid]::NewGuid().ToString("N"))
+    $samplesDir = Join-Path ([System.IO.Path]::GetTempPath()) ("voice-ime-mock-asr-samples-" + [guid]::NewGuid().ToString("N"))
+    $previousAppDir = [Environment]::GetEnvironmentVariable("VOICE_IME_APP_DIR", "Process")
+    try {
+        New-Item -ItemType Directory -Path $appDir -Force | Out-Null
+        New-Item -ItemType Directory -Path $samplesDir -Force | Out-Null
+        $config = @{
+            asr = @{
+                default_engine = "mock"
+                profile = "balanced"
+                worker_mode = "isolated"
+            }
+            smart = @{
+                enabled = $false
+            }
+        } | ConvertTo-Json -Depth 6
+        $utf8NoBom = [System.Text.UTF8Encoding]::new($false)
+        $mockText = ([string][char]38750 + [string][char]27954 + [string][char]20043 + [string][char]26143 + [string][char]21644 + [string][char]28023 + [string][char]27915 + [string][char]20043 + [string][char]27882)
+        [System.IO.File]::WriteAllText((Join-Path $appDir "config.json"), $config, $utf8NoBom)
+        New-TestWavFile -Path (Join-Path $samplesDir "001.wav")
+        [System.IO.File]::WriteAllText((Join-Path $samplesDir "001.txt"), $mockText, $utf8NoBom)
+        $env:VOICE_IME_APP_DIR = $appDir
+        $process = Start-Process -FilePath $exe -ArgumentList @("--benchmark-asr-profile", "balanced", $samplesDir) -WorkingDirectory $app -WindowStyle Hidden -Wait -PassThru
+        if ($process.ExitCode -ne 0) {
+            throw "Mock ASR benchmark smoke exited with code $($process.ExitCode)"
+        }
+    }
+    finally {
+        if ([string]::IsNullOrEmpty($previousAppDir)) {
+            Remove-Item Env:\VOICE_IME_APP_DIR -ErrorAction SilentlyContinue
+        }
+        else {
+            $env:VOICE_IME_APP_DIR = $previousAppDir
+        }
+        if (Test-Path -LiteralPath $samplesDir) {
+            Remove-Item -LiteralPath $samplesDir -Recurse -Force
+        }
+    }
+    $reports = @(Get-ChildItem -LiteralPath (Join-Path $appDir "logs") -Filter "asr-benchmark-*.csv" -File -ErrorAction SilentlyContinue)
+    if ($reports.Count -eq 0) {
+        throw "Mock ASR benchmark smoke did not write a CSV under $appDir"
+    }
+    $report = $reports | Sort-Object LastWriteTime -Descending | Select-Object -First 1
+    $body = [System.IO.File]::ReadAllText($report.FullName, [System.Text.Encoding]::UTF8)
+    $mockText = ([string][char]38750 + [string][char]27954 + [string][char]20043 + [string][char]26143 + [string][char]21644 + [string][char]28023 + [string][char]27915 + [string][char]20043 + [string][char]27882)
+    foreach ($needle in @("mock-asr", "mock/balanced", "1.0000", $mockText)) {
+        if (-not $body.Contains($needle)) {
+            throw "Mock ASR benchmark CSV missing '$needle'"
+        }
+    }
+    Write-Host "Mock ASR benchmark smoke passed: $($report.FullName)"
 }
 
 function Invoke-AcceptanceScript {
@@ -372,6 +461,7 @@ Invoke-ModelRootFileSmoke -CoreRoot $CoreReleaseRoot
 Invoke-ShutdownSmoke -Root $ReleaseRoot
 Invoke-PanicSmoke -Root $ReleaseRoot
 Invoke-AsrBenchmarkProfileSmoke -Root $ReleaseRoot
+Invoke-MockAsrBenchmarkSmoke -Root $ReleaseRoot
 if (-not $SkipNotepad) {
     Invoke-AcceptanceScript -Root $ReleaseRoot -ScriptName "Notepad-Input-Acceptance.ps1"
 }

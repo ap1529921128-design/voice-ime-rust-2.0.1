@@ -46,12 +46,15 @@ Settings / Models now has a per-profile `基准` action. It runs the same ASR CS
 
 The packaged CLI also supports `VoiceIME.exe --benchmark-asr-profile <profile> <samples-dir>`, making it easier to run fast/balanced/fallback comparisons on a target machine or removable drive. The portable release gate checks this path with an empty fallback sample directory.
 
+2.0.1 also has deterministic test backends. `asr.default_engine=mock` bypasses model loading and lets ASR benchmark use same-name `.txt` files as transcript fixtures, while `mock://echo`, `mock://translate`, and `mock://fixed/<text>` exercise correction/translation cleanup without MiniCPM or network access. These paths are for release gates and CI-style plumbing tests, not real ASR/translation quality.
+
 ## Verification
 
 The release gate passed on the build machine for:
 
 - full and core startup smoke
 - `VoiceIME.exe --doctor`
+- ASR profile CLI smoke and no-model mock ASR CSV smoke
 - Notepad paste acceptance
 - Edge/Chrome textarea paste acceptance
 - external translation JSON-pipeline acceptance

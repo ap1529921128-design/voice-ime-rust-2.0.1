@@ -261,6 +261,9 @@ fn chat_completion(
     if let Some(cancellation) = cancellation {
         ensure_not_cancelled(cancellation)?;
     }
+    if let Some(output) = mock_chat_completion(endpoint, payload) {
+        return Ok(output);
+    }
     let timeout = Duration::from_secs(timeout_seconds.clamp(1, 30));
     let client = Client::builder()
         .timeout(timeout)
@@ -286,6 +289,66 @@ fn chat_completion(
         .trim()
         .to_string();
     Ok(content)
+}
+
+fn mock_chat_completion(endpoint: &str, payload: &Value) -> Option<String> {
+    let endpoint = endpoint.trim();
+    if let Some(text) = endpoint.strip_prefix("mock://fixed/") {
+        return Some(text.replace("\\n", "\n"));
+    }
+    if endpoint == "mock://echo" {
+        return Some(mock_prompt_source(payload).unwrap_or_default());
+    }
+    if endpoint == "mock://translate" {
+        let content = last_user_content(payload)?;
+        let source = content
+            .rsplit_once("\n\n")
+            .map(|(_, source)| source.trim())
+            .unwrap_or(content.trim());
+        if content.contains("英语") {
+            return Some(format!("Mock English: {source}"));
+        }
+        if content.contains("日语") {
+            return Some(format!("{source}です"));
+        }
+        if content.contains("简体中文") {
+            return Some(format!("模拟中文：{source}"));
+        }
+        return Some(source.to_string());
+    }
+    None
+}
+
+fn mock_prompt_source(payload: &Value) -> Option<String> {
+    let content = last_user_content(payload)?;
+    for marker in ["ASR 文本：", "ASR 文本:", "语音编辑指令：", "语音编辑指令:"] {
+        if let Some((_, text)) = content.rsplit_once(marker) {
+            return Some(text.trim().to_string());
+        }
+    }
+    Some(
+        content
+            .rsplit_once("\n\n")
+            .map(|(_, text)| text.trim())
+            .unwrap_or(content.trim())
+            .to_string(),
+    )
+}
+
+fn last_user_content(payload: &Value) -> Option<&str> {
+    payload
+        .get("messages")?
+        .as_array()?
+        .iter()
+        .rev()
+        .find(|message| {
+            message
+                .get("role")
+                .and_then(Value::as_str)
+                .is_some_and(|role| role == "user")
+        })?
+        .get("content")?
+        .as_str()
 }
 
 fn ensure_not_cancelled(cancellation: &CancellationToken) -> Result<()> {
@@ -774,5 +837,55 @@ mod tests {
             ),
             "fn main() { println!(\"hi\"); }"
         );
+    }
+
+    #[test]
+    fn smart_correct_mock_echo_uses_asr_text_without_network() {
+        let temp = tempfile::tempdir().unwrap();
+        let paths = temp_paths(&temp);
+        let mut config = AppConfig::default();
+        config.smart.enabled = true;
+        config.smart.endpoint = "mock://echo".into();
+
+        let output = smart_correct(
+            "非洲之星和海洋之泪",
+            "",
+            &config,
+            &paths,
+            "",
+            &CancellationToken::new(),
+        );
+
+        assert_eq!(output, "非洲之星和海洋之泪");
+    }
+
+    #[test]
+    fn translate_mock_llm_returns_target_language_shape() {
+        let temp = tempfile::tempdir().unwrap();
+        let paths = temp_paths(&temp);
+        let mut config = AppConfig::default();
+        config.translation.endpoint = "mock://translate".into();
+
+        let english = translate_with_llm(
+            "非洲之星和海洋之泪",
+            "en",
+            &config,
+            &paths,
+            "",
+            &CancellationToken::new(),
+        )
+        .unwrap();
+        let japanese = translate_with_llm(
+            "非洲之星和海洋之泪",
+            "ja",
+            &config,
+            &paths,
+            "",
+            &CancellationToken::new(),
+        )
+        .unwrap();
+
+        assert!(english.contains("Mock English"));
+        assert!(japanese.ends_with("です"));
     }
 }

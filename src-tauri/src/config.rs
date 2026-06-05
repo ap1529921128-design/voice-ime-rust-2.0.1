@@ -434,6 +434,7 @@ fn migrate_legacy_config(value: Value) -> AppConfig {
 }
 
 fn normalize_config(config: &mut AppConfig) {
+    config.asr.default_engine = normalize_asr_engine(&config.asr.default_engine);
     config.asr.model_root = normalize_model_root(&config.asr.model_root);
     config.asr.num_threads = config.asr.num_threads.clamp(1, 4);
     config.asr.min_record_seconds = config.asr.min_record_seconds.clamp(0.1, 10.0);
@@ -494,6 +495,14 @@ fn normalize_translation_engine(value: &str) -> String {
     match value.trim().to_ascii_lowercase().as_str() {
         "llm" | "external" | "nllb" | "bergamot" => value.trim().to_ascii_lowercase(),
         _ => default_translation_engine(),
+    }
+}
+
+fn normalize_asr_engine(value: &str) -> String {
+    match value.trim().to_ascii_lowercase().as_str() {
+        "sherpa-onnx" | "sherpa" | "" => default_asr_engine(),
+        "mock" | "fake" | "test" => "mock".into(),
+        _ => default_asr_engine(),
     }
 }
 
@@ -980,6 +989,20 @@ mod tests {
         cfg.asr.worker_mode = "isolated".into();
         normalize_config(&mut cfg);
         assert_eq!(cfg.asr.worker_mode, "isolated");
+    }
+
+    #[test]
+    fn normalizes_asr_engine() {
+        let mut cfg = AppConfig::default();
+        assert_eq!(cfg.asr.default_engine, "sherpa-onnx");
+
+        cfg.asr.default_engine = "FAKE".into();
+        normalize_config(&mut cfg);
+        assert_eq!(cfg.asr.default_engine, "mock");
+
+        cfg.asr.default_engine = "unknown".into();
+        normalize_config(&mut cfg);
+        assert_eq!(cfg.asr.default_engine, "sherpa-onnx");
     }
 
     #[test]

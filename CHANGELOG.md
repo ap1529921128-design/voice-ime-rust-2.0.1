@@ -52,6 +52,7 @@
 - Added a Settings / Data ASR benchmark action that runs the same CSV timing and CER harness as `VoiceIME.exe --benchmark-asr`.
 - Added per-profile ASR benchmark actions on Settings / Models so fast, balanced, and fallback can be timed without changing the saved default profile.
 - Added `VoiceIME.exe --benchmark-asr-profile <profile> <samples-dir>` and release-gate coverage for the packaged profile benchmark CLI.
+- Added deterministic mock ASR and LLM backends for release gates and future CI-style UI/state tests without real model files or MiniCPM.
 - Added Settings / Smart local LLM service status and start controls, plus Doctor checks for the MiniCPM model, llama-server binary, and startup script.
 - Added `packaging/Test-PortableRelease.ps1` for one-command full/core portable layout, startup, Doctor, Notepad, and Browser verification, and expanded UI smoke coverage to 200% device scale.
 - Added `packaging/package-available-model-packs.ps1` to batch-create all currently available non-planned model packs and write a zip checksum release manifest.

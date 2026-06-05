@@ -302,6 +302,8 @@
 - Settings / Models now has native file and directory pickers; real removable-drive acceptance should still be tested on target machines.
 - Settings / Shortcuts now shows global-hotkey registration status, duplicate/invalid/taken-key suggestions, and re-registers after save; manual conflict coverage is still required with real third-party apps.
 - `--benchmark-asr`, `--benchmark-asr-profile`, Settings / Data / `ASR 基准`, and Settings / Models / per-profile `基准` now provide a repeatable timing and CER/accuracy CSV harness; real quality still depends on recorded sample audio from target machines.
+- `asr.default_engine=mock` now provides a deterministic no-model ASR path for release gates and CI-style checks. It uses same-name `.txt` benchmark files as transcript fixtures, so it validates the app/CSV/packaging pipeline but not real recognition quality.
+- LLM endpoints using `mock://echo`, `mock://translate`, or `mock://fixed/<text>` now provide deterministic correction/translation tests without launching MiniCPM or touching the network.
 - `--benchmark-translation` and Settings / Data / `翻译基准` now provide a repeatable CSV harness for translation latency, backend errors, target-language hints, and prompt-like chatter filtering.
 - Confirm paste now restores previous text clipboard where feasible, retries focus recovery before Ctrl+V, logs previous clipboard format/status, and exposes a short "pasted" UI state; manual image/file clipboard preservation is still future work.
 - Settings / Smart now includes a personal prompt editor backed by `.voice_ime/personal_prompt.txt`, with save validation and restore-default action.
@@ -322,4 +324,4 @@
 - Packaged builds now include `app/tools/Foreground-Input-Acceptance.ps1`; WeChat/Feishu, Word/document editors, and IDEs can be checked with the same foreground paste path and target-log validation.
 - Packaged builds now include `app/tools/Translation-Acceptance.ps1` and `Mock-External-Translate.ps1`; the external translation JSON path has an offline acceptance smoke.
 - Packaged builds now include `app/tools\Model-Pack-Import-Acceptance.ps1`; the Rust `--install-model-pack` importer is checked against a copied core package and a real model pack zip.
-- Repo packaging now includes `packaging/Test-PortableRelease.ps1`, which runs the full/core package layout gate, startup smoke, doctor report check, `MODEL_ROOT.txt` model-root smoke, shutdown smoke, panic-log smoke, and automated Notepad/Browser/Translation/model-pack import acceptance in one pass.
+- Repo packaging now includes `packaging/Test-PortableRelease.ps1`, which runs the full/core package layout gate, startup smoke, doctor report check, `MODEL_ROOT.txt` model-root smoke, shutdown smoke, panic-log smoke, ASR profile CLI smoke, mock ASR CSV smoke, and automated Notepad/Browser/Translation/model-pack import acceptance in one pass.
