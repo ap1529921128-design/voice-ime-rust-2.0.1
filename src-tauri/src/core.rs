@@ -272,6 +272,9 @@ impl AppState {
         let delay = profile
             .and_then(|profile| profile.paste_delay_ms)
             .unwrap_or(input_config.paste_delay_ms);
+        let punctuation_policy = profile
+            .map(|profile| profile.punctuation.as_str())
+            .unwrap_or("default");
         let paste_result = target.paste_text(&text, delay);
         let paste_outcome = paste_result.as_ref().ok();
         let error = paste_result.as_ref().err().map(ToString::to_string);
@@ -279,6 +282,7 @@ impl AppState {
             created_at: chrono::Local::now().format("%Y-%m-%d %H:%M:%S").to_string(),
             action: "confirm_input",
             input_profile: profile_name.as_deref(),
+            punctuation_policy,
             text_chars: text.chars().count(),
             paste_delay_ms: delay,
             input_method: paste_outcome.map(|outcome| outcome.method),
@@ -806,6 +810,7 @@ struct InputTargetLogEntry<'a> {
     created_at: String,
     action: &'static str,
     input_profile: Option<&'a str>,
+    punctuation_policy: &'a str,
     text_chars: usize,
     paste_delay_ms: u64,
     input_method: Option<&'a str>,

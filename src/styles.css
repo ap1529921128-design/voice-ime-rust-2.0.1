@@ -585,6 +585,64 @@ label {
   border-radius: 14px;
 }
 
+.app-profile-list {
+  display: grid;
+  grid-column: 1 / -1;
+  gap: 10px;
+  min-width: 0;
+}
+
+.app-profile-head {
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  color: #5f6d78;
+  font-size: 13px;
+}
+
+.app-profile-head strong {
+  overflow: hidden;
+  color: #0a1f3d;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.app-profile-row {
+  display: grid;
+  grid-template-columns: minmax(150px, 1.15fr) minmax(130px, 0.85fr) minmax(130px, 0.85fr);
+  gap: 10px;
+  min-width: 0;
+  border-radius: 16px;
+  padding: 12px;
+  background: rgba(255, 255, 255, 0.46);
+}
+
+.app-profile-title {
+  display: grid;
+  grid-column: 1 / -1;
+  grid-template-columns: minmax(0, 1fr) 42px;
+  gap: 8px;
+  min-width: 0;
+}
+
+.app-profile-title input {
+  min-width: 0;
+  font-weight: 700;
+}
+
+.app-profile-row label {
+  min-width: 0;
+}
+
+.empty-line {
+  border-radius: 16px;
+  padding: 14px;
+  color: #5f6d78;
+  background: rgba(255, 255, 255, 0.46);
+}
+
 input,
 select {
   width: 100%;
@@ -849,6 +907,10 @@ select:disabled {
 
   .model-actions {
     justify-content: flex-start;
+  }
+
+  .app-profile-row {
+    grid-template-columns: 1fr;
   }
 
   .doctor-head,

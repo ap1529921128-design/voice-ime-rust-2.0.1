@@ -115,6 +115,15 @@
 5. Change a shortcut and click save; the app re-registers global hotkeys immediately without restart.
 6. Running Settings / Data / `诊断` includes the hotkey rows in the diagnostics panel.
 
+## Input Profiles
+
+1. Open Settings / Input.
+2. The page shows the global paste delay and editable app-profile rows for chat, browser, document, and IDE targets.
+3. Click `新增策略`, edit the process name, title match, paste delay, and punctuation policy, then save.
+4. Click `恢复内置` and verify the built-in WeChat/Feishu/Lark/Word/Chrome/Edge/VS Code/JetBrains rows return.
+5. Confirm input into a matching app and check `input-target-YYYYMMDD.log`; the row should include the matched profile name, paste delay, and punctuation policy.
+6. The UI smoke suite includes Settings / Input at 150% device scale and must not show outer scrolling or control text overflow.
+
 ## ASR Benchmark
 
 1. Prepare a directory of `.wav` files and optional same-name `.txt` expected transcripts.
@@ -181,7 +190,7 @@
 
 1. Run `npm run ui:smoke`.
 2. The command starts a local Vite QA page with mocked Tauri data.
-3. Main compose, Settings / Models, Settings / Shortcuts, Settings / Smart, History, and Overlay render at 100%, 125%, 150%, and 200% device-scale combinations.
+3. Main compose, Settings / Models, Settings / Input, Settings / Shortcuts, Settings / Smart, History, and Overlay render at 100%, 125%, 150%, and 200% device-scale combinations.
 4. The command fails on outer page scroll, shell viewport overflow, or overflowing button/control text.
 5. Screenshots are written under `work/ui-smoke/`.
 

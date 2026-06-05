@@ -182,6 +182,7 @@ type HotkeyCheck = {
 };
 
 type ModelProfile = "fast" | "balanced" | "fallback";
+type AppInputProfile = AppConfig["input"]["app_profiles"][number];
 
 const app = document.querySelector<HTMLDivElement>("#app")!;
 const isOverlay = currentWindowLabel() === "overlay";
@@ -199,7 +200,7 @@ let llmServiceStatus: LlmServiceStatus | null = null;
 let hotkeyRows: HotkeyCheck[] = [];
 let hotkeyCapturePath: string | null = null;
 let activeView: "compose" | "settings" | "history" = "compose";
-let activeSettingsTab: "voice" | "models" | "smart" | "shortcuts" | "data" = "voice";
+let activeSettingsTab: "voice" | "models" | "input" | "smart" | "shortcuts" | "data" = "voice";
 let historyQuery = "";
 let historyBackend = "all";
 let historyModel = "all";
@@ -216,6 +217,38 @@ const icon = (name: IconName, label: string) => {
   node.setAttribute("stroke-width", "1.8");
   return node.outerHTML;
 };
+
+function builtInAppProfiles(): AppInputProfile[] {
+  return [
+    appProfile("微信", "WeChat.exe", "", "", 80, "short-no-period"),
+    appProfile("飞书", "Feishu.exe", "", "", 80, "short-no-period"),
+    appProfile("Lark", "Lark.exe", "", "", 80, "short-no-period"),
+    appProfile("Word", "WINWORD.EXE", "", "", 120, "keep"),
+    appProfile("Chrome", "chrome.exe", "", "", 20, "default"),
+    appProfile("Edge", "msedge.exe", "", "", 20, "default"),
+    appProfile("VS Code", "Code.exe", "", "", 30, "default"),
+    appProfile("JetBrains", "idea64.exe", "", "", 50, "default"),
+  ];
+}
+
+function appProfile(
+  name: string,
+  processName: string,
+  className: string,
+  titleContains: string,
+  pasteDelayMs: number | null,
+  punctuation: string,
+): AppInputProfile {
+  return {
+    name,
+    process_name: processName,
+    class_name: className,
+    title_contains: titleContains,
+    output_mode: "paste",
+    paste_delay_ms: pasteDelayMs,
+    punctuation,
+  };
+}
 
 function languageLabel(language: string) {
   return language === "en" ? "English" : language === "ja" ? "日本語" : "中文";
@@ -392,6 +425,7 @@ function settingsView(data: Snapshot) {
       <nav class="settings-tabs">
         ${settingsTabButton("voice", "SlidersHorizontal", "语音")}
         ${settingsTabButton("models", "Boxes", "模型")}
+        ${settingsTabButton("input", "PanelTop", "输入")}
         ${settingsTabButton("smart", "Sparkles", "智能")}
         ${settingsTabButton("shortcuts", "Keyboard", "快捷键")}
         ${settingsTabButton("data", "Database", "数据")}
@@ -410,6 +444,7 @@ function settingsTabButton(tab: typeof activeSettingsTab, iconName: IconName, la
 
 function settingsPanel(cfg: AppConfig) {
   if (activeSettingsTab === "models") return modelSettingsPanel(cfg);
+  if (activeSettingsTab === "input") return inputSettingsPanel(cfg);
   if (activeSettingsTab === "smart") return smartSettingsPanel(cfg);
   if (activeSettingsTab === "shortcuts") return shortcutSettingsPanel(cfg);
   if (activeSettingsTab === "data") return dataSettingsPanel(cfg);
@@ -550,6 +585,64 @@ function hotkeyRow(row: HotkeyCheck) {
       <strong>${escapeHtml(row.name)}</strong>
       <span title="${escapeAttr(detail)}">${escapeHtml(detail)}</span>
     </div>
+  `;
+}
+
+function inputSettingsPanel(cfg: AppConfig) {
+  const profiles = cfg.input.app_profiles;
+  return `
+    <div class="settings-panel">
+      <label>默认粘贴延迟
+        <input type="number" min="0" max="500" value="${cfg.input.paste_delay_ms}" data-config="input.paste_delay_ms" />
+      </label>
+      <label>TSF 阶段
+        <select data-config="input.tsf_phase">
+          ${option("prepared", cfg.input.tsf_phase, "预留")}
+          ${option("disabled", cfg.input.tsf_phase, "关闭")}
+        </select>
+      </label>
+      <div class="settings-tools">
+        <button class="tool-btn" data-action="add-app-profile">${icon("Plus", "新增应用策略")}<span>新增策略</span></button>
+        <button class="tool-btn" data-action="reset-app-profiles">${icon("RotateCcw", "恢复内置策略")}<span>恢复内置</span></button>
+      </div>
+      <div class="app-profile-list">
+        <div class="app-profile-head">
+          <strong>应用策略</strong>
+          <span>${profiles.length} 条</span>
+        </div>
+        ${profiles.length === 0 ? `<div class="empty-line">暂无应用策略</div>` : profiles.map((profile, index) => appProfileRow(profile, index)).join("")}
+      </div>
+    </div>
+  `;
+}
+
+function appProfileRow(profile: AppInputProfile, index: number) {
+  return `
+    <article class="app-profile-row">
+      <div class="app-profile-title">
+        <input value="${escapeAttr(profile.name)}" data-config="input.app_profiles.${index}.name" />
+        <button class="icon-btn tiny" data-action="remove-app-profile" data-profile-index="${index}" title="删除策略">${icon("Trash2", "删除策略")}</button>
+      </div>
+      <label>进程
+        <input value="${escapeAttr(profile.process_name)}" data-config="input.app_profiles.${index}.process_name" />
+      </label>
+      <label>窗口类
+        <input value="${escapeAttr(profile.class_name)}" data-config="input.app_profiles.${index}.class_name" />
+      </label>
+      <label>标题包含
+        <input value="${escapeAttr(profile.title_contains)}" data-config="input.app_profiles.${index}.title_contains" />
+      </label>
+      <label>粘贴延迟
+        <input type="number" min="0" max="500" value="${profile.paste_delay_ms ?? ""}" data-config="input.app_profiles.${index}.paste_delay_ms" />
+      </label>
+      <label>标点
+        <select data-config="input.app_profiles.${index}.punctuation">
+          ${option("default", profile.punctuation, "默认")}
+          ${option("short-no-period", profile.punctuation, "短句去句号")}
+          ${option("keep", profile.punctuation, "保留")}
+        </select>
+      </label>
+    </article>
   `;
 }
 
@@ -927,6 +1020,9 @@ function wireCommon() {
       if (action === "clear-history") await run("clear_history");
       if (action === "clear-recordings") await run("clear_recordings");
       if (action === "reset-history-filters") resetHistoryFilters();
+      if (action === "add-app-profile") addAppProfile();
+      if (action === "remove-app-profile") removeAppProfile(Number(button.dataset.profileIndex));
+      if (action === "reset-app-profiles") resetAppProfiles();
       if (action === "save-config") await saveConfig();
       if (action === "refresh-audio-devices") await refreshAudioDevices(true);
       if (action === "capture-hotkey") captureHotkey(button.dataset.configPath || "");
@@ -1161,6 +1257,31 @@ function resetHistoryFilters() {
   historyBackend = "all";
   historyModel = "all";
   historyDate = "";
+  render();
+}
+
+function addAppProfile() {
+  if (!snapshot) return;
+  const next = collectConfigDraft();
+  next.input.app_profiles.push(appProfile("新应用", "target.exe", "", "", next.input.paste_delay_ms, "default"));
+  snapshot.config = next;
+  render();
+}
+
+function removeAppProfile(index: number) {
+  if (!snapshot || !Number.isInteger(index)) return;
+  const next = collectConfigDraft();
+  if (index < 0 || index >= next.input.app_profiles.length) return;
+  next.input.app_profiles.splice(index, 1);
+  snapshot.config = next;
+  render();
+}
+
+function resetAppProfiles() {
+  if (!snapshot) return;
+  const next = collectConfigDraft();
+  next.input.app_profiles = builtInAppProfiles();
+  snapshot.config = next;
   render();
 }
 
@@ -1422,7 +1543,9 @@ function setPath(config: AppConfig, path: string, value: string) {
   }
   const last = keys[keys.length - 1];
   const current = target[last];
-  if (typeof current === "number") target[last] = Number(value);
+  if (path.includes(".app_profiles.") && last === "paste_delay_ms") {
+    target[last] = value.trim() === "" ? null : Number(value);
+  } else if (typeof current === "number") target[last] = Number(value);
   else if (typeof current === "boolean") target[last] = value === "true";
   else target[last] = value;
 }

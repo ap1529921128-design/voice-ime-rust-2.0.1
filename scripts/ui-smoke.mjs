@@ -65,6 +65,16 @@ try {
       ],
     });
     await runScenario(browser, {
+      name: "main-settings-input-150",
+      path: "/?qa=main",
+      viewport: { width: 900, height: 640 },
+      deviceScaleFactor: 1.5,
+      actions: [
+        ["click", "[data-view='settings']"],
+        ["click", "[data-settings-tab='input']"],
+      ],
+    });
+    await runScenario(browser, {
       name: "main-settings-smart-125",
       path: "/?qa=main",
       viewport: { width: 900, height: 640 },

@@ -10,12 +10,12 @@
 - Added optional push-to-talk recording with CapsLock and mouse X2 hold triggers, plus Settings controls for trigger key, mouse button, and event suppression.
 - Added input-target logging for confirmed paste operations, recording target process, class, title, caret source, result, and paste timing under `.voice_ime/logs`.
 - Added a lightweight doctor report command and Settings button for local path, microphone, clipboard, ASR model, LLM endpoint, and user text-file checks.
-- Added built-in per-app input profiles for common chat, browser, document, and IDE targets, currently applying safer paste delays and logging the matched profile.
+- Added built-in and editable per-app input profiles for common chat, browser, document, and IDE targets, applying safer paste delays, punctuation policy, and matched-profile logging.
 - Added deterministic ITN for common Chinese numbers, percentages, money, dates, times, ranges, and units, plus per-app short-sentence period removal.
 - Added a tray menu for showing the main window, toggling recording, opening model/log/hotword files, running doctor, and exiting; closing the main window now hides it to tray.
 - Added a translation engine abstraction with `llm` and `external` backends, plus Settings and Doctor support, so dedicated local MT tools can be used without routing through MiniCPM prompts.
 - Added raw ASR, deterministic correction stages, LLM final text, and stage timing fields to transcript history so accuracy and latency can be diagnosed from one record.
-- Split Settings into voice, models, smart input, shortcuts, and data groups, with editable ASR model paths and hotkey fields.
+- Split Settings into voice, models, input, smart input, shortcuts, and data groups, with editable ASR model paths, app input profiles, and hotkey fields.
 - Added a one-click support bundle export that zips config, history, dictionaries, logs, doctor output, and model manifests while excluding recordings and model binaries.
 - Added ASR idle prewarming for persistent worker mode, plus a Settings model-page prewarm button, so the current ready profile can load before the first real dictation.
 - Added history filters for text/stage content, backend, model, and date so trace records can be located quickly during accuracy and latency debugging.
