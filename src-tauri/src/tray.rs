@@ -1,4 +1,4 @@
-use crate::{core::AppState, doctor};
+use crate::{config, core::AppState, doctor};
 use std::fs;
 use tauri::{
     menu::MenuBuilder,
@@ -110,7 +110,8 @@ fn open_models_dir(app: &AppHandle) {
     let Some(state) = app.try_state::<AppState>() else {
         return;
     };
-    let models_dir = state.paths.root_dir.join("models");
+    let snapshot = state.snapshot();
+    let models_dir = config::effective_model_root(&snapshot.config, &state.paths);
     let result = fs::create_dir_all(&models_dir).and_then(|()| {
         app.opener()
             .open_path(models_dir.to_string_lossy().to_string(), None::<&str>)
