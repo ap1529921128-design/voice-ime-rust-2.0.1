@@ -545,6 +545,24 @@ label {
   font-weight: 650;
 }
 
+.checkline {
+  display: flex;
+  min-height: 44px;
+  align-items: center;
+  gap: 10px;
+}
+
+.checkline input {
+  width: 18px;
+  height: 18px;
+}
+
+.checkline span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 .path-field > span {
   overflow: hidden;
   text-overflow: ellipsis;

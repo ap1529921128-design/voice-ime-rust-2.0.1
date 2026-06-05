@@ -60,6 +60,8 @@ type AppConfig = {
     mode: string;
     tsf_phase: string;
     paste_delay_ms: number;
+    hide_overlay_after_confirm: boolean;
+    confirm_hide_delay_ms: number;
     hotkey_record: string;
     hotkey_language: string;
     hotkey_english: string;
@@ -599,6 +601,13 @@ function inputSettingsPanel(cfg: AppConfig) {
       <label>默认粘贴延迟
         <input type="number" min="0" max="500" value="${cfg.input.paste_delay_ms}" data-config="input.paste_delay_ms" />
       </label>
+      <label class="checkline">
+        <input type="checkbox" ${cfg.input.hide_overlay_after_confirm ? "checked" : ""} data-config="input.hide_overlay_after_confirm" />
+        <span>确认后收起浮窗</span>
+      </label>
+      <label>浮窗收起延迟
+        <input type="number" min="0" max="5000" value="${cfg.input.confirm_hide_delay_ms}" data-config="input.confirm_hide_delay_ms" />
+      </label>
       <label>TSF 阶段
         <select data-config="input.tsf_phase">
           ${option("prepared", cfg.input.tsf_phase, "预留")}
@@ -1113,7 +1122,8 @@ function wireMain() {
   });
   app.querySelectorAll<HTMLInputElement | HTMLSelectElement>("[data-config]").forEach((input) => {
     const syncDraft = () => {
-      if (snapshot) setPath(snapshot.config, input.dataset.config!, input.value);
+      const value = input instanceof HTMLInputElement && input.type === "checkbox" ? String(input.checked) : input.value;
+      if (snapshot) setPath(snapshot.config, input.dataset.config!, value);
       if (input.dataset.config === "asr.input_device_name") {
         audioLevel = null;
         paintAudioMeter();

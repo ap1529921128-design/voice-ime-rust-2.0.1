@@ -431,6 +431,8 @@ impl AppState {
             &target_info.class_name,
             &target_info.title,
         );
+        let hide_after_confirm = input_config.hide_overlay_after_confirm;
+        let hide_delay_ms = input_config.confirm_hide_delay_ms;
         let profile_name = profile
             .map(|profile| profile.name.clone())
             .filter(|name| !name.trim().is_empty());
@@ -478,18 +480,25 @@ impl AppState {
         {
             let mut inner = self.inner.lock();
             let target_meta = target_debug_meta(&target_info);
+            let hide_meta = if hide_after_confirm {
+                "浮窗自动收起"
+            } else {
+                "浮窗保留"
+            };
             inner.status = "已粘贴".into();
             inner.meta = profile_name
-                .map(|name| format!("没有自动发送 / {name} / {target_meta}"))
-                .unwrap_or_else(|| format!("没有自动发送 / {target_meta}"));
+                .map(|name| format!("没有自动发送 / {hide_meta} / {name} / {target_meta}"))
+                .unwrap_or_else(|| format!("没有自动发送 / {hide_meta} / {target_meta}"));
         }
         emit_snapshot(app, self);
-        hide_overlay_after(
-            app.clone(),
-            self.clone_for_worker(),
-            hide_session_id,
-            Duration::from_millis(650),
-        );
+        if hide_after_confirm {
+            hide_overlay_after(
+                app.clone(),
+                self.clone_for_worker(),
+                hide_session_id,
+                Duration::from_millis(hide_delay_ms),
+            );
+        }
         Ok(self.snapshot())
     }
 

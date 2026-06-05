@@ -78,6 +78,10 @@ pub struct InputConfig {
     pub tsf_phase: String,
     #[serde(default = "default_paste_delay_ms")]
     pub paste_delay_ms: u64,
+    #[serde(default = "default_true")]
+    pub hide_overlay_after_confirm: bool,
+    #[serde(default = "default_confirm_hide_delay_ms")]
+    pub confirm_hide_delay_ms: u64,
     #[serde(default = "default_hotkey_record")]
     pub hotkey_record: String,
     #[serde(default = "default_hotkey_language")]
@@ -221,6 +225,8 @@ impl Default for InputConfig {
             mode: default_input_mode(),
             tsf_phase: default_tsf_phase(),
             paste_delay_ms: default_paste_delay_ms(),
+            hide_overlay_after_confirm: default_true(),
+            confirm_hide_delay_ms: default_confirm_hide_delay_ms(),
             hotkey_record: default_hotkey_record(),
             hotkey_language: default_hotkey_language(),
             hotkey_english: default_hotkey_english(),
@@ -394,6 +400,8 @@ fn normalize_config(config: &mut AppConfig) {
     config.translation.engine = normalize_translation_engine(&config.translation.engine);
     config.translation.timeout_seconds = config.translation.timeout_seconds.clamp(3, 8);
     config.translation.external_command = config.translation.external_command.trim().to_string();
+    config.input.paste_delay_ms = config.input.paste_delay_ms.min(500);
+    config.input.confirm_hide_delay_ms = config.input.confirm_hide_delay_ms.min(5_000);
     config.input.hotkey_record = normalize_hotkey(&config.input.hotkey_record);
     config.input.hotkey_english = normalize_hotkey(&config.input.hotkey_english);
     config.input.hotkey_japanese = normalize_hotkey(&config.input.hotkey_japanese);
@@ -623,6 +631,9 @@ fn default_tsf_phase() -> String {
 fn default_paste_delay_ms() -> u64 {
     0
 }
+fn default_confirm_hide_delay_ms() -> u64 {
+    650
+}
 fn default_hotkey_record() -> String {
     "Alt+R".into()
 }
@@ -819,6 +830,22 @@ mod tests {
         normalize_config(&mut cfg);
         assert_eq!(cfg.input.ptt_key, "CapsLock");
         assert_eq!(cfg.input.ptt_mouse_button, "X2");
+    }
+
+    #[test]
+    fn normalizes_confirm_overlay_settings() {
+        let mut cfg = AppConfig::default();
+        assert!(cfg.input.hide_overlay_after_confirm);
+        assert_eq!(cfg.input.confirm_hide_delay_ms, 650);
+
+        cfg.input.paste_delay_ms = 900;
+        cfg.input.confirm_hide_delay_ms = 30_000;
+        cfg.input.hide_overlay_after_confirm = false;
+        normalize_config(&mut cfg);
+
+        assert_eq!(cfg.input.paste_delay_ms, 500);
+        assert_eq!(cfg.input.confirm_hide_delay_ms, 5_000);
+        assert!(!cfg.input.hide_overlay_after_confirm);
     }
 
     #[test]

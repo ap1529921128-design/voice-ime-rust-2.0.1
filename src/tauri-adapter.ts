@@ -125,6 +125,8 @@ function createQaSnapshot() {
         mode: "floating-overlay",
         tsf_phase: "prepared",
         paste_delay_ms: 60,
+        hide_overlay_after_confirm: true,
+        confirm_hide_delay_ms: 650,
         hotkey_record: "Alt+R",
         hotkey_language: "Alt+Space",
         hotkey_english: "Alt+E",

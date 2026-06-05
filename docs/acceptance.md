@@ -277,6 +277,7 @@
 - Cursor positioning now logs `uia-caret` when UI Automation exposes text-range caret rectangles, then falls back to `uia-element`, guarded `uia-focused`, `gui-thread`, or `fallback`; real overlay placement still needs visual target-machine coverage.
 - Recording/transcribing/result/postprocess/pasted UI meta now shows compact target diagnostics such as `Notepad.exe / GUI thread`, while detailed process/class/title/caret-source data remains in input-target logs.
 - Overlay placement now clamps to the nearest monitor work area and flips above the caret when the lower edge would run off-screen; multi-monitor and unusual taskbar layouts still need manual target-machine coverage.
+- Settings / Input now controls whether the overlay auto-hides after confirmation and the hide delay; default behavior remains auto-hide after 650ms.
 - Clipboard failure can now fall back to direct Unicode typing for short single-line text; broad app coverage still needs manual acceptance.
 - Task-style background workers now catch unwind panics in release builds, update the UI with a worker error, and write JSON rows to `worker-error-YYYYMMDD.log`; low-level OS hook loop panic coverage is still future work.
 - A global panic hook now writes `panic-YYYYMMDD.log` with thread, location, payload, and backtrace; Doctor warns when panic or worker-error logs exist, and `Test-PortableRelease.ps1` runs `VoiceIME.exe --panic-smoke` to prove the packaged panic log path.
