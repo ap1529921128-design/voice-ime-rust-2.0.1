@@ -3,7 +3,7 @@ use chrono::Local;
 use serde::{Deserialize, Serialize};
 use std::{fs, path::Path};
 
-const CSV_HEADERS: [&str; 18] = [
+const CSV_HEADERS: [&str; 21] = [
     "session_id",
     "created_at",
     "text",
@@ -16,6 +16,9 @@ const CSV_HEADERS: [&str; 18] = [
     "llm_text",
     "punctuation_policy",
     "duration_seconds",
+    "source_sample_rate",
+    "sample_rate",
+    "resampled",
     "transcribe_seconds",
     "deterministic_seconds",
     "llm_seconds",
@@ -47,6 +50,12 @@ pub struct TranscriptRecord {
     pub punctuation_policy: String,
     pub created_at: String,
     pub duration_seconds: f32,
+    #[serde(default)]
+    pub source_sample_rate: u32,
+    #[serde(default)]
+    pub sample_rate: u32,
+    #[serde(default)]
+    pub resampled: bool,
     pub transcribe_seconds: f32,
     #[serde(default)]
     pub deterministic_seconds: f32,
@@ -71,6 +80,9 @@ impl TranscriptRecord {
         itn_text: String,
         punctuation_policy: String,
         duration_seconds: f32,
+        source_sample_rate: u32,
+        sample_rate: u32,
+        resampled: bool,
         transcribe_seconds: f32,
         deterministic_seconds: f32,
         total_seconds: f32,
@@ -90,6 +102,9 @@ impl TranscriptRecord {
             punctuation_policy,
             created_at: Local::now().format("%Y-%m-%d %H:%M:%S").to_string(),
             duration_seconds,
+            source_sample_rate,
+            sample_rate,
+            resampled,
             transcribe_seconds,
             deterministic_seconds,
             llm_seconds: 0.0,
@@ -135,6 +150,9 @@ fn records_to_csv(records: &[TranscriptRecord]) -> String {
             record.llm_text.clone(),
             record.punctuation_policy.clone(),
             format!("{:.3}", record.duration_seconds),
+            record.source_sample_rate.to_string(),
+            record.sample_rate.to_string(),
+            record.resampled.to_string(),
             format!("{:.3}", record.transcribe_seconds),
             format!("{:.3}", record.deterministic_seconds),
             format!("{:.3}", record.llm_seconds),
@@ -265,6 +283,9 @@ mod tests {
                 "raw".into(),
                 "default".into(),
                 1.0,
+                48_000,
+                16_000,
+                true,
                 0.5,
                 0.01,
                 0.51,
@@ -296,6 +317,9 @@ mod tests {
             punctuation_policy: "default".into(),
             created_at: "2026-06-05 12:00:00".into(),
             duration_seconds: 1.23456,
+            source_sample_rate: 48_000,
+            sample_rate: 16_000,
+            resampled: true,
             transcribe_seconds: 0.5,
             deterministic_seconds: 0.01,
             llm_seconds: 0.2,
@@ -306,6 +330,7 @@ mod tests {
         let csv = records_to_csv(&[record]);
         assert!(csv.starts_with("session_id,created_at,text,raw_text"));
         assert!(csv.contains("\"'=cmd\""));
+        assert!(csv.contains("\"48000\",\"16000\",\"true\""));
         assert!(csv.contains("\"hello, \"\"world\"\"\""));
         assert!(csv.contains("\"line\nnext\""));
         assert!(csv.contains("\"1.235\""));

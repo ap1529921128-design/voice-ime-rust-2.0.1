@@ -34,7 +34,9 @@ pub struct AudioLevelInfo {
 pub struct Recording {
     pub wav_path: PathBuf,
     pub duration_seconds: f32,
+    pub source_sample_rate: u32,
     pub sample_rate: u32,
+    pub resampled: bool,
     pub samples: Vec<f32>,
     pub peak: f32,
     pub rms: f32,
@@ -89,10 +91,11 @@ impl Recorder {
             .ok_or_else(|| anyhow!("当前没有录音"))?;
         let duration_seconds = active.started_at.elapsed().as_secs_f32();
         let mono = active.samples.lock().unwrap().clone();
-        let samples = if active.source_sample_rate == target_sample_rate {
+        let source_sample_rate = active.source_sample_rate;
+        let samples = if source_sample_rate == target_sample_rate {
             mono
         } else {
-            resample_linear(&mono, active.source_sample_rate, target_sample_rate)
+            resample_linear(&mono, source_sample_rate, target_sample_rate)
         };
         let (peak, rms) = sample_stats(&samples);
         let wav_path = tempfile::Builder::new()
@@ -105,7 +108,9 @@ impl Recorder {
         Ok(Recording {
             wav_path,
             duration_seconds,
+            source_sample_rate,
             sample_rate: target_sample_rate,
+            resampled: source_sample_rate != target_sample_rate,
             samples,
             peak,
             rms,

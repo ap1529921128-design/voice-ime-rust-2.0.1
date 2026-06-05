@@ -24,6 +24,9 @@ type TranscriptRecord = {
   punctuation_policy: string;
   created_at: string;
   duration_seconds: number;
+  source_sample_rate: number;
+  sample_rate: number;
+  resampled: boolean;
   transcribe_seconds: number;
   deterministic_seconds: number;
   llm_seconds: number;
@@ -989,7 +992,7 @@ function historyView(data: Snapshot) {
           return `
         <article class="history-item" data-history="${index}">
           <p>${escapeHtml(record.text)}</p>
-          <footer>${record.created_at} · 录音 ${record.duration_seconds.toFixed(1)}s · ASR ${record.transcribe_seconds.toFixed(1)}s · 总 ${totalSeconds.toFixed(1)}s · ${escapeHtml(record.backend)}</footer>
+          <footer>${record.created_at} · 录音 ${record.duration_seconds.toFixed(1)}s · ${escapeHtml(historySampleRate(record))} · ASR ${record.transcribe_seconds.toFixed(1)}s · 总 ${totalSeconds.toFixed(1)}s · ${escapeHtml(record.backend)}</footer>
           ${historyTrace(record)}
         </article>`;
         })
@@ -1013,6 +1016,13 @@ function filteredHistoryRows(records: TranscriptRecord[]) {
       if (!query) return true;
       return historySearchText(record).toLowerCase().includes(query);
     });
+}
+
+function historySampleRate(record: TranscriptRecord) {
+  if (!record.source_sample_rate || !record.sample_rate) return "采样率未知";
+  return record.resampled
+    ? `${record.source_sample_rate}Hz->${record.sample_rate}Hz`
+    : `${record.sample_rate}Hz`;
 }
 
 function historySearchText(record: TranscriptRecord) {

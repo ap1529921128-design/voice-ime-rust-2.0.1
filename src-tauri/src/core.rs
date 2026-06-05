@@ -826,6 +826,9 @@ impl WorkerState {
                 raw_text: raw_combined,
                 text: combined.clone(),
                 duration_seconds: recording.duration_seconds,
+                source_sample_rate: recording.source_sample_rate,
+                sample_rate: recording.sample_rate,
+                resampled: recording.resampled,
                 transcribe_seconds: started.elapsed().as_secs_f32(),
                 backend: config.asr.default_engine.clone(),
                 model: config.asr.profile.clone(),
@@ -886,6 +889,9 @@ impl WorkerState {
                 },
                 text: raw_text.clone(),
                 duration_seconds: recording.duration_seconds,
+                source_sample_rate: recording.source_sample_rate,
+                sample_rate: recording.sample_rate,
+                resampled: recording.resampled,
                 transcribe_seconds: outcome.elapsed_seconds,
                 backend: outcome.backend,
                 model: outcome.model,
@@ -1059,10 +1065,15 @@ impl AppState {
             let punctuation_policy = current_punctuation_policy(&inner);
             let final_text =
                 text::apply_punctuation_policy(&finished.text, punctuation_policy.as_str());
+            let audio_meta = audio_sample_rate_meta(
+                finished.source_sample_rate,
+                finished.sample_rate,
+                finished.resampled,
+            );
             if final_text.trim().is_empty() {
                 inner.state = SessionState::Idle;
                 inner.status = "未识别到有效语音".into();
-                inner.meta.clear();
+                inner.meta = audio_meta.clone();
             } else {
                 inner.state = SessionState::Idle;
                 inner.status = "等待确认".into();
@@ -1070,10 +1081,11 @@ impl AppState {
                     .map(|meta| format!(" / {meta}"))
                     .unwrap_or_default();
                 inner.meta = format!(
-                    "录音 {:.1}s / 转写 {:.1}s / {} 字{}",
+                    "录音 {:.1}s / 转写 {:.1}s / {} 字 / {}{}",
                     finished.duration_seconds,
                     finished.transcribe_seconds,
                     final_text.chars().count(),
+                    audio_meta,
                     target_meta
                 );
                 inner.text = final_text.clone();
@@ -1088,6 +1100,9 @@ impl AppState {
                     trace.itn_text,
                     punctuation_policy,
                     finished.duration_seconds,
+                    finished.source_sample_rate,
+                    finished.sample_rate,
+                    finished.resampled,
                     finished.transcribe_seconds,
                     deterministic_seconds,
                     finished.transcribe_seconds + deterministic_seconds,
@@ -1154,6 +1169,9 @@ struct FinishedTranscript {
     raw_text: String,
     text: String,
     duration_seconds: f32,
+    source_sample_rate: u32,
+    sample_rate: u32,
+    resampled: bool,
     transcribe_seconds: f32,
     backend: String,
     model: String,
@@ -1380,6 +1398,17 @@ fn configured_input_device(config: &AppConfig) -> Option<&str> {
     }
 }
 
+fn audio_sample_rate_meta(source_sample_rate: u32, sample_rate: u32, resampled: bool) -> String {
+    if source_sample_rate == 0 || sample_rate == 0 {
+        return "采样率未知".into();
+    }
+    if resampled {
+        format!("{source_sample_rate}Hz -> {sample_rate}Hz")
+    } else {
+        format!("{sample_rate}Hz")
+    }
+}
+
 fn target_label(language: &str) -> &'static str {
     match language {
         "en" => "英语",
@@ -1526,6 +1555,16 @@ mod tests {
             panic_payload_message(unknown.as_ref()),
             "unknown panic payload"
         );
+    }
+
+    #[test]
+    fn audio_sample_rate_meta_reports_resampling() {
+        assert_eq!(
+            audio_sample_rate_meta(48_000, 16_000, true),
+            "48000Hz -> 16000Hz"
+        );
+        assert_eq!(audio_sample_rate_meta(16_000, 16_000, false), "16000Hz");
+        assert_eq!(audio_sample_rate_meta(0, 16_000, true), "采样率未知");
     }
 
     #[test]
