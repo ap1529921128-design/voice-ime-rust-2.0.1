@@ -24,6 +24,10 @@ public static class VoiceImeWin32 {
   [DllImport("user32.dll")]
   public static extern IntPtr GetForegroundWindow();
   [DllImport("user32.dll")]
+  public static extern bool ShowWindow(IntPtr hWnd, int nCmdShow);
+  [DllImport("user32.dll", SetLastError=true)]
+  public static extern bool SetWindowPos(IntPtr hWnd, IntPtr hWndInsertAfter, int X, int Y, int cx, int cy, uint uFlags);
+  [DllImport("user32.dll")]
   public static extern bool GetWindowRect(IntPtr hWnd, out RECT lpRect);
   [DllImport("user32.dll")]
   public static extern bool SetCursorPos(int X, int Y);
@@ -111,6 +115,11 @@ function Wait-MainWindow {
 function Focus-Window {
     param([System.Diagnostics.Process]$Process)
     $Process.Refresh()
+    if ($Process.MainWindowHandle -eq 0) {
+        return
+    }
+    [VoiceImeWin32]::ShowWindow($Process.MainWindowHandle, 9) | Out-Null
+    [VoiceImeWin32]::SetWindowPos($Process.MainWindowHandle, [IntPtr]::new(-1), 0, 0, 0, 0, 0x0043) | Out-Null
     $shell = New-Object -ComObject WScript.Shell
     for ($attempt = 0; $attempt -lt 4; $attempt += 1) {
         $shell.AppActivate($Process.Id) | Out-Null
@@ -129,6 +138,17 @@ function Focus-Window {
         if ([VoiceImeWin32]::GetForegroundWindow() -eq $Process.MainWindowHandle) {
             return
         }
+    }
+}
+
+function Clear-WindowTopmost {
+    param([System.Diagnostics.Process]$Process)
+    if (-not $Process -or $Process.HasExited) {
+        return
+    }
+    $Process.Refresh()
+    if ($Process.MainWindowHandle -ne 0) {
+        [VoiceImeWin32]::SetWindowPos($Process.MainWindowHandle, [IntPtr]::new(-2), 0, 0, 0, 0, 0x0003) | Out-Null
     }
 }
 
@@ -248,6 +268,7 @@ try {
     }
 }
 finally {
+    Clear-WindowTopmost -Process $notepad
     if ($notepad -and -not $notepad.HasExited) {
         Stop-Process -Id $notepad.Id -Force -ErrorAction SilentlyContinue
     }

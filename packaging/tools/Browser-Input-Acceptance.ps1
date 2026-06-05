@@ -24,6 +24,12 @@ public static class VoiceImeBrowserWin32 {
   [DllImport("user32.dll")]
   public static extern bool SetForegroundWindow(IntPtr hWnd);
   [DllImport("user32.dll")]
+  public static extern IntPtr GetForegroundWindow();
+  [DllImport("user32.dll")]
+  public static extern bool ShowWindow(IntPtr hWnd, int nCmdShow);
+  [DllImport("user32.dll", SetLastError=true)]
+  public static extern bool SetWindowPos(IntPtr hWnd, IntPtr hWndInsertAfter, int X, int Y, int cx, int cy, uint uFlags);
+  [DllImport("user32.dll")]
   public static extern bool GetWindowRect(IntPtr hWnd, out RECT lpRect);
   [DllImport("user32.dll")]
   public static extern bool SetCursorPos(int X, int Y);
@@ -171,20 +177,41 @@ function Wait-BrowserWindow {
 function Focus-Window {
     param([System.Diagnostics.Process]$Process)
     $Process.Refresh()
-    $shell = New-Object -ComObject WScript.Shell
-    $shell.AppActivate($Process.Id) | Out-Null
-    [VoiceImeBrowserWin32]::SetForegroundWindow($Process.MainWindowHandle) | Out-Null
-    Start-Sleep -Milliseconds 450
-    $rect = New-Object RECT
-    if ([VoiceImeBrowserWin32]::GetWindowRect($Process.MainWindowHandle, [ref]$rect)) {
-        $x = [int](($rect.Left + $rect.Right) / 2)
-        $y = [int](($rect.Top + $rect.Bottom) / 2)
-        [VoiceImeBrowserWin32]::SetCursorPos($x, $y) | Out-Null
-        Start-Sleep -Milliseconds 120
-        [VoiceImeBrowserWin32]::mouse_event(0x0002, 0, 0, 0, [UIntPtr]::Zero)
-        [VoiceImeBrowserWin32]::mouse_event(0x0004, 0, 0, 0, [UIntPtr]::Zero)
+    if ($Process.MainWindowHandle -eq 0) {
+        return
     }
-    Start-Sleep -Milliseconds 450
+    [VoiceImeBrowserWin32]::ShowWindow($Process.MainWindowHandle, 9) | Out-Null
+    [VoiceImeBrowserWin32]::SetWindowPos($Process.MainWindowHandle, [IntPtr]::new(-1), 0, 0, 0, 0, 0x0043) | Out-Null
+    $shell = New-Object -ComObject WScript.Shell
+    for ($attempt = 0; $attempt -lt 4; $attempt += 1) {
+        $shell.AppActivate($Process.Id) | Out-Null
+        [VoiceImeBrowserWin32]::SetForegroundWindow($Process.MainWindowHandle) | Out-Null
+        Start-Sleep -Milliseconds 250
+        $rect = New-Object RECT
+        if ([VoiceImeBrowserWin32]::GetWindowRect($Process.MainWindowHandle, [ref]$rect)) {
+            $x = [int](($rect.Left + $rect.Right) / 2)
+            $y = [int](($rect.Top + $rect.Bottom) / 2)
+            [VoiceImeBrowserWin32]::SetCursorPos($x, $y) | Out-Null
+            Start-Sleep -Milliseconds 80
+            [VoiceImeBrowserWin32]::mouse_event(0x0002, 0, 0, 0, [UIntPtr]::Zero)
+            [VoiceImeBrowserWin32]::mouse_event(0x0004, 0, 0, 0, [UIntPtr]::Zero)
+        }
+        Start-Sleep -Milliseconds 250
+        if ([VoiceImeBrowserWin32]::GetForegroundWindow() -eq $Process.MainWindowHandle) {
+            return
+        }
+    }
+}
+
+function Clear-WindowTopmost {
+    param([System.Diagnostics.Process]$Process)
+    if (-not $Process -or $Process.HasExited) {
+        return
+    }
+    $Process.Refresh()
+    if ($Process.MainWindowHandle -ne 0) {
+        [VoiceImeBrowserWin32]::SetWindowPos($Process.MainWindowHandle, [IntPtr]::new(-2), 0, 0, 0, 0, 0x0003) | Out-Null
+    }
 }
 
 function Wait-TitleContains {
@@ -392,6 +419,7 @@ try {
     }
 }
 finally {
+    Clear-WindowTopmost -Process $browserWindow
     Stop-BrowserProfileProcesses -ProcessNames $browserSpec.ProcessNames -ProfileDir $profileDir
     Remove-Item -LiteralPath $tempRoot -Recurse -Force -ErrorAction SilentlyContinue
     if ($null -ne $previousClipboard) {
