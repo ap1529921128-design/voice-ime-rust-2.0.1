@@ -156,6 +156,9 @@ function Invoke-ModelRootFileSmoke {
         if (-not $body.Contains($modelRoot)) {
             throw "Doctor report did not use MODEL_ROOT.txt model root: $modelRoot"
         }
+        if (-not $body.Contains("MODEL_ROOT.txt")) {
+            throw "Doctor report did not identify MODEL_ROOT.txt as the model root source"
+        }
     }
     finally {
         if ([string]::IsNullOrEmpty($previousAppDir)) {

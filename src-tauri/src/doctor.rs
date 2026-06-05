@@ -221,6 +221,7 @@ fn check_app_paths(paths: &Paths, config: &AppConfig, checks: &mut Vec<DoctorChe
     );
 
     let model_root = crate::config::effective_model_root(config, paths);
+    let model_root_source = crate::config::effective_model_root_source(config, paths);
     push_check(
         checks,
         "模型根目录",
@@ -229,7 +230,11 @@ fn check_app_paths(paths: &Paths, config: &AppConfig, checks: &mut Vec<DoctorChe
         } else {
             DoctorStatus::Warn
         },
-        model_root.to_string_lossy(),
+        format!(
+            "{}；来源：{}",
+            model_root.to_string_lossy(),
+            model_root_source
+        ),
     );
 }
 

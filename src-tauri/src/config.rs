@@ -658,6 +658,21 @@ pub fn effective_model_root(config: &AppConfig, paths: &Paths) -> PathBuf {
     absolutize(&paths.root_dir, PathBuf::from(configured))
 }
 
+pub fn effective_model_root_source(config: &AppConfig, paths: &Paths) -> &'static str {
+    if std::env::var_os("VOICE_IME_MODEL_DIR").is_some() {
+        return "VOICE_IME_MODEL_DIR";
+    }
+    if model_root_file(&paths.root_dir).is_some() {
+        return "MODEL_ROOT.txt";
+    }
+    let configured = config.asr.model_root.trim();
+    if configured.is_empty() || configured == "models" {
+        "default"
+    } else {
+        "asr.model_root"
+    }
+}
+
 pub fn resolve_model_path(config: &AppConfig, paths: &Paths, configured: &str) -> PathBuf {
     let configured = configured.trim();
     let path = PathBuf::from(configured);
@@ -966,6 +981,7 @@ mod tests {
         normalize_config(&mut cfg);
 
         assert_eq!(effective_model_root(&cfg, &paths), shared.clone());
+        assert_eq!(effective_model_root_source(&cfg, &paths), "MODEL_ROOT.txt");
         assert_eq!(
             resolve_model_path(&cfg, &paths, "models/foo/bar.onnx"),
             shared.join("foo/bar.onnx")

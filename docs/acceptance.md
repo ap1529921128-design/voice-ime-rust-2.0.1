@@ -109,7 +109,7 @@
 5. Clicking `选择` opens a native directory picker and fills the matching default filenames for that profile.
 6. Each individual model path has a file-picker icon that updates only that config field.
 7. After selecting a directory or file, the config is saved and the ready/missing rows refresh.
-8. Optional portable override: create `app\MODEL_ROOT.txt` with an absolute model repository path, launch from `启动语音输入.bat`, and confirm Settings / Models, Doctor, MiniCPM startup, and tray `模型目录` use that effective root when `VOICE_IME_MODEL_DIR` is not already set.
+8. Optional portable override: create `app\MODEL_ROOT.txt` with an absolute model repository path, launch from `启动语音输入.bat`, and confirm Settings / Models, Doctor, MiniCPM startup, and tray `模型目录` use that effective root when `VOICE_IME_MODEL_DIR` is not already set; Doctor should also show the active root source.
 
 ## Hotkey Status
 
