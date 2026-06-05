@@ -514,14 +514,20 @@ fn run_asr_benchmark(
     app: AppHandle,
     state: State<'_, AppState>,
     samples_dir: String,
+    profile: Option<String>,
 ) -> UiSnapshot {
     let samples_path = PathBuf::from(samples_dir);
+    let profile_label = benchmark_profile_label(profile.as_deref());
     let snapshot = state.set_runtime_notice(
         &app,
         "ASR 基准中",
-        format!("样本目录：{}", samples_path.to_string_lossy()),
+        format!(
+            "{} · 样本目录：{}",
+            profile_label,
+            samples_path.to_string_lossy()
+        ),
     );
-    let config = snapshot.config.clone();
+    let config = benchmark_config_for_profile(snapshot.config.clone(), profile.as_deref());
     let paths = state.paths.clone();
     let app_handle = app.clone();
     std::thread::spawn(move || {
@@ -536,8 +542,11 @@ fn run_asr_benchmark(
                         &app_handle,
                         "ASR 基准完成",
                         format!(
-                            "{} 个样本，{} 个错误；{}",
-                            report.sample_count, report.error_count, report.output_path
+                            "{} · {} 个样本，{} 个错误；{}",
+                            config.asr.profile,
+                            report.sample_count,
+                            report.error_count,
+                            report.output_path
                         ),
                     );
                 }
@@ -552,6 +561,26 @@ fn run_asr_benchmark(
         }
     });
     snapshot
+}
+
+fn benchmark_config_for_profile(mut config: AppConfig, profile: Option<&str>) -> AppConfig {
+    if let Some(profile) = normalized_benchmark_profile(profile) {
+        config.asr.profile = profile;
+    }
+    config
+}
+
+fn benchmark_profile_label(profile: Option<&str>) -> String {
+    normalized_benchmark_profile(profile).unwrap_or_else(|| "当前档位".into())
+}
+
+fn normalized_benchmark_profile(profile: Option<&str>) -> Option<String> {
+    let profile = profile?.trim();
+    if matches!(profile, "fast" | "balanced" | "fallback") {
+        Some(profile.to_string())
+    } else {
+        None
+    }
 }
 
 #[tauri::command]
@@ -1131,5 +1160,26 @@ mod tests {
             hotkey_doctor_detail(&check),
             "Alt+R；可能被系统或其他软件占用；换一个组合"
         );
+    }
+
+    #[test]
+    fn asr_benchmark_profile_overrides_only_valid_profiles() {
+        let mut config = AppConfig::default();
+        config.asr.profile = "balanced".into();
+
+        assert_eq!(
+            benchmark_config_for_profile(config.clone(), Some("fast"))
+                .asr
+                .profile,
+            "fast"
+        );
+        assert_eq!(
+            benchmark_config_for_profile(config.clone(), Some("bad"))
+                .asr
+                .profile,
+            "balanced"
+        );
+        assert_eq!(benchmark_profile_label(None), "当前档位");
+        assert_eq!(benchmark_profile_label(Some("fallback")), "fallback");
     }
 }

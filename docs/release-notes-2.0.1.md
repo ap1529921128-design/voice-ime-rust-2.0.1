@@ -42,6 +42,8 @@ Settings / Data also includes `词表试算`. Paste or type a sentence, click `�
 
 Settings / Shortcuts now gives clearer guidance when a shortcut is duplicated, unavailable, or not recognized. Doctor includes the same suggestion text so hotkey failures are actionable instead of only reporting a raw registration error.
 
+Settings / Models now has a per-profile `基准` action. It runs the same ASR CSV benchmark for the clicked `fast`, `balanced`, or `fallback` profile without changing the saved default profile.
+
 ## Verification
 
 The release gate passed on the build machine for:

@@ -101,10 +101,11 @@ function qaInvoke(command: string, args?: Record<string, unknown>) {
     return { ...qaSnapshot, status: "便携模型目录已清除", meta: "QA mock" };
   }
   if (command === "run_asr_benchmark") {
+    const profile = String(args?.profile || qaSnapshot.config.asr.profile || "");
     return {
       ...qaSnapshot,
       status: "ASR 基准中",
-      meta: String(args?.samplesDir || "QA samples"),
+      meta: `${profile || "当前档位"} · ${String(args?.samplesDir || "QA samples")}`,
     };
   }
   if (command === "run_translation_benchmark") {

@@ -50,6 +50,7 @@
 - Added a Settings / Data dictionary test preview that runs a sentence through normalization, built-in corrections, hotwords, hot rules, ITN, and final cleanup with per-stage hit counts.
 - Added a packaged `app/tools/Foreground-Input-Acceptance.ps1` helper for manually validating WeChat/Feishu, Word, IDE, and other foreground targets with input-target log checks.
 - Added a Settings / Data ASR benchmark action that runs the same CSV timing and CER harness as `VoiceIME.exe --benchmark-asr`.
+- Added per-profile ASR benchmark actions on Settings / Models so fast, balanced, and fallback can be timed without changing the saved default profile.
 - Added Settings / Smart local LLM service status and start controls, plus Doctor checks for the MiniCPM model, llama-server binary, and startup script.
 - Added `packaging/Test-PortableRelease.ps1` for one-command full/core portable layout, startup, Doctor, Notepad, and Browser verification, and expanded UI smoke coverage to 200% device scale.
 - Added `packaging/package-available-model-packs.ps1` to batch-create all currently available non-planned model packs and write a zip checksum release manifest.

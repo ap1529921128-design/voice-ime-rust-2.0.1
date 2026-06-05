@@ -854,6 +854,7 @@ function modelSettingsPanel(cfg: AppConfig) {
               <button class="mini-action" data-action="pick-model-dir" data-profile="${escapeAttr(row.profile)}" title="选择模型目录">${icon("FolderSearch", "选择模型目录")}<span>选择</span></button>
               <button class="mini-action" data-action="open-model-mirror" data-profile="${escapeAttr(row.profile)}" title="打开镜像页">${icon("Cloud", "打开镜像页")}<span>镜像</span></button>
               <button class="mini-action" data-action="open-model-page" data-profile="${escapeAttr(row.profile)}" title="打开官方页">${icon("ExternalLink", "打开官方页")}<span>官网</span></button>
+              <button class="mini-action" data-action="run-asr-benchmark-profile" data-profile="${escapeAttr(row.profile)}" title="按此档位运行 ASR 基准">${icon("Gauge", "ASR 基准")}<span>基准</span></button>
             </div>
           </div>`,
           )
@@ -1306,6 +1307,7 @@ function wireCommon() {
       if (action === "export-diagnostics") await run("export_diagnostics");
       if (action === "export-history-csv") await run("export_history_csv");
       if (action === "run-asr-benchmark") await runAsrBenchmark();
+      if (action === "run-asr-benchmark-profile") await runAsrBenchmark(button.dataset.profile || "");
       if (action === "run-translation-benchmark") await run("run_translation_benchmark", { samplesPath: "" });
       if (action === "refresh-dictionary-stats") await refreshDictionaryStats(true);
       if (action === "test-dictionary-text") await testDictionaryText();
@@ -1774,14 +1776,14 @@ async function clearModelRootOverride() {
   render();
 }
 
-async function runAsrBenchmark() {
+async function runAsrBenchmark(profile = "") {
   const selected = await openDialog({
     multiple: false,
     directory: true,
-    title: "选择 ASR 样本目录",
+    title: profile ? `选择 ${profile} ASR 样本目录` : "选择 ASR 样本目录",
   });
   if (typeof selected !== "string") return;
-  await run("run_asr_benchmark", { samplesDir: selected });
+  await run("run_asr_benchmark", { samplesDir: selected, profile });
 }
 
 function isModelProfile(value: string): value is ModelProfile {

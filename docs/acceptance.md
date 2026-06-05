@@ -118,7 +118,7 @@
 
 1. Open Settings / Models.
 2. The page shows a `模型根目录` field with a native directory picker.
-3. Each ASR profile row shows a short description, an expected 10-second latency hint, missing/required filenames, and `下载`, `选择`, `镜像`, and `官网` actions.
+3. Each ASR profile row shows a short description, an expected 10-second latency hint, missing/required filenames, and `下载`, `选择`, `镜像`, `官网`, and `基准` actions.
 4. Clicking `模型根目录` opens a native directory picker, saves `asr.model_root`, and refreshes ready/missing rows against that root.
 5. Clicking `选择` opens a native directory picker and fills the matching default filenames for that profile.
 6. Each individual model path has a file-picker icon that updates only that config field.
@@ -127,6 +127,7 @@
 9. Clicking `写入便携` writes the current model root into `app\MODEL_ROOT.txt`, refreshes model readiness, and makes Doctor, MiniCPM startup, and tray `模型目录` use that effective root when `VOICE_IME_MODEL_DIR` is not already set.
 10. Clicking `清除` removes `app\MODEL_ROOT.txt`; if no environment variable is set, the effective source falls back to `asr.model_root` or default `app/models`.
 11. `app\models\MODELS.json/md` remains the packaged manifest and repair source even when the effective model root is external.
+12. Clicking a profile row's `基准` action runs the ASR benchmark against that profile only, without changing the saved default profile.
 
 ## Hotkey Status
 
@@ -162,6 +163,7 @@
 3. An `asr-benchmark-YYYYMMDD-HHMMSS.csv` file appears under `.voice_ime/logs`.
 4. The CSV includes file, duration, profile, worker mode, backend, model, transcribe seconds, realtime factor, expected text, transcript text, expected character count, edit distance, CER, accuracy, and error.
 5. If the sample directory is missing or empty, the command still writes a CSV row with `no wav samples found`.
+6. Settings / Models / profile-row `基准` writes the same CSV, with the row `profile` set to the clicked profile even if Settings / Voice currently selects a different default profile.
 
 ## Translation Benchmark
 
@@ -297,7 +299,7 @@
 - Settings / Data now includes `词表试算`, which previews a sentence through normalization, built-in corrections, hotwords, hot rules, ITN, and final cleanup with per-stage change and match rows.
 - Settings / Models now has native file and directory pickers; real removable-drive acceptance should still be tested on target machines.
 - Settings / Shortcuts now shows global-hotkey registration status, duplicate/invalid/taken-key suggestions, and re-registers after save; manual conflict coverage is still required with real third-party apps.
-- `--benchmark-asr` and Settings / Data / `ASR 基准` now provide a repeatable timing and CER/accuracy CSV harness; real quality still depends on recorded sample audio from target machines.
+- `--benchmark-asr`, Settings / Data / `ASR 基准`, and Settings / Models / per-profile `基准` now provide a repeatable timing and CER/accuracy CSV harness; real quality still depends on recorded sample audio from target machines.
 - `--benchmark-translation` and Settings / Data / `翻译基准` now provide a repeatable CSV harness for translation latency, backend errors, target-language hints, and prompt-like chatter filtering.
 - Confirm paste now restores previous text clipboard where feasible, retries focus recovery before Ctrl+V, logs previous clipboard format/status, and exposes a short "pasted" UI state; manual image/file clipboard preservation is still future work.
 - Settings / Smart now includes a personal prompt editor backed by `.voice_ime/personal_prompt.txt`, with save validation and restore-default action.
