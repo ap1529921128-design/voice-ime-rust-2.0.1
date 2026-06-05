@@ -251,6 +251,48 @@ function Invoke-PanicSmoke {
     Write-Host "Panic smoke passed: $appDir"
 }
 
+function Invoke-AsrBenchmarkProfileSmoke {
+    param([Parameter(Mandatory = $true)][string]$Root)
+
+    $app = Join-Path $Root "app"
+    $exe = Join-Path $app "VoiceIME.exe"
+    $appDir = Join-Path ([System.IO.Path]::GetTempPath()) ("voice-ime-asr-benchmark-" + [guid]::NewGuid().ToString("N"))
+    $samplesDir = Join-Path ([System.IO.Path]::GetTempPath()) ("voice-ime-empty-asr-samples-" + [guid]::NewGuid().ToString("N"))
+    $previousAppDir = [Environment]::GetEnvironmentVariable("VOICE_IME_APP_DIR", "Process")
+    try {
+        New-Item -ItemType Directory -Path $samplesDir -Force | Out-Null
+        $env:VOICE_IME_APP_DIR = $appDir
+        $process = Start-Process -FilePath $exe -ArgumentList @("--benchmark-asr-profile", "fallback", $samplesDir) -WorkingDirectory $app -WindowStyle Hidden -Wait -PassThru
+        if ($process.ExitCode -ne 0) {
+            throw "ASR benchmark profile smoke exited with code $($process.ExitCode)"
+        }
+    }
+    finally {
+        if ([string]::IsNullOrEmpty($previousAppDir)) {
+            Remove-Item Env:\VOICE_IME_APP_DIR -ErrorAction SilentlyContinue
+        }
+        else {
+            $env:VOICE_IME_APP_DIR = $previousAppDir
+        }
+        if (Test-Path -LiteralPath $samplesDir) {
+            Remove-Item -LiteralPath $samplesDir -Recurse -Force
+        }
+    }
+    $reports = @(Get-ChildItem -LiteralPath (Join-Path $appDir "logs") -Filter "asr-benchmark-*.csv" -File -ErrorAction SilentlyContinue)
+    if ($reports.Count -eq 0) {
+        throw "ASR benchmark profile smoke did not write a CSV under $appDir"
+    }
+    $report = $reports | Sort-Object LastWriteTime -Descending | Select-Object -First 1
+    $body = Get-Content -LiteralPath $report.FullName -Raw
+    if (-not $body.Contains("fallback")) {
+        throw "ASR benchmark profile CSV did not record fallback profile"
+    }
+    if (-not $body.Contains("no wav samples found")) {
+        throw "ASR benchmark profile CSV did not record the empty-sample error"
+    }
+    Write-Host "ASR benchmark profile smoke passed: $($report.FullName)"
+}
+
 function Invoke-AcceptanceScript {
     param(
         [Parameter(Mandatory = $true)][string]$Root,
@@ -329,6 +371,7 @@ Invoke-DoctorSmoke -Root $ReleaseRoot
 Invoke-ModelRootFileSmoke -CoreRoot $CoreReleaseRoot
 Invoke-ShutdownSmoke -Root $ReleaseRoot
 Invoke-PanicSmoke -Root $ReleaseRoot
+Invoke-AsrBenchmarkProfileSmoke -Root $ReleaseRoot
 if (-not $SkipNotepad) {
     Invoke-AcceptanceScript -Root $ReleaseRoot -ScriptName "Notepad-Input-Acceptance.ps1"
 }

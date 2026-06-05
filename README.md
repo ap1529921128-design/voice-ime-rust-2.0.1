@@ -151,9 +151,17 @@ ASR 后处理会做基础 ITN，把常见中文数字、百分比、金额、日
 app\VoiceIME.exe --benchmark-asr D:\voice-ime-benchmarks\asr
 ```
 
+批量比较不同档位时，可以显式指定 profile：
+
+```powershell
+app\VoiceIME.exe --benchmark-asr-profile fast D:\voice-ime-benchmarks\asr
+app\VoiceIME.exe --benchmark-asr-profile balanced D:\voice-ime-benchmarks\asr
+app\VoiceIME.exe --benchmark-asr-profile fallback D:\voice-ime-benchmarks\asr
+```
+
 结果会写到 `app/.voice_ime/logs/asr-benchmark-YYYYMMDD-HHMMSS.csv`，包含音频时长、当前 profile、worker 模式、后端、模型、耗时、实时率、参考文本、转写文本、字符错误率 CER、accuracy 和错误信息。样本句模板见 [docs/asr-benchmark.md](docs/asr-benchmark.md)。
 
-也可以在“设置 / 数据”点击“ASR 基准”，选择同样的样本目录后后台生成 CSV。
+也可以在“设置 / 数据”点击“ASR 基准”，或在“设置 / 模型”点击某个档位行里的“基准”，选择同样的样本目录后后台生成 CSV。
 
 ## 翻译基准
 

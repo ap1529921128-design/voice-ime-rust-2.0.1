@@ -775,6 +775,22 @@ pub fn run_cli_worker_if_requested() -> bool {
         }
         return true;
     }
+    if first == std::ffi::OsStr::new("--benchmark-asr-profile") {
+        let Some(profile) = args.next() else {
+            eprintln!("missing ASR profile, expected fast, balanced, or fallback");
+            std::process::exit(2);
+        };
+        let profile = profile.to_string_lossy().to_string();
+        let samples_dir = args
+            .next()
+            .map(std::path::PathBuf::from)
+            .unwrap_or_else(|| std::path::PathBuf::from("benchmarks/asr"));
+        if let Err(err) = benchmark::run_asr_cli_with_profile(samples_dir, Some(&profile)) {
+            eprintln!("{err:?}");
+            std::process::exit(2);
+        }
+        return true;
+    }
     if first == std::ffi::OsStr::new("--benchmark-translation") {
         let samples_path = args.next().map(std::path::PathBuf::from);
         if let Err(err) = translation_benchmark::run_translation_cli(samples_path) {

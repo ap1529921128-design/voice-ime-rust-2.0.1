@@ -163,7 +163,8 @@
 3. An `asr-benchmark-YYYYMMDD-HHMMSS.csv` file appears under `.voice_ime/logs`.
 4. The CSV includes file, duration, profile, worker mode, backend, model, transcribe seconds, realtime factor, expected text, transcript text, expected character count, edit distance, CER, accuracy, and error.
 5. If the sample directory is missing or empty, the command still writes a CSV row with `no wav samples found`.
-6. Settings / Models / profile-row `基准` writes the same CSV, with the row `profile` set to the clicked profile even if Settings / Voice currently selects a different default profile.
+6. `app\VoiceIME.exe --benchmark-asr-profile <fast|balanced|fallback> <samples-dir>` writes the same CSV without changing the saved default profile.
+7. Settings / Models / profile-row `基准` writes the same CSV, with the row `profile` set to the clicked profile even if Settings / Voice currently selects a different default profile.
 
 ## Translation Benchmark
 
@@ -236,8 +237,9 @@
 3. The script checks the full and core root layouts, hidden `app` directory, required app files, `BUILD.txt`, and core model cleanliness.
 4. It starts the full and core apps with temporary `VOICE_IME_APP_DIR` values and requires each GUI process to stay alive for 5 seconds.
 5. It runs packaged `VoiceIME.exe --doctor` with a temporary app data directory and requires a doctor report containing the local LLM file check.
-6. Unless skipped, it runs the packaged Notepad, Browser, Translation, and model-pack import acceptance scripts.
-7. At the end it removes any `.voice_ime` runtime data created under the portable package.
+6. It runs packaged `VoiceIME.exe --benchmark-asr-profile fallback <empty-samples-dir>` and requires a CSV with the fallback profile and `no wav samples found`.
+7. Unless skipped, it runs the packaged Notepad, Browser, Translation, and model-pack import acceptance scripts.
+8. At the end it removes any `.voice_ime` runtime data created under the portable package.
 
 ## Release Asset Packaging
 
@@ -299,7 +301,7 @@
 - Settings / Data now includes `词表试算`, which previews a sentence through normalization, built-in corrections, hotwords, hot rules, ITN, and final cleanup with per-stage change and match rows.
 - Settings / Models now has native file and directory pickers; real removable-drive acceptance should still be tested on target machines.
 - Settings / Shortcuts now shows global-hotkey registration status, duplicate/invalid/taken-key suggestions, and re-registers after save; manual conflict coverage is still required with real third-party apps.
-- `--benchmark-asr`, Settings / Data / `ASR 基准`, and Settings / Models / per-profile `基准` now provide a repeatable timing and CER/accuracy CSV harness; real quality still depends on recorded sample audio from target machines.
+- `--benchmark-asr`, `--benchmark-asr-profile`, Settings / Data / `ASR 基准`, and Settings / Models / per-profile `基准` now provide a repeatable timing and CER/accuracy CSV harness; real quality still depends on recorded sample audio from target machines.
 - `--benchmark-translation` and Settings / Data / `翻译基准` now provide a repeatable CSV harness for translation latency, backend errors, target-language hints, and prompt-like chatter filtering.
 - Confirm paste now restores previous text clipboard where feasible, retries focus recovery before Ctrl+V, logs previous clipboard format/status, and exposes a short "pasted" UI state; manual image/file clipboard preservation is still future work.
 - Settings / Smart now includes a personal prompt editor backed by `.voice_ime/personal_prompt.txt`, with save validation and restore-default action.

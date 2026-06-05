@@ -2,7 +2,7 @@ use crate::{
     asr::{self, AsrInput},
     config::{self, Paths},
 };
-use anyhow::Result;
+use anyhow::{anyhow, Result};
 use serde::Serialize;
 use std::{
     ffi::OsStr,
@@ -19,11 +19,29 @@ pub struct AsrBenchmarkReport {
 }
 
 pub fn run_asr_cli(samples_dir: PathBuf) -> Result<()> {
+    run_asr_cli_with_profile(samples_dir, None)
+}
+
+pub fn run_asr_cli_with_profile(samples_dir: PathBuf, profile: Option<&str>) -> Result<()> {
     let paths = Paths::discover()?;
-    let config = config::load_or_create(&paths)?;
+    let mut config = config::load_or_create(&paths)?;
+    if let Some(profile) = profile {
+        config.asr.profile = cli_profile(profile)?;
+    }
     let report = run_asr(&samples_dir, &paths, &config)?;
     println!("{}", report.output_path);
     Ok(())
+}
+
+fn cli_profile(profile: &str) -> Result<String> {
+    let profile = profile.trim();
+    if matches!(profile, "fast" | "balanced" | "fallback") {
+        Ok(profile.to_string())
+    } else {
+        Err(anyhow!(
+            "unknown ASR profile '{profile}', expected fast, balanced, or fallback"
+        ))
+    }
 }
 
 pub fn run_asr(
@@ -328,5 +346,12 @@ mod tests {
         let csv = fs::read_to_string(report.output_path).unwrap();
         assert!(csv.contains("expected_chars,edit_distance,cer,accuracy"));
         assert!(csv.contains("no wav samples found"));
+    }
+
+    #[test]
+    fn cli_profile_accepts_known_profiles_only() {
+        assert_eq!(cli_profile("fast").unwrap(), "fast");
+        assert_eq!(cli_profile(" balanced ").unwrap(), "balanced");
+        assert!(cli_profile("accurate").is_err());
     }
 }

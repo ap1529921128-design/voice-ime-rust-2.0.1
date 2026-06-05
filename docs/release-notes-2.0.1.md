@@ -44,6 +44,8 @@ Settings / Shortcuts now gives clearer guidance when a shortcut is duplicated, u
 
 Settings / Models now has a per-profile `基准` action. It runs the same ASR CSV benchmark for the clicked `fast`, `balanced`, or `fallback` profile without changing the saved default profile.
 
+The packaged CLI also supports `VoiceIME.exe --benchmark-asr-profile <profile> <samples-dir>`, making it easier to run fast/balanced/fallback comparisons on a target machine or removable drive. The portable release gate checks this path with an empty fallback sample directory.
+
 ## Verification
 
 The release gate passed on the build machine for:

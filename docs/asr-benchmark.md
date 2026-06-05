@@ -15,6 +15,14 @@ Run:
 app\VoiceIME.exe --benchmark-asr D:\voice-ime-benchmarks\asr
 ```
 
+To compare profiles without changing the saved config:
+
+```powershell
+app\VoiceIME.exe --benchmark-asr-profile fast D:\voice-ime-benchmarks\asr
+app\VoiceIME.exe --benchmark-asr-profile balanced D:\voice-ime-benchmarks\asr
+app\VoiceIME.exe --benchmark-asr-profile fallback D:\voice-ime-benchmarks\asr
+```
+
 Suggested Chinese sample set:
 
 1. 今天下午三点半我们开一个十分钟的短会。
