@@ -25,6 +25,8 @@ Voice IME Rust 2.0.1 is the first hardened portable release after the Rust/Tauri
 
 The app never sends Enter automatically. Confirmed text is pasted into the target app; if the caret cannot be located, the main confirmation box remains the fallback.
 
+2.0.1 now retries focus recovery before Ctrl+V, briefly shows an `已粘贴` state before hiding the overlay, and writes focus/clipboard diagnostics into `input-target-YYYYMMDD.log`. Text clipboard contents are restored where feasible; non-text clipboard formats are logged clearly instead of being reported as restored.
+
 ## Verification
 
 The release gate passed on the build machine for:

@@ -287,6 +287,16 @@ impl AppState {
             paste_delay_ms: delay,
             input_method: paste_outcome.map(|outcome| outcome.method),
             send_input_events: paste_outcome.map(|outcome| outcome.send_input_events),
+            focus_attempts: paste_outcome.map(|outcome| outcome.focus_attempts),
+            focus_restored: paste_outcome.map(|outcome| outcome.focus_restored),
+            clipboard_previous_had_text: paste_outcome
+                .map(|outcome| outcome.clipboard_previous_had_text),
+            clipboard_previous_format: paste_outcome
+                .map(|outcome| outcome.clipboard_previous_format),
+            clipboard_format_count: paste_outcome.map(|outcome| outcome.clipboard_format_count),
+            clipboard_sequence_before: paste_outcome
+                .map(|outcome| outcome.clipboard_sequence_before),
+            clipboard_sequence_after: paste_outcome.map(|outcome| outcome.clipboard_sequence_after),
             clipboard_restored: paste_outcome.map(|outcome| outcome.clipboard_restored),
             clipboard_restore_error: paste_outcome
                 .and_then(|outcome| outcome.clipboard_restore_error.as_deref()),
@@ -296,15 +306,24 @@ impl AppState {
         };
         let _ = self.write_input_target_log(&log_entry);
         paste_result?;
-        hide_overlay(app);
+        let hide_session_id = {
+            let inner = self.inner.lock();
+            inner.session_id
+        };
         {
             let mut inner = self.inner.lock();
-            inner.status = "已粘贴到当前焦点位置".into();
+            inner.status = "已粘贴".into();
             inner.meta = profile_name
                 .map(|name| format!("没有自动发送 / {name}"))
                 .unwrap_or_else(|| "没有自动发送".into());
         }
         emit_snapshot(app, self);
+        hide_overlay_after(
+            app.clone(),
+            self.clone_for_worker(),
+            hide_session_id,
+            Duration::from_millis(650),
+        );
         Ok(self.snapshot())
     }
 
@@ -815,6 +834,13 @@ struct InputTargetLogEntry<'a> {
     paste_delay_ms: u64,
     input_method: Option<&'a str>,
     send_input_events: Option<u32>,
+    focus_attempts: Option<u32>,
+    focus_restored: Option<bool>,
+    clipboard_previous_had_text: Option<bool>,
+    clipboard_previous_format: Option<&'a str>,
+    clipboard_format_count: Option<u32>,
+    clipboard_sequence_before: Option<u32>,
+    clipboard_sequence_after: Option<u32>,
     clipboard_restored: Option<bool>,
     clipboard_restore_error: Option<&'a str>,
     result: &'a str,
@@ -842,6 +868,20 @@ pub fn hide_overlay(app: &AppHandle) {
     if let Some(window) = app.get_webview_window("overlay") {
         let _ = window.hide();
     }
+}
+
+fn hide_overlay_after(app: AppHandle, worker: WorkerState, session_id: u64, delay: Duration) {
+    std::thread::spawn(move || {
+        std::thread::sleep(delay);
+        let state = worker.app_state();
+        {
+            let inner = state.inner.lock();
+            if inner.session_id != session_id || inner.state != SessionState::Idle {
+                return;
+            }
+        }
+        hide_overlay(&app);
+    });
 }
 
 fn read_prompt(paths: &Paths) -> String {

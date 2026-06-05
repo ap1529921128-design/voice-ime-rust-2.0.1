@@ -17,7 +17,7 @@
 2. Confirm Voice IME text into Notepad or another focused text field.
 3. The recognized text is pasted into the target without sending Enter.
 4. The original text clipboard is restored after paste where Windows allows it.
-5. `input-target-YYYYMMDD.log` records `input_method`, `send_input_events`, `clipboard_restored`, and `clipboard_restore_error`.
+5. `input-target-YYYYMMDD.log` records `input_method`, `send_input_events`, `focus_attempts`, `focus_restored`, `clipboard_previous_format`, `clipboard_previous_had_text`, `clipboard_restored`, and `clipboard_restore_error`.
 
 ## Direct Input Fallback
 
@@ -227,7 +227,7 @@
 2. From the package root, run `powershell -NoProfile -ExecutionPolicy Bypass -File .\app\tools\Notepad-Input-Acceptance.ps1`.
 3. The script opens Notepad, focuses it, runs `VoiceIME.exe --paste-foreground <text> 80`, copies Notepad content back, and compares it with the expected text.
 4. A `notepad-acceptance-YYYYMMDD-HHMMSS.txt` report appears under `app/.voice_ime/logs`.
-5. The same run also appends an `input-target-YYYYMMDD.log` row with the captured target process, window class, paste method, `SendInput` count, clipboard restore status, `caret_source`, and captured `rect`.
+5. The same run also appends an `input-target-YYYYMMDD.log` row with the captured target process, window class, paste method, `SendInput` count, focus retry count, clipboard restore status, previous clipboard format, `caret_source`, and captured `rect`.
 6. The report must show `target_ok=True` and `target_process=Notepad.exe`; otherwise the script fails because another foreground app received the paste.
 7. This is an automated smoke for Notepad only; WeChat/Feishu, Word/document editors, and IDE input boxes still need manual target-machine acceptance.
 
@@ -249,7 +249,7 @@
 4. During the countdown, focus the target input box.
 5. The script runs `VoiceIME.exe --paste-foreground <text> 80` against the current foreground window.
 6. A `foreground-acceptance-YYYYMMDD-HHMMSS.txt` report appears under `app/.voice_ime/logs`.
-7. The report records `target_process`, `target_class`, `target_title`, `caret_source`, `rect`, `input_method`, `send_input_events`, and clipboard restoration status.
+7. The report records `target_process`, `target_class`, `target_title`, `caret_source`, `rect`, `input_method`, `send_input_events`, focus recovery fields, previous clipboard format fields, and clipboard restoration status.
 8. The report must show `target_ok=True` for the expected process/class/title filters; the pasted content itself remains a manual visual check for real apps that do not expose text content for automated readback.
 
 ## Current 2.0.1 Test Boundary
@@ -273,7 +273,7 @@
 - Settings / Shortcuts now shows global-hotkey registration status and re-registers after save; manual conflict coverage is still required with real third-party apps.
 - `--benchmark-asr` and Settings / Data / `ASR 基准` now provide a repeatable timing and CER/accuracy CSV harness; real quality still depends on recorded sample audio from target machines.
 - `--benchmark-translation` and Settings / Data / `翻译基准` now provide a repeatable CSV harness for translation latency, backend errors, target-language hints, and prompt-like chatter filtering.
-- Confirm paste now restores previous text clipboard where feasible and logs restore status; manual image/file clipboard preservation is still future work.
+- Confirm paste now restores previous text clipboard where feasible, retries focus recovery before Ctrl+V, logs previous clipboard format/status, and exposes a short "pasted" UI state; manual image/file clipboard preservation is still future work.
 - Cursor positioning now logs `uia-caret` when UI Automation exposes text-range caret rectangles, then falls back to `uia-element`, guarded `uia-focused`, `gui-thread`, or `fallback`; real overlay placement still needs visual target-machine coverage.
 - Clipboard failure can now fall back to direct Unicode typing for short single-line text; broad app coverage still needs manual acceptance.
 - `npm run ui:smoke` now covers main/settings/history/overlay layout with QA mock data across 100%, 125%, 150%, and 200% device scale; true OS DPI and WebView screenshots still need manual release checks.

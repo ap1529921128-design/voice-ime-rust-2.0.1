@@ -15,6 +15,9 @@ use windows::Win32::System::{
 };
 use windows_sys::Win32::Foundation::{CloseHandle, HWND, POINT, RECT};
 use windows_sys::Win32::Graphics::Gdi::ClientToScreen;
+use windows_sys::Win32::System::DataExchange::{
+    CountClipboardFormats, GetClipboardSequenceNumber, IsClipboardFormatAvailable,
+};
 use windows_sys::Win32::System::Threading::{
     GetCurrentThreadId, OpenProcess, QueryFullProcessImageNameW, PROCESS_QUERY_LIMITED_INFORMATION,
 };
@@ -26,6 +29,13 @@ use windows_sys::Win32::UI::WindowsAndMessaging::{
     GetClassNameW, GetForegroundWindow, GetGUIThreadInfo, GetWindowTextLengthW, GetWindowTextW,
     GetWindowThreadProcessId, SetForegroundWindow, GUITHREADINFO,
 };
+
+const CF_TEXT_FORMAT: u32 = 1;
+const CF_BITMAP_FORMAT: u32 = 2;
+const CF_DIB_FORMAT: u32 = 8;
+const CF_UNICODETEXT_FORMAT: u32 = 13;
+const CF_HDROP_FORMAT: u32 = 15;
+const CF_DIBV5_FORMAT: u32 = 17;
 
 #[derive(Debug, Clone, Copy, Serialize)]
 pub struct OverlayRect {
@@ -59,8 +69,29 @@ pub struct InputTarget {
 pub struct PasteOutcome {
     pub method: &'static str,
     pub send_input_events: u32,
+    pub focus_attempts: u32,
+    pub focus_restored: bool,
+    pub clipboard_previous_had_text: bool,
+    pub clipboard_previous_format: &'static str,
+    pub clipboard_format_count: u32,
+    pub clipboard_sequence_before: u32,
+    pub clipboard_sequence_after: u32,
     pub clipboard_restored: bool,
     pub clipboard_restore_error: Option<String>,
+}
+
+#[derive(Debug, Clone, Copy)]
+struct ClipboardSnapshot {
+    sequence: u32,
+    format_count: u32,
+    has_text: bool,
+    format_hint: &'static str,
+}
+
+#[derive(Debug, Clone, Copy)]
+struct FocusOutcome {
+    attempts: u32,
+    restored: bool,
 }
 
 unsafe impl Send for InputTarget {}
@@ -92,11 +123,21 @@ impl InputTarget {
         match self.paste_via_clipboard(text, delay_ms) {
             Ok(outcome) => Ok(outcome),
             Err(err) if can_direct_type(text) => {
-                self.focus();
+                let focus = self.focus_with_retry();
+                if !focus.restored {
+                    return Err(anyhow!("无法恢复目标窗口焦点，已取消直接输入：{err}"));
+                }
                 let send_input_events = send_unicode_text(text)?;
                 Ok(PasteOutcome {
                     method: "direct-type-fallback",
                     send_input_events,
+                    focus_attempts: focus.attempts,
+                    focus_restored: focus.restored,
+                    clipboard_previous_had_text: false,
+                    clipboard_previous_format: "unknown",
+                    clipboard_format_count: 0,
+                    clipboard_sequence_before: 0,
+                    clipboard_sequence_after: clipboard_sequence_number(),
                     clipboard_restored: false,
                     clipboard_restore_error: Some(format!("剪贴板粘贴失败，已直接输入：{err}")),
                 })
@@ -106,6 +147,7 @@ impl InputTarget {
     }
 
     fn paste_via_clipboard(&self, text: &str, delay_ms: u64) -> Result<PasteOutcome> {
+        let clipboard_before = clipboard_snapshot();
         let mut clipboard = Clipboard::new().map_err(|err| anyhow!("剪贴板不可用：{err}"))?;
         let previous_text = clipboard.get_text().ok();
         clipboard
@@ -114,33 +156,73 @@ impl InputTarget {
         if delay_ms > 0 {
             thread::sleep(Duration::from_millis(delay_ms));
         }
-        self.focus();
+        let focus = self.focus_with_retry();
+        if !focus.restored {
+            let _ = restore_clipboard_text(
+                &mut clipboard,
+                previous_text.as_deref(),
+                text,
+                clipboard_before,
+            );
+            return Err(anyhow!("无法恢复目标窗口焦点，已取消粘贴"));
+        }
         let send_input_events = match send_ctrl_v() {
             Ok(events) => events,
             Err(err) => {
-                let _ = restore_clipboard_text(&mut clipboard, previous_text.as_deref(), text);
+                let _ = restore_clipboard_text(
+                    &mut clipboard,
+                    previous_text.as_deref(),
+                    text,
+                    clipboard_before,
+                );
                 return Err(err);
             }
         };
         thread::sleep(Duration::from_millis(160));
-        let (clipboard_restored, clipboard_restore_error) =
-            restore_clipboard_text(&mut clipboard, previous_text.as_deref(), text);
+        let (clipboard_restored, clipboard_restore_error) = restore_clipboard_text(
+            &mut clipboard,
+            previous_text.as_deref(),
+            text,
+            clipboard_before,
+        );
         Ok(PasteOutcome {
             method: "clipboard-paste",
             send_input_events,
+            focus_attempts: focus.attempts,
+            focus_restored: focus.restored,
+            clipboard_previous_had_text: previous_text.is_some() || clipboard_before.has_text,
+            clipboard_previous_format: clipboard_before.format_hint,
+            clipboard_format_count: clipboard_before.format_count,
+            clipboard_sequence_before: clipboard_before.sequence,
+            clipboard_sequence_after: clipboard_sequence_number(),
             clipboard_restored,
             clipboard_restore_error,
         })
     }
 
-    fn focus(&self) {
+    fn focus_with_retry(&self) -> FocusOutcome {
         if self.hwnd.is_null() {
-            return;
+            return FocusOutcome {
+                attempts: 0,
+                restored: false,
+            };
         }
-        unsafe {
-            SetForegroundWindow(self.hwnd);
+        for attempt in 1..=4 {
+            unsafe {
+                SetForegroundWindow(self.hwnd);
+            }
+            thread::sleep(Duration::from_millis(45 * attempt as u64));
+            if unsafe { GetForegroundWindow() } == self.hwnd {
+                return FocusOutcome {
+                    attempts: attempt,
+                    restored: true,
+                };
+            }
         }
-        thread::sleep(Duration::from_millis(80));
+        FocusOutcome {
+            attempts: 4,
+            restored: false,
+        }
     }
 }
 
@@ -148,9 +230,18 @@ fn restore_clipboard_text(
     clipboard: &mut Clipboard,
     previous_text: Option<&str>,
     pasted_text: &str,
+    snapshot: ClipboardSnapshot,
 ) -> (bool, Option<String>) {
     let Some(previous_text) = previous_text else {
-        return (false, None);
+        let message = if snapshot.format_count > 0 && !snapshot.has_text {
+            format!(
+                "原剪贴板不是文本（{}），当前版本不能恢复图片/文件等非文本内容",
+                snapshot.format_hint
+            )
+        } else {
+            "原剪贴板没有可恢复文本".to_string()
+        };
+        return (false, Some(message));
     };
     if previous_text == pasted_text {
         return (true, None);
@@ -159,6 +250,60 @@ fn restore_clipboard_text(
         Ok(()) => (true, None),
         Err(err) => (false, Some(err.to_string())),
     }
+}
+
+fn clipboard_snapshot() -> ClipboardSnapshot {
+    let sequence = clipboard_sequence_number();
+    let format_count = unsafe { CountClipboardFormats() }.max(0) as u32;
+    let has_unicode_text = unsafe { IsClipboardFormatAvailable(CF_UNICODETEXT_FORMAT) != 0 };
+    let has_ansi_text = unsafe { IsClipboardFormatAvailable(CF_TEXT_FORMAT) != 0 };
+    let has_files = unsafe { IsClipboardFormatAvailable(CF_HDROP_FORMAT) != 0 };
+    let has_image = unsafe {
+        IsClipboardFormatAvailable(CF_DIBV5_FORMAT) != 0
+            || IsClipboardFormatAvailable(CF_DIB_FORMAT) != 0
+            || IsClipboardFormatAvailable(CF_BITMAP_FORMAT) != 0
+    };
+    ClipboardSnapshot {
+        sequence,
+        format_count,
+        has_text: has_unicode_text || has_ansi_text,
+        format_hint: clipboard_format_hint(
+            format_count,
+            has_unicode_text,
+            has_ansi_text,
+            has_files,
+            has_image,
+        ),
+    }
+}
+
+fn clipboard_sequence_number() -> u32 {
+    unsafe { GetClipboardSequenceNumber() }
+}
+
+fn clipboard_format_hint(
+    format_count: u32,
+    has_unicode_text: bool,
+    has_ansi_text: bool,
+    has_files: bool,
+    has_image: bool,
+) -> &'static str {
+    if format_count == 0 {
+        return "empty";
+    }
+    if has_unicode_text {
+        return "unicode-text";
+    }
+    if has_ansi_text {
+        return "text";
+    }
+    if has_files {
+        return "files";
+    }
+    if has_image {
+        return "image";
+    }
+    "non-text"
 }
 
 fn target_info(hwnd: HWND, caret_source: &str, rect: Option<OverlayRect>) -> InputTargetInfo {
@@ -586,6 +731,25 @@ mod tests {
         assert!(
             focused_element_rect(Some(ControlType::Edit), Some(UiRect::new(0, 0, 1800, 900)))
                 .is_none()
+        );
+    }
+
+    #[test]
+    fn clipboard_hint_prefers_text_then_files_then_image() {
+        assert_eq!(
+            clipboard_format_hint(0, false, false, false, false),
+            "empty"
+        );
+        assert_eq!(
+            clipboard_format_hint(2, true, false, true, true),
+            "unicode-text"
+        );
+        assert_eq!(clipboard_format_hint(2, false, true, true, true), "text");
+        assert_eq!(clipboard_format_hint(1, false, false, true, false), "files");
+        assert_eq!(clipboard_format_hint(1, false, false, false, true), "image");
+        assert_eq!(
+            clipboard_format_hint(1, false, false, false, false),
+            "non-text"
         );
     }
 }

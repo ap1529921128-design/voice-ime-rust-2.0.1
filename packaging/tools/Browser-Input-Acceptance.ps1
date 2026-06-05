@@ -358,6 +358,11 @@ try {
     $targetProcess = if ($targetEntry) { [string]$targetEntry.target.process_name } else { "" }
     $targetTitle = if ($targetEntry) { [string]$targetEntry.target.title } else { "" }
     $caretSource = if ($targetEntry) { [string]$targetEntry.target.caret_source } else { "" }
+    $focusAttempts = if ($targetEntry) { [string]$targetEntry.focus_attempts } else { "" }
+    $focusRestored = if ($targetEntry) { [string]$targetEntry.focus_restored } else { "" }
+    $clipboardPreviousFormat = if ($targetEntry) { [string]$targetEntry.clipboard_previous_format } else { "" }
+    $clipboardPreviousHadText = if ($targetEntry) { [string]$targetEntry.clipboard_previous_had_text } else { "" }
+    $clipboardRestored = if ($targetEntry) { [string]$targetEntry.clipboard_restored } else { "" }
     $expectedProcesses = @($browserSpec.ProcessNames | ForEach-Object { "$_.exe" })
     $targetOk = @($expectedProcesses | Where-Object { $_ -ieq $targetProcess }).Count -gt 0
     $passed = ($paste.ExitCode -eq 0) -and $targetOk -and $titleResult.Passed
@@ -371,6 +376,11 @@ try {
         "target_process=$targetProcess",
         "target_title=$targetTitle",
         "caret_source=$caretSource",
+        "focus_attempts=$focusAttempts",
+        "focus_restored=$focusRestored",
+        "clipboard_previous_format=$clipboardPreviousFormat",
+        "clipboard_previous_had_text=$clipboardPreviousHadText",
+        "clipboard_restored=$clipboardRestored",
         "expected=$Text",
         "window_title=$($titleResult.Title)",
         "logs_dir=$LogsDir"
