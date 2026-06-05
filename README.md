@@ -163,7 +163,7 @@ app\VoiceIME.exe --benchmark-asr D:\voice-ime-benchmarks\asr
 app\VoiceIME.exe --benchmark-translation
 ```
 
-结果会写到 `app/.voice_ime/logs/translation-benchmark-YYYYMMDD-HHMMSS.csv`，包含目标语言、翻译引擎、模型、耗时、输出、错误、语言匹配和可选提示词命中。也可以在“设置 / 数据”点击“翻译基准”后台生成同样的 CSV。自定义样本格式见 [docs/translation-benchmark.md](docs/translation-benchmark.md)。
+结果会写到 `app/.voice_ime/logs/translation-benchmark-YYYYMMDD-HHMMSS.csv`，包含目标语言、翻译引擎、模型、耗时、输出、错误、语言匹配和可选提示词命中。普通界面每次点击英/日/中翻译也会追加 `app/.voice_ime/logs/translation-YYYYMMDD.log`，记录引擎、模型、超时、耗时、字数和错误；也可以在“设置 / 数据”点击“翻译基准”后台生成同样的 CSV。自定义样本格式见 [docs/translation-benchmark.md](docs/translation-benchmark.md)。
 
 ## 按应用输入画像
 
@@ -171,7 +171,7 @@ app\VoiceIME.exe --benchmark-translation
 
 ## 本地诊断
 
-设置页的“数据 / 诊断”会在页面内显示通过、提醒、失败的检查行，同时生成 `app/.voice_ime/logs/doctor-YYYYMMDD-HHMMSS.txt`。它会检查应用目录、日志写入、麦克风、剪贴板、ASR 模型、全局热键、本地 LLM 端点、翻译后端和用户词表文件。“数据 / 修复”只会补齐缺失的运行目录、个人提示词、纠错表、热词、规则文件和模型清单，不覆盖已有文件、不下载模型、不复制模型二进制、不改热键或配置。也可以运行：
+设置页的“数据 / 诊断”会在页面内显示通过、提醒、失败的检查行，同时生成 `app/.voice_ime/logs/doctor-YYYYMMDD-HHMMSS.txt`。它会检查应用目录、日志写入、麦克风、剪贴板、ASR 模型、全局热键、本地 LLM 端点、翻译后端、最近翻译耗时/错误和用户词表文件。“数据 / 修复”只会补齐缺失的运行目录、个人提示词、纠错表、热词、规则文件和模型清单，不覆盖已有文件、不下载模型、不复制模型二进制、不改热键或配置。也可以运行：
 
 ```powershell
 app\VoiceIME.exe --doctor
@@ -212,6 +212,7 @@ Model Pack Import 脚本会复制一份 core 包到临时目录，调用 `VoiceI
 - 某个软件粘贴慢或标点不合适：进入“设置 / 输入”，为该进程新增策略并调整粘贴延迟或标点。
 - 遇到特殊机器或模型崩溃：ASR 进程改成“隔离稳妥”，每次转写独立运行，速度略慢但更容易排查。
 - 老电脑或鼠标卡顿：把“ASR 线程”调成 `1` 或 `2`。
+- 翻译卡住或输出说明文字：先看“设置 / 数据 / 诊断”的“翻译最近记录”，再打开日志目录里的 `translation-YYYYMMDD.log`；本地 LLM 慢时可把“翻译超时”降到 `3-5` 秒，或切到 `external` 接专用本地翻译命令。
 - 不想留下录音文件：在“设置 / 数据”把“长录音留存”改为“不保存”，并点击“清理录音”删除已有长录音。
 - 不想使用本地大模型：关闭“智能纠错”，只保留基础转写。
 

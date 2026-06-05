@@ -17,6 +17,7 @@ mod support_bundle;
 mod text;
 mod translation;
 mod translation_benchmark;
+mod translation_log;
 mod tray;
 mod win_bridge;
 mod window_shape;

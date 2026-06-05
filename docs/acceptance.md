@@ -87,7 +87,7 @@
 
 1. Open Settings / Data and click `诊断`.
 2. A diagnostics panel appears in the page with pass, warning, or failure rows.
-3. The rows cover app/log paths, microphone, clipboard, ASR models, smart-correction endpoint, local LLM files, translation backend, prompt, correction table, hotwords, and hot rules.
+3. The rows cover app/log paths, microphone, clipboard, ASR models, smart-correction endpoint, local LLM files, translation backend, recent translation logs, prompt, correction table, hotwords, and hot rules.
 4. A `doctor-YYYYMMDD-HHMMSS.txt` report path is shown in the panel and the file exists under `.voice_ime/logs`.
 5. Clicking `导出` still creates the support zip and includes the latest doctor output without including recordings or model binaries.
 6. If the effective external model root has no `MODELS.json/md`, the support zip falls back to the packaged model manifest and records the model root source and manifest source paths in `summary.txt`.
@@ -159,6 +159,7 @@
 4. Custom TSV/CSV samples can be passed as `app\VoiceIME.exe --benchmark-translation <samples-file>`.
 5. The CSV includes target language, engine, model, timeout, elapsed seconds, language match, optional hint match, source, output, and error.
 6. Backend failures and prompt-like explanatory output are recorded as error rows instead of closing the GUI.
+7. Normal GUI translation clicks append `translation-YYYYMMDD.log` rows with engine, model, timeout, elapsed seconds, source/output character counts, status, and error text; Doctor warns when recent rows contain failures or slow requests.
 
 ## Translation External Acceptance
 

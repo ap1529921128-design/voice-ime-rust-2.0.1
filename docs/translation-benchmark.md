@@ -18,6 +18,14 @@ app\VoiceIME.exe --benchmark-translation D:\voice-ime-benchmarks\translation-sam
 
 The GUI exposes the built-in benchmark from Settings / Data / `翻译基准`.
 
+Every normal GUI translation also appends a JSON line to:
+
+```text
+app/.voice_ime/logs/translation-YYYYMMDD.log
+```
+
+Each row records target language, engine, model, timeout, elapsed seconds, source/output character counts, status, and the error text. Settings / Data / `诊断` reads the recent rows and warns when translations are slow, time out, or return explanatory chatter.
+
 Portable packages also include an offline external-backend acceptance helper:
 
 ```powershell

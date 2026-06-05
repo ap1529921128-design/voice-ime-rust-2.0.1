@@ -4,7 +4,7 @@ use crate::{
     cancel::CancellationToken,
     config::{self, AppConfig, Paths},
     history::{HistoryStore, TranscriptRecord},
-    llm, text, translation,
+    llm, text, translation, translation_log,
     win_bridge::{self, InputTarget, InputTargetInfo, OverlayRect},
 };
 use anyhow::{anyhow, Result};
@@ -1012,6 +1012,7 @@ impl WorkerState {
     ) {
         let started = Instant::now();
         let prompt = read_prompt(&self.paths);
+        let source_chars = source.chars().count();
         if task_token.is_cancelled() || !self.app_state().is_current(session_id) {
             return;
         }
@@ -1024,6 +1025,32 @@ impl WorkerState {
             &task_token,
         );
         let elapsed = started.elapsed().as_secs_f32();
+        let (status, output_chars, error) = match &result {
+            Ok(translated) => (
+                translation_log::TranslationLogStatus::Ok,
+                translated.chars().count(),
+                String::new(),
+            ),
+            Err(err) => (
+                translation_log::TranslationLogStatus::Error,
+                0,
+                err.to_string(),
+            ),
+        };
+        let entry = translation_log::TranslationLogEntry {
+            created_at: chrono::Local::now().format("%Y-%m-%d %H:%M:%S").to_string(),
+            session_id,
+            target_language: target_language.clone(),
+            engine: config.translation.engine.clone(),
+            model: config.translation.model.clone(),
+            timeout_seconds: config.translation.timeout_seconds,
+            elapsed_seconds: elapsed,
+            source_chars,
+            output_chars,
+            status,
+            error,
+        };
+        let log_path = translation_log::append(&self.paths, &entry).ok();
         let state = self.app_state();
         {
             let mut inner = state.inner.lock();
@@ -1037,12 +1064,25 @@ impl WorkerState {
                 Ok(translated) => {
                     inner.text = translated;
                     inner.status = format!("已转为{}", target_label(&target_language));
-                    inner.meta =
-                        format!("翻译 {:.1}s / {} 字", elapsed, inner.text.chars().count());
+                    inner.meta = format!(
+                        "翻译 {:.1}s / {} 字 / {}",
+                        elapsed,
+                        inner.text.chars().count(),
+                        config.translation.engine
+                    );
                 }
                 Err(err) => {
                     inner.status = "翻译未完成".into();
-                    inner.meta = format!("{err}；耗时 {:.1}s，原文已保留", elapsed);
+                    inner.meta = match log_path {
+                        Some(path) => format!(
+                            "{err}；耗时 {:.1}s，原文已保留；日志 {}",
+                            elapsed,
+                            path.file_name()
+                                .and_then(|name| name.to_str())
+                                .unwrap_or("translation.log")
+                        ),
+                        None => format!("{err}；耗时 {:.1}s，原文已保留，可重试", elapsed),
+                    };
                 }
             }
         }

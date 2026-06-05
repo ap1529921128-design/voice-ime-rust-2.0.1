@@ -34,6 +34,8 @@ Exit paths now run a graceful shutdown. Tray quit and Tauri exit events cancel a
 
 Startup and uncaught thread panics now leave `panic-YYYYMMDD.log` entries with payload, source location, thread name, and backtrace. Doctor surfaces recent panic/worker/shutdown logs, and the portable release gate checks the packaged path with `VoiceIME.exe --panic-smoke`.
 
+GUI translation clicks now append `translation-YYYYMMDD.log` rows with engine, model, timeout, elapsed seconds, character counts, status, and errors. Doctor surfaces recent translation failures or slow requests, so local LLM stalls and prompt-like translation chatter are easier to diagnose.
+
 ## Verification
 
 The release gate passed on the build machine for:

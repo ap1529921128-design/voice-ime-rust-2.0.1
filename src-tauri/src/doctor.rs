@@ -1,7 +1,7 @@
 use crate::{
     asr, audio,
     config::{AppConfig, Paths, DEFAULT_HOTWORDS, DEFAULT_HOT_RULES, DEFAULT_PERSONAL_PROMPT},
-    llm, translation,
+    llm, translation, translation_log,
 };
 use anyhow::Result;
 use reqwest::blocking::Client;
@@ -67,6 +67,7 @@ pub fn run(paths: &Paths, config: &AppConfig) -> Result<DoctorReport> {
     check_llm_endpoint("智能纠错端点", &config.smart.endpoint, &mut checks);
     check_llm_artifacts(paths, config, &mut checks);
     check_translation_backend(config, &mut checks);
+    check_translation_logs(paths, &mut checks);
     check_user_text_files(paths, &mut checks);
     check_runtime_logs(paths, &mut checks);
 
@@ -389,6 +390,50 @@ fn check_translation_backend(config: &AppConfig, checks: &mut Vec<DoctorCheck>) 
             format!("{other} 未识别"),
         ),
     }
+}
+
+fn check_translation_logs(paths: &Paths, checks: &mut Vec<DoctorCheck>) {
+    let rows = translation_log::recent(paths, 5);
+    if rows.is_empty() {
+        push_check(checks, "翻译最近记录", DoctorStatus::Pass, "暂无翻译日志");
+        return;
+    }
+    let errors = rows
+        .iter()
+        .filter(|row| row.status == translation_log::TranslationLogStatus::Error)
+        .count();
+    let slow = rows.iter().filter(|row| is_slow_translation(row)).count();
+    let last = rows.last().expect("checked non-empty rows");
+    let detail = format!(
+        "最近 {} 条，错误 {}，慢请求 {}；最后 {} {} {:.1}s {}->{} 字{}",
+        rows.len(),
+        errors,
+        slow,
+        last.engine,
+        last.target_language,
+        last.elapsed_seconds,
+        last.source_chars,
+        last.output_chars,
+        if last.error.is_empty() {
+            String::new()
+        } else {
+            format!("；{}", last.error.chars().take(120).collect::<String>())
+        }
+    );
+    push_check(
+        checks,
+        "翻译最近记录",
+        if errors > 0 || slow > 0 {
+            DoctorStatus::Warn
+        } else {
+            DoctorStatus::Pass
+        },
+        detail,
+    );
+}
+
+fn is_slow_translation(row: &translation_log::TranslationLogEntry) -> bool {
+    row.elapsed_seconds >= (row.timeout_seconds as f32 * 0.8).max(2.5)
 }
 
 fn check_llm_artifacts(paths: &Paths, config: &AppConfig, checks: &mut Vec<DoctorCheck>) {
@@ -808,6 +853,48 @@ mod tests {
 
         assert_eq!(checks.len(), 1);
         assert_eq!(checks[0].status, DoctorStatus::Pass);
+    }
+
+    #[test]
+    fn translation_logs_warn_on_recent_error_or_slow_entry() {
+        let temp = tempfile::tempdir().unwrap();
+        let paths = test_paths(temp.path());
+        let entry = translation_log::TranslationLogEntry {
+            created_at: "2026-06-05 18:00:00".into(),
+            session_id: 7,
+            target_language: "en".into(),
+            engine: "llm".into(),
+            model: "minicpm".into(),
+            timeout_seconds: 3,
+            elapsed_seconds: 2.8,
+            source_chars: 8,
+            output_chars: 0,
+            status: translation_log::TranslationLogStatus::Error,
+            error: "翻译模型输出了说明文字，已丢弃".into(),
+        };
+        translation_log::append(&paths, &entry).unwrap();
+        let mut checks = Vec::new();
+
+        check_translation_logs(&paths, &mut checks);
+
+        assert_eq!(checks.len(), 1);
+        assert_eq!(checks[0].name, "翻译最近记录");
+        assert_eq!(checks[0].status, DoctorStatus::Warn);
+        assert!(checks[0].detail.contains("错误 1"));
+        assert!(checks[0].detail.contains("慢请求 1"));
+    }
+
+    #[test]
+    fn translation_logs_pass_when_empty() {
+        let temp = tempfile::tempdir().unwrap();
+        let paths = test_paths(temp.path());
+        let mut checks = Vec::new();
+
+        check_translation_logs(&paths, &mut checks);
+
+        assert_eq!(checks.len(), 1);
+        assert_eq!(checks[0].status, DoctorStatus::Pass);
+        assert!(checks[0].detail.contains("暂无"));
     }
 
     fn test_paths(root: &std::path::Path) -> Paths {
