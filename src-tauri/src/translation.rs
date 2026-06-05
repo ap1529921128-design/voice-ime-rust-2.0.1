@@ -1,4 +1,5 @@
 use crate::{
+    cancel::CancellationToken,
     config::{AppConfig, Paths},
     llm, text,
 };
@@ -19,7 +20,9 @@ pub fn translate(
     config: &AppConfig,
     paths: &Paths,
     personal_prompt: &str,
+    cancellation: &CancellationToken,
 ) -> Result<String> {
+    ensure_not_cancelled(cancellation)?;
     match config
         .translation
         .engine
@@ -27,10 +30,15 @@ pub fn translate(
         .to_ascii_lowercase()
         .as_str()
     {
-        "" | "llm" => {
-            llm::translate_with_llm(source, target_language, config, paths, personal_prompt)
-        }
-        "external" => translate_with_external(source, target_language, config, paths),
+        "" | "llm" => llm::translate_with_llm(
+            source,
+            target_language,
+            config,
+            paths,
+            personal_prompt,
+            cancellation,
+        ),
+        "external" => translate_with_external(source, target_language, config, paths, cancellation),
         "nllb" | "bergamot" => Err(anyhow!(
             "翻译引擎 {} 已预留，当前版本请先选择 llm 或 external",
             config.translation.engine
@@ -44,11 +52,14 @@ fn translate_with_external(
     target_language: &str,
     config: &AppConfig,
     paths: &Paths,
+    cancellation: &CancellationToken,
 ) -> Result<String> {
+    ensure_not_cancelled(cancellation)?;
     let source = prepare_source(source, target_language)?;
     if source.already_done {
         return Ok(source.text);
     }
+    ensure_not_cancelled(cancellation)?;
     let command_line = config.translation.external_command.trim();
     if command_line.is_empty() {
         return Err(anyhow!("未配置外部翻译命令"));
@@ -75,6 +86,11 @@ fn translate_with_external(
     let mut child = command
         .spawn()
         .with_context(|| format!("启动外部翻译命令失败：{executable}"))?;
+    if cancellation.is_cancelled() {
+        let _ = child.kill();
+        let _ = child.wait();
+        return Err(anyhow!("任务已取消"));
+    }
     if let Some(stdin) = child.stdin.as_mut() {
         stdin
             .write_all(serde_json::to_string(&payload)?.as_bytes())
@@ -85,7 +101,9 @@ fn translate_with_external(
     wait_child(
         &mut child,
         Duration::from_secs(config.translation.timeout_seconds.clamp(1, 30)),
+        cancellation,
     )?;
+    ensure_not_cancelled(cancellation)?;
     let mut stdout = String::new();
     if let Some(mut stream) = child.stdout.take() {
         stream.read_to_string(&mut stdout)?;
@@ -147,11 +165,20 @@ fn prepare_source(source: &str, target_language: &str) -> Result<PreparedSource>
     })
 }
 
-fn wait_child(child: &mut Child, timeout: Duration) -> Result<()> {
+fn wait_child(
+    child: &mut Child,
+    timeout: Duration,
+    cancellation: &CancellationToken,
+) -> Result<()> {
     let started = Instant::now();
     loop {
         if child.try_wait()?.is_some() {
             return Ok(());
+        }
+        if cancellation.is_cancelled() {
+            let _ = child.kill();
+            let _ = child.wait();
+            return Err(anyhow!("任务已取消"));
         }
         if started.elapsed() >= timeout {
             let _ = child.kill();
@@ -159,6 +186,14 @@ fn wait_child(child: &mut Child, timeout: Duration) -> Result<()> {
             return Err(anyhow!("外部翻译超时"));
         }
         std::thread::sleep(Duration::from_millis(20));
+    }
+}
+
+fn ensure_not_cancelled(cancellation: &CancellationToken) -> Result<()> {
+    if cancellation.is_cancelled() {
+        Err(anyhow!("任务已取消"))
+    } else {
+        Ok(())
     }
 }
 
@@ -296,5 +331,45 @@ mod tests {
     #[test]
     fn rejects_external_translation_chatter() {
         assert!(validate_output("说明：这句话可以根据语境翻译。").is_err());
+    }
+
+    #[test]
+    fn wait_child_returns_quickly_when_cancelled() {
+        let mut child = spawn_sleeping_child();
+        let token = CancellationToken::new();
+        token.cancel();
+        let started = Instant::now();
+
+        let err = wait_child(&mut child, Duration::from_secs(5), &token).unwrap_err();
+
+        assert!(err.to_string().contains("任务已取消"));
+        assert!(started.elapsed() < Duration::from_secs(2));
+        assert!(child.try_wait().unwrap().is_some());
+    }
+
+    #[cfg(target_os = "windows")]
+    fn spawn_sleeping_child() -> Child {
+        let mut command = Command::new("powershell.exe");
+        command
+            .arg("-NoProfile")
+            .arg("-Command")
+            .arg("Start-Sleep -Seconds 5")
+            .stdin(Stdio::null())
+            .stdout(Stdio::null())
+            .stderr(Stdio::null());
+        command.creation_flags(0x08000000);
+        command.spawn().unwrap()
+    }
+
+    #[cfg(not(target_os = "windows"))]
+    fn spawn_sleeping_child() -> Child {
+        Command::new("sh")
+            .arg("-c")
+            .arg("sleep 5")
+            .stdin(Stdio::null())
+            .stdout(Stdio::null())
+            .stderr(Stdio::null())
+            .spawn()
+            .unwrap()
     }
 }

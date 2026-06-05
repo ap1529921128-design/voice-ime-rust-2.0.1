@@ -1,6 +1,7 @@
 mod asr;
 mod audio;
 mod benchmark;
+mod cancel;
 mod config;
 mod core;
 mod doctor;

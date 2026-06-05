@@ -1,6 +1,7 @@
 use crate::{
     asr::{self, AsrInput},
     audio::{self, Recorder},
+    cancel::CancellationToken,
     config::{self, AppConfig, Paths},
     history::{HistoryStore, TranscriptRecord},
     llm, text, translation,
@@ -67,8 +68,15 @@ pub struct AppRuntime {
     pub paths: Paths,
     pub recorder: Recorder,
     pub inner: parking_lot::Mutex<InnerState>,
+    active_task: parking_lot::Mutex<Option<ActiveTask>>,
     session_counter: AtomicU64,
     shutdown_started: AtomicBool,
+}
+
+#[derive(Clone)]
+struct ActiveTask {
+    session_id: u64,
+    token: CancellationToken,
 }
 
 pub struct InnerState {
@@ -107,6 +115,7 @@ impl AppState {
                     target: None,
                     overlay_rect: None,
                 }),
+                active_task: parking_lot::Mutex::new(None),
                 session_counter: AtomicU64::new(1),
                 shutdown_started: AtomicBool::new(false),
             }),
@@ -137,6 +146,7 @@ impl AppState {
             .start(configured_input_device(&config))
             .map_err(|err| anyhow!("麦克风启动失败：{err}"))?;
         let session_id = self.next_session_id();
+        self.begin_task(session_id);
         let target = InputTarget::capture();
         let overlay_rect = win_bridge::overlay_position_from_rect(target.rect());
         {
@@ -157,6 +167,7 @@ impl AppState {
         let (session_id, config, base_text) = {
             let mut inner = self.inner.lock();
             if inner.state != SessionState::Recording {
+                drop(inner);
                 return Ok(self.snapshot());
             }
             inner.state = SessionState::Previewing;
@@ -165,11 +176,19 @@ impl AppState {
             (inner.session_id, inner.config.clone(), inner.text.clone())
         };
         emit_snapshot(app, self);
-        let recording = self.recorder.stop(config.asr.sample_rate)?;
+        let recording = match self.recorder.stop(config.asr.sample_rate) {
+            Ok(recording) => recording,
+            Err(err) => {
+                self.finish_task(session_id);
+                return Err(err);
+            }
+        };
         {
             let mut inner = self.inner.lock();
             if !accepts_worker_update(inner.session_id, &inner.state, session_id) {
+                drop(inner);
                 let _ = fs::remove_file(&recording.wav_path);
+                self.finish_task(session_id);
                 return Ok(self.snapshot());
             }
             inner.state = SessionState::Transcribing;
@@ -177,36 +196,54 @@ impl AppState {
         if recording.duration_seconds < config.asr.min_record_seconds {
             let mut inner = self.inner.lock();
             if !accepts_worker_update(inner.session_id, &inner.state, session_id) {
+                drop(inner);
                 let _ = fs::remove_file(&recording.wav_path);
+                self.finish_task(session_id);
                 return Ok(self.snapshot());
             }
             inner.state = SessionState::Idle;
             inner.status = "录音时间过短，已忽略".into();
             inner.meta.clear();
+            drop(inner);
             let _ = fs::remove_file(&recording.wav_path);
+            self.finish_task(session_id);
             emit_snapshot(app, self);
             return Ok(self.snapshot());
         }
         if recording.peak < 0.0015 || recording.rms < 0.0005 {
             let mut inner = self.inner.lock();
             if !accepts_worker_update(inner.session_id, &inner.state, session_id) {
+                drop(inner);
                 let _ = fs::remove_file(&recording.wav_path);
+                self.finish_task(session_id);
                 return Ok(self.snapshot());
             }
             inner.state = SessionState::Idle;
             inner.status = "没检测到有效麦克风输入".into();
             inner.text = "没检测到有效麦克风输入。\n\n建议：\n1. 检查 Windows 麦克风权限\n2. 尝试切换默认麦克风\n3. 靠近麦克风重新录音".into();
             inner.meta = format!("peak={:.5}, rms={:.5}", recording.peak, recording.rms);
+            drop(inner);
             let _ = fs::remove_file(&recording.wav_path);
+            self.finish_task(session_id);
             emit_snapshot(app, self);
             return Ok(self.snapshot());
         }
 
+        let task_token = self
+            .current_task_token(session_id)
+            .unwrap_or_else(|| self.begin_task(session_id));
         let state = self.clone_for_worker();
         let app_handle = app.clone();
         std::thread::spawn(move || {
             let result = panic::catch_unwind(AssertUnwindSafe(|| {
-                state.process_recording(&app_handle, session_id, recording, config, base_text)
+                state.process_recording(
+                    &app_handle,
+                    session_id,
+                    recording,
+                    config,
+                    base_text,
+                    task_token,
+                )
             }));
             match result {
                 Ok(Ok(())) => {}
@@ -218,6 +255,7 @@ impl AppState {
                     payload,
                 ),
             }
+            state.app_state().finish_task(session_id);
         });
         Ok(self.snapshot())
     }
@@ -225,6 +263,7 @@ impl AppState {
     pub fn clear(&self, app: &AppHandle) -> UiSnapshot {
         let recorder_was_active = self.recorder.is_recording();
         self.recorder.cancel();
+        self.cancel_active_task();
         let cancel_session_id = self.next_session_id();
         let should_transition = {
             let mut inner = self.inner.lock();
@@ -285,6 +324,7 @@ impl AppState {
         let was_recording = self.recorder.is_recording();
         if !already_started {
             self.recorder.cancel();
+            self.cancel_active_task();
         }
         let mut inner = self.inner.lock();
         let previous_state = inner.state.clone();
@@ -499,14 +539,23 @@ impl AppState {
             (session_id, inner.text.clone(), inner.config.clone())
         };
         emit_snapshot(app, self);
+        let task_token = self.begin_task(session_id);
         let state = self.clone_for_worker();
         let app_handle = app.clone();
         std::thread::spawn(move || {
             if let Err(payload) = panic::catch_unwind(AssertUnwindSafe(|| {
-                state.process_translation(&app_handle, session_id, text, target_language, config);
+                state.process_translation(
+                    &app_handle,
+                    session_id,
+                    text,
+                    target_language,
+                    config,
+                    task_token,
+                );
             })) {
                 state.set_worker_panic_error(&app_handle, Some(session_id), "translation", payload);
             }
+            state.app_state().finish_task(session_id);
         });
         Ok(self.snapshot())
     }
@@ -624,6 +673,42 @@ impl AppState {
     fn next_session_id(&self) -> u64 {
         self.session_counter.fetch_add(1, Ordering::Relaxed)
     }
+
+    fn begin_task(&self, session_id: u64) -> CancellationToken {
+        let token = CancellationToken::new();
+        let mut active_task = self.active_task.lock();
+        if let Some(previous) = active_task.replace(ActiveTask {
+            session_id,
+            token: token.clone(),
+        }) {
+            previous.token.cancel();
+        }
+        token
+    }
+
+    fn current_task_token(&self, session_id: u64) -> Option<CancellationToken> {
+        let active_task = self.active_task.lock();
+        active_task
+            .as_ref()
+            .filter(|task| task.session_id == session_id)
+            .map(|task| task.token.clone())
+    }
+
+    fn cancel_active_task(&self) {
+        if let Some(task) = self.active_task.lock().take() {
+            task.token.cancel();
+        }
+    }
+
+    fn finish_task(&self, session_id: u64) {
+        let mut active_task = self.active_task.lock();
+        if active_task
+            .as_ref()
+            .is_some_and(|task| task.session_id == session_id)
+        {
+            active_task.take();
+        }
+    }
 }
 
 impl Deref for AppState {
@@ -663,10 +748,15 @@ impl WorkerState {
         recording: audio::Recording,
         config: AppConfig,
         base_text: String,
+        task_token: CancellationToken,
     ) -> Result<()> {
         let started = Instant::now();
+        let _recording_cleanup = TempFileCleanup::new(recording.wav_path.clone());
         let prompt = read_prompt(&self.paths);
         let app_state = self.app_state();
+        if task_token.is_cancelled() || !app_state.is_current(session_id) {
+            return Ok(());
+        }
         if recording.duration_seconds >= config.asr.long_transcript_seconds as f32 {
             app_state.set_long_status(app, session_id, "长文转录中：0/0".into());
             if config.asr.save_long_recordings {
@@ -681,7 +771,7 @@ impl WorkerState {
             let mut texts = Vec::new();
             let mut raw_texts = Vec::new();
             for (index, samples) in chunks.into_iter().enumerate() {
-                if !app_state.is_current(session_id) {
+                if task_token.is_cancelled() || !app_state.is_current(session_id) {
                     return Ok(());
                 }
                 app_state.set_long_status(
@@ -696,6 +786,9 @@ impl WorkerState {
                     prompt: prompt.clone(),
                 };
                 let outcome = asr::transcribe(&input, &config, &self.paths)?;
+                if task_token.is_cancelled() || !app_state.is_current(session_id) {
+                    return Ok(());
+                }
                 if !outcome.text.is_empty() {
                     if !outcome.raw_text.trim().is_empty() {
                         raw_texts.push(outcome.raw_text);
@@ -724,17 +817,29 @@ impl WorkerState {
                 backend: config.asr.default_engine.clone(),
                 model: config.asr.profile.clone(),
             };
+            if task_token.is_cancelled() || !app_state.is_current(session_id) {
+                return Ok(());
+            }
             app_state.finish_transcription(app, raw_finished)?;
             if combined.trim().is_empty() {
                 return Ok(());
             }
-            if !app_state.is_current(session_id) {
+            if task_token.is_cancelled() || !app_state.is_current(session_id) {
                 return Ok(());
             }
             app_state.set_postprocess_status(app, session_id, "智能纠错中".into());
             let correction_started = Instant::now();
-            let final_text =
-                llm::smart_correct(&combined, &base_text, &config, &self.paths, &prompt);
+            let final_text = llm::smart_correct(
+                &combined,
+                &base_text,
+                &config,
+                &self.paths,
+                &prompt,
+                &task_token,
+            );
+            if task_token.is_cancelled() || !app_state.is_current(session_id) {
+                return Ok(());
+            }
             let llm_seconds = correction_started.elapsed().as_secs_f32();
             app_state.update_finished_text(
                 app,
@@ -751,7 +856,13 @@ impl WorkerState {
                 language: config.asr.language.clone(),
                 prompt: prompt.clone(),
             };
+            if task_token.is_cancelled() || !app_state.is_current(session_id) {
+                return Ok(());
+            }
             let outcome = asr::transcribe(&input, &config, &self.paths)?;
+            if task_token.is_cancelled() || !app_state.is_current(session_id) {
+                return Ok(());
+            }
             let raw_text = outcome.text.clone();
             let raw_finished = FinishedTranscript {
                 session_id,
@@ -770,13 +881,22 @@ impl WorkerState {
             if raw_text.trim().is_empty() {
                 return Ok(());
             }
-            if !app_state.is_current(session_id) {
+            if task_token.is_cancelled() || !app_state.is_current(session_id) {
                 return Ok(());
             }
             app_state.set_postprocess_status(app, session_id, "智能纠错中".into());
             let correction_started = Instant::now();
-            let final_text =
-                llm::smart_correct(&raw_text, &base_text, &config, &self.paths, &prompt);
+            let final_text = llm::smart_correct(
+                &raw_text,
+                &base_text,
+                &config,
+                &self.paths,
+                &prompt,
+                &task_token,
+            );
+            if task_token.is_cancelled() || !app_state.is_current(session_id) {
+                return Ok(());
+            }
             let llm_seconds = correction_started.elapsed().as_secs_f32();
             app_state.update_finished_text(
                 app,
@@ -787,7 +907,6 @@ impl WorkerState {
                 llm_seconds,
             )?;
         }
-        let _ = fs::remove_file(recording.wav_path);
         Ok(())
     }
 
@@ -811,16 +930,28 @@ impl WorkerState {
         source: String,
         target_language: String,
         config: AppConfig,
+        task_token: CancellationToken,
     ) {
         let started = Instant::now();
         let prompt = read_prompt(&self.paths);
-        let result =
-            translation::translate(&source, &target_language, &config, &self.paths, &prompt);
+        if task_token.is_cancelled() || !self.app_state().is_current(session_id) {
+            return;
+        }
+        let result = translation::translate(
+            &source,
+            &target_language,
+            &config,
+            &self.paths,
+            &prompt,
+            &task_token,
+        );
         let elapsed = started.elapsed().as_secs_f32();
         let state = self.app_state();
         {
             let mut inner = state.inner.lock();
-            if !accepts_worker_update(inner.session_id, &inner.state, session_id) {
+            if task_token.is_cancelled()
+                || !accepts_worker_update(inner.session_id, &inner.state, session_id)
+            {
                 return;
             }
             inner.state = SessionState::Idle;
@@ -1001,6 +1132,22 @@ struct FinishedTranscript {
     transcribe_seconds: f32,
     backend: String,
     model: String,
+}
+
+struct TempFileCleanup {
+    path: PathBuf,
+}
+
+impl TempFileCleanup {
+    fn new(path: PathBuf) -> Self {
+        Self { path }
+    }
+}
+
+impl Drop for TempFileCleanup {
+    fn drop(&mut self) {
+        let _ = fs::remove_file(&self.path);
+    }
 }
 
 #[derive(Serialize)]
@@ -1239,6 +1386,47 @@ mod tests {
             inner.status = "共享运行时".into();
         }
         assert_eq!(cloned.snapshot().status, "共享运行时");
+    }
+
+    #[test]
+    fn beginning_new_task_cancels_previous_token() {
+        let temp = tempfile::tempdir().unwrap();
+        let paths = test_paths(temp.path());
+        let state = AppState::from_parts(
+            paths.clone(),
+            AppConfig::default(),
+            HistoryStore::load(&paths.history_path, 10),
+        );
+
+        let first = state.begin_task(1);
+        let second = state.begin_task(2);
+
+        assert!(first.is_cancelled());
+        assert!(!second.is_cancelled());
+        assert!(state.current_task_token(2).is_some());
+
+        state.finish_task(1);
+        assert!(state.current_task_token(2).is_some());
+
+        state.finish_task(2);
+        assert!(state.current_task_token(2).is_none());
+    }
+
+    #[test]
+    fn cancel_active_task_marks_token_cancelled() {
+        let temp = tempfile::tempdir().unwrap();
+        let paths = test_paths(temp.path());
+        let state = AppState::from_parts(
+            paths.clone(),
+            AppConfig::default(),
+            HistoryStore::load(&paths.history_path, 10),
+        );
+
+        let token = state.begin_task(9);
+        state.cancel_active_task();
+
+        assert!(token.is_cancelled());
+        assert!(state.current_task_token(9).is_none());
     }
 
     #[test]

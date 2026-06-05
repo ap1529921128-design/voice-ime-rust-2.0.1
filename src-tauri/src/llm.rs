@@ -1,4 +1,4 @@
-use crate::{config::AppConfig, config::Paths, text};
+use crate::{cancel::CancellationToken, config::AppConfig, config::Paths, text};
 use anyhow::{anyhow, Result};
 use reqwest::blocking::Client;
 use serde::Serialize;
@@ -68,10 +68,14 @@ pub fn smart_correct(
     config: &AppConfig,
     paths: &Paths,
     personal_prompt: &str,
+    cancellation: &CancellationToken,
 ) -> String {
     let corrected = text::apply_corrections(raw_text, &paths.corrections_path);
     let base_text = text::normalize_text(base_text);
     let edit_existing = !base_text.is_empty() && text::is_confirmation_edit_command(&corrected);
+    if cancellation.is_cancelled() {
+        return if edit_existing { base_text } else { corrected };
+    }
     if corrected.trim().is_empty() {
         return if edit_existing {
             base_text
@@ -117,6 +121,7 @@ pub fn smart_correct(
         &config.smart.endpoint,
         &payload,
         config.smart.timeout_seconds,
+        Some(cancellation),
     )
     .map(|value| text::clean_llm_output(&value))
     .unwrap_or_default();
@@ -138,7 +143,9 @@ pub fn translate_with_llm(
     config: &AppConfig,
     paths: &Paths,
     _personal_prompt: &str,
+    cancellation: &CancellationToken,
 ) -> Result<String> {
+    ensure_not_cancelled(cancellation)?;
     let mut source = text::normalize_text(source);
     if source.trim().is_empty() {
         return Err(anyhow!("没有可翻译的文本"));
@@ -166,8 +173,10 @@ pub fn translate_with_llm(
         return Err(anyhow!("未配置翻译端点"));
     }
     if is_local_endpoint(&config.translation.endpoint) {
+        ensure_not_cancelled(cancellation)?;
         ensure_local_service(&config.translation.endpoint, paths)?;
     }
+    ensure_not_cancelled(cancellation)?;
     let language_name = match target_language {
         "en" => "英语",
         "ja" => "日语",
@@ -190,7 +199,9 @@ pub fn translate_with_llm(
         &config.translation.endpoint,
         &payload,
         config.translation.timeout_seconds,
+        Some(cancellation),
     )?;
+    ensure_not_cancelled(cancellation)?;
     let translated = text::clean_translation_output(&raw_translated);
     if translated.is_empty() {
         Err(anyhow!("翻译结果为空"))
@@ -204,7 +215,15 @@ pub fn translate_with_llm(
     }
 }
 
-fn chat_completion(endpoint: &str, payload: &Value, timeout_seconds: u64) -> Result<String> {
+fn chat_completion(
+    endpoint: &str,
+    payload: &Value,
+    timeout_seconds: u64,
+    cancellation: Option<&CancellationToken>,
+) -> Result<String> {
+    if let Some(cancellation) = cancellation {
+        ensure_not_cancelled(cancellation)?;
+    }
     let timeout = Duration::from_secs(timeout_seconds.clamp(1, 30));
     let client = Client::builder()
         .timeout(timeout)
@@ -216,6 +235,9 @@ fn chat_completion(endpoint: &str, payload: &Value, timeout_seconds: u64) -> Res
         .send()?
         .error_for_status()?
         .json()?;
+    if let Some(cancellation) = cancellation {
+        ensure_not_cancelled(cancellation)?;
+    }
     let content = value
         .get("choices")
         .and_then(Value::as_array)
@@ -227,6 +249,14 @@ fn chat_completion(endpoint: &str, payload: &Value, timeout_seconds: u64) -> Res
         .trim()
         .to_string();
     Ok(content)
+}
+
+fn ensure_not_cancelled(cancellation: &CancellationToken) -> Result<()> {
+    if cancellation.is_cancelled() {
+        Err(anyhow!("任务已取消"))
+    } else {
+        Ok(())
+    }
 }
 
 fn ensure_local_service(endpoint: &str, paths: &Paths) -> Result<()> {

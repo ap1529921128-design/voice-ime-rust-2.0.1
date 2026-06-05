@@ -279,6 +279,7 @@
 - Task-style background workers now catch unwind panics in release builds, update the UI with a worker error, and write JSON rows to `worker-error-YYYYMMDD.log`; low-level OS hook loop panic coverage is still future work.
 - A global panic hook now writes `panic-YYYYMMDD.log` with thread, location, payload, and backtrace; Doctor warns when panic or worker-error logs exist, and `Test-PortableRelease.ps1` runs `VoiceIME.exe --panic-smoke` to prove the packaged panic log path.
 - Tray quit and Tauri exit events now run graceful shutdown: active recording is cancelled, stale worker sessions are invalidated, overlay state is hidden, history is flushed, and `shutdown-YYYYMMDD.log` is written. `Test-PortableRelease.ps1` also runs `VoiceIME.exe --shutdown-smoke` against a temporary app dir.
+- Active ASR/LLM/translation workers now have an explicit cancellation token; clear, new recording, new translation, and shutdown cancel the previous token. ASR/LLM check cancellation at safe boundaries, while external translation child processes are killed promptly during wait.
 - `npm run ui:smoke` now covers main/settings/history/overlay layout with QA mock data across 100%, 125%, 150%, and 200% device scale; true OS DPI and WebView screenshots still need manual release checks.
 - Packaged builds now include `app/tools/启动语音输入-诊断.bat`; portable root layout still visibly exposes only the main launcher.
 - Packaged builds now include `app/tools/Notepad-Input-Acceptance.ps1`; Notepad has an automated paste-path smoke, while other real apps still need manual coverage.

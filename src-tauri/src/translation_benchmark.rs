@@ -1,4 +1,5 @@
 use crate::{
+    cancel::CancellationToken,
     config::{self, Paths},
     text, translation,
 };
@@ -93,6 +94,7 @@ pub fn run_translation(
             config,
             paths,
             &prompt,
+            &CancellationToken::new(),
         );
         let elapsed = started.elapsed().as_secs_f32();
         match result {
