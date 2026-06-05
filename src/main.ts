@@ -117,6 +117,8 @@ type Snapshot = {
 type AsrModelStatus = {
   engine: string;
   profile: string;
+  description: string;
+  expected_latency: string;
   ready: boolean;
   download_url: string;
   mirror_url: string;
@@ -780,7 +782,8 @@ function modelSettingsPanel(cfg: AppConfig) {
           <div class="model-row ${row.ready ? "ready" : "missing"}">
             <div class="model-main">
               <strong>${row.profile}</strong>
-              <span>${row.ready ? "ready" : `${row.missing_files.length} missing`}</span>
+              <span>${row.ready ? "ready" : `${row.missing_files.length} missing`} · ${escapeHtml(row.expected_latency)}</span>
+              <small title="${escapeAttr(row.description)}">${escapeHtml(row.description)}</small>
               <small title="${escapeAttr(row.target_dir)}">${escapeHtml(shortPath(row.target_dir))}</small>
             </div>
             <div class="model-actions">

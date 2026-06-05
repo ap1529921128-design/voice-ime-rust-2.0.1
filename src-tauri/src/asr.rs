@@ -28,6 +28,8 @@ static ASR_DAEMON: Lazy<parking_lot::Mutex<Option<AsrDaemonProcess>>> =
 pub struct AsrModelStatus {
     pub engine: String,
     pub profile: String,
+    pub description: String,
+    pub expected_latency: String,
     pub ready: bool,
     pub download_url: String,
     pub mirror_url: String,
@@ -583,6 +585,8 @@ pub fn model_status(config: &AppConfig, paths: &Paths) -> Vec<AsrModelStatus> {
                     "sherpa-onnx".into()
                 },
                 profile: profile.into(),
+                description: profile_description(profile).into(),
+                expected_latency: profile_expected_latency(profile).into(),
                 ready: missing_files.is_empty(),
                 download_url: download_url_for_profile(profile).into(),
                 mirror_url: mirror_url_for_profile(profile).into(),
@@ -592,6 +596,24 @@ pub fn model_status(config: &AppConfig, paths: &Paths) -> Vec<AsrModelStatus> {
             }
         })
         .collect()
+}
+
+fn profile_description(profile: &str) -> &'static str {
+    match profile {
+        "fast" => "中文短句速度优先，适合老电脑和即时输入",
+        "balanced" => "默认主力，中文/英文/日文兼顾，准确率和速度平衡",
+        "fallback" => "小体积多语种兜底，适合先验证环境是否可用",
+        _ => "自定义 ASR 档位",
+    }
+}
+
+fn profile_expected_latency(profile: &str) -> &'static str {
+    match profile {
+        "fast" => "10 秒短句约 1-3 秒",
+        "balanced" => "10 秒短句约 2-5 秒",
+        "fallback" => "10 秒短句约 3-8 秒",
+        _ => "视模型而定",
+    }
 }
 
 pub fn download_model<F>(
@@ -1082,6 +1104,8 @@ mod tests {
             .unwrap();
 
         assert!(balanced.ready);
+        assert!(balanced.description.contains("默认主力"));
+        assert!(balanced.expected_latency.contains("10 秒"));
         assert_eq!(
             balanced.target_dir,
             external

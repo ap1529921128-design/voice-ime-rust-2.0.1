@@ -218,6 +218,8 @@ function qaModelStatus() {
     {
       engine: "sherpa-onnx",
       profile: "fast",
+      description: "中文短句速度优先，适合老电脑和即时输入",
+      expected_latency: "10 秒短句约 1-3 秒",
       ready: false,
       download_url: "https://huggingface.co/example/fast",
       mirror_url: "https://hf-mirror.com/example/fast",
@@ -228,6 +230,8 @@ function qaModelStatus() {
     {
       engine: "sherpa-onnx",
       profile: "balanced",
+      description: "默认主力，中文/英文/日文兼顾，准确率和速度平衡",
+      expected_latency: "10 秒短句约 2-5 秒",
       ready: true,
       download_url: "https://huggingface.co/example/balanced",
       mirror_url: "https://hf-mirror.com/example/balanced",
@@ -239,6 +243,8 @@ function qaModelStatus() {
     {
       engine: "sherpa-onnx-whisper",
       profile: "fallback",
+      description: "小体积多语种兜底，适合先验证环境是否可用",
+      expected_latency: "10 秒短句约 3-8 秒",
       ready: false,
       download_url: "https://huggingface.co/example/fallback",
       mirror_url: "https://hf-mirror.com/example/fallback",
