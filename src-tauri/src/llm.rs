@@ -21,6 +21,9 @@ pub struct LocalServiceStatus {
     pub models_url: String,
     pub is_local: bool,
     pub reachable: bool,
+    pub server_process_running: bool,
+    pub server_process_count: usize,
+    pub server_process_detail: String,
     pub script_path: String,
     pub script_exists: bool,
     pub model_path: String,
@@ -40,11 +43,15 @@ pub fn local_service_status(endpoint: &str, paths: &Paths) -> LocalServiceStatus
     let script = local_service_script(paths).unwrap_or_else(|| default_local_service_script(paths));
     let model = local_model_path(paths);
     let server = local_server_path(paths);
+    let process = llama_server_process_status();
     LocalServiceStatus {
         endpoint: endpoint.to_string(),
         models_url: models_url.clone(),
         is_local,
         reachable: is_local && !models_url.is_empty() && http_ok(&models_url),
+        server_process_running: process.running,
+        server_process_count: process.count,
+        server_process_detail: process.detail,
         script_exists: script.exists(),
         script_path: script.to_string_lossy().to_string(),
         model_exists: model.exists(),
@@ -356,6 +363,92 @@ fn local_server_path(paths: &Paths) -> PathBuf {
     })
 }
 
+struct ProcessStatus {
+    running: bool,
+    count: usize,
+    detail: String,
+}
+
+fn llama_server_process_status() -> ProcessStatus {
+    #[cfg(target_os = "windows")]
+    {
+        let mut command = Command::new("tasklist.exe");
+        command
+            .args(["/FI", "IMAGENAME eq llama-server.exe", "/FO", "CSV", "/NH"])
+            .stdin(Stdio::null())
+            .stdout(Stdio::piped())
+            .stderr(Stdio::piped());
+        command.creation_flags(0x08000000);
+        match command.output() {
+            Ok(output) => {
+                let stdout = String::from_utf8_lossy(&output.stdout);
+                let stderr = String::from_utf8_lossy(&output.stderr);
+                let count = count_tasklist_image_rows(&stdout, "llama-server.exe");
+                let detail = if count > 0 {
+                    format!("发现 {count} 个 llama-server.exe 进程")
+                } else if !output.status.success() {
+                    format!(
+                        "tasklist 失败：{}",
+                        stderr.trim().chars().take(160).collect::<String>()
+                    )
+                } else {
+                    "未发现 llama-server.exe 进程".into()
+                };
+                ProcessStatus {
+                    running: count > 0,
+                    count,
+                    detail,
+                }
+            }
+            Err(err) => ProcessStatus {
+                running: false,
+                count: 0,
+                detail: format!("tasklist 不可用：{err}"),
+            },
+        }
+    }
+    #[cfg(not(target_os = "windows"))]
+    {
+        ProcessStatus {
+            running: false,
+            count: 0,
+            detail: "仅 Windows 支持进程检测".into(),
+        }
+    }
+}
+
+fn count_tasklist_image_rows(stdout: &str, image_name: &str) -> usize {
+    stdout
+        .lines()
+        .filter_map(csv_first_cell)
+        .filter(|name| name.eq_ignore_ascii_case(image_name))
+        .count()
+}
+
+fn csv_first_cell(line: &str) -> Option<String> {
+    let line = line.trim().trim_start_matches('\u{feff}');
+    if line.is_empty() || line.starts_with("INFO:") || line.starts_with("信息:") {
+        return None;
+    }
+    if !line.starts_with('"') {
+        return line.split(',').next().map(|value| value.trim().to_string());
+    }
+    let mut out = String::new();
+    let mut chars = line[1..].chars().peekable();
+    while let Some(ch) = chars.next() {
+        if ch == '"' {
+            if chars.peek() == Some(&'"') {
+                chars.next();
+                out.push('"');
+                continue;
+            }
+            return Some(out);
+        }
+        out.push(ch);
+    }
+    None
+}
+
 fn correction_hint(paths: &Paths) -> String {
     text::load_corrections(&paths.corrections_path)
         .into_iter()
@@ -429,6 +522,33 @@ mod tests {
         assert!(status.model_exists);
         assert!(status.server_exists);
         assert!(status.models_url.ends_with("/v1/models"));
+    }
+
+    #[test]
+    fn parses_tasklist_csv_process_rows() {
+        let stdout = "\"llama-server.exe\",\"1234\",\"Console\",\"1\",\"123,456 K\"\n\"notepad.exe\",\"5\",\"Console\",\"1\",\"1 K\"\n";
+        assert_eq!(count_tasklist_image_rows(stdout, "llama-server.exe"), 1);
+        assert_eq!(count_tasklist_image_rows(stdout, "LLAMA-SERVER.EXE"), 1);
+        assert_eq!(
+            count_tasklist_image_rows(
+                "INFO: No tasks are running which match the specified criteria.\n",
+                "llama-server.exe"
+            ),
+            0
+        );
+    }
+
+    #[test]
+    fn parses_tasklist_first_csv_cell() {
+        assert_eq!(
+            csv_first_cell("\"llama-server.exe\",\"1234\"").unwrap(),
+            "llama-server.exe"
+        );
+        assert_eq!(
+            csv_first_cell("\"quoted \"\"name\"\".exe\",\"1234\"").unwrap(),
+            "quoted \"name\".exe"
+        );
+        assert!(csv_first_cell("INFO: nothing").is_none());
     }
 
     #[test]

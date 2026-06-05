@@ -168,6 +168,9 @@ type LlmServiceStatus = {
   models_url: string;
   is_local: boolean;
   reachable: boolean;
+  server_process_running: boolean;
+  server_process_count: number;
+  server_process_detail: string;
   script_path: string;
   script_exists: boolean;
   model_path: string;
@@ -733,6 +736,11 @@ function llmServicePanel() {
       detail: llmServiceStatus.models_url || llmServiceStatus.endpoint || "未配置",
     },
     {
+      name: "进程",
+      status: llmServiceStatus.server_process_running ? "pass" : "warn",
+      detail: llmServiceStatus.server_process_detail,
+    },
+    {
       name: "脚本",
       status: llmServiceStatus.script_exists ? "pass" : "warn",
       detail: llmServiceStatus.script_path,
@@ -751,8 +759,8 @@ function llmServicePanel() {
   return `
     <div class="doctor-panel">
       <div class="doctor-head">
-        <strong>${llmServiceStatus.reachable ? "本地 LLM 可用" : "本地 LLM 未就绪"}</strong>
-        <span>${llmServiceStatus.is_local ? "local" : "remote"}</span>
+        <strong>${llmServiceStatus.reachable ? "本地 LLM 可用" : llmServiceStatus.server_process_running ? "服务进程已启动" : "本地 LLM 未就绪"}</strong>
+        <span>${llmServiceStatus.is_local ? `${llmServiceStatus.server_process_count} process` : "remote"}</span>
       </div>
       <div class="doctor-list">
         ${rows.map((row) => doctorRow(row)).join("")}

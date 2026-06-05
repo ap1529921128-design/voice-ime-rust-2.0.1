@@ -335,6 +335,16 @@ fn check_llm_artifacts(paths: &Paths, config: &AppConfig, checks: &mut Vec<Docto
             missing.join("; ")
         },
     );
+    push_check(
+        checks,
+        "本地 LLM 进程",
+        if status.server_process_running {
+            DoctorStatus::Pass
+        } else {
+            DoctorStatus::Warn
+        },
+        status.server_process_detail,
+    );
 }
 
 fn check_llm_endpoint(name: &str, endpoint: &str, checks: &mut Vec<DoctorCheck>) {

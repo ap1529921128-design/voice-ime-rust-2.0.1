@@ -43,7 +43,15 @@ function qaInvoke(command: string, args?: Record<string, unknown>) {
   if (command === "doctor_report") return qaDoctorReport();
   if (command === "repair_doctor") return qaRepairReport();
   if (command === "llm_service_status") return qaLlmServiceStatus();
-  if (command === "start_llm_service") return { ...qaLlmServiceStatus(), reachable: true };
+  if (command === "start_llm_service") {
+    return {
+      ...qaLlmServiceStatus(),
+      reachable: true,
+      server_process_running: true,
+      server_process_count: 1,
+      server_process_detail: "发现 1 个 llama-server.exe 进程",
+    };
+  }
   if (command === "personal_prompt") return qaPersonalPrompt;
   if (command === "save_personal_prompt") {
     qaPersonalPrompt = String(args?.prompt || "").trim() + "\n";
@@ -297,6 +305,9 @@ function qaLlmServiceStatus() {
     models_url: "http://127.0.0.1:18080/v1/models",
     is_local: true,
     reachable: false,
+    server_process_running: false,
+    server_process_count: 0,
+    server_process_detail: "未发现 llama-server.exe 进程",
     script_path: "D:/voice-ime/app/tools/Start-MiniCPM-Translate.ps1",
     script_exists: true,
     model_path: "D:/voice-ime/app/models/minicpm5-1b-q4.gguf",

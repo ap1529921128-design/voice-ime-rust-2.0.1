@@ -45,7 +45,7 @@
 
 1. Open Settings / Smart.
 2. Click `检查服务`.
-3. The service panel shows endpoint reachability, startup script, MiniCPM model, and `llama-server.exe` rows.
+3. The service panel shows endpoint reachability, `llama-server.exe` process status, startup script, MiniCPM model, and server file rows.
 4. Click `启动服务`; if the local script and runtime are present, the app attempts to start `llama-server` hidden and refreshes the same status rows.
 5. Running Settings / Data / `诊断` includes a `本地 LLM 文件` row covering the script, model, and server binary.
 
