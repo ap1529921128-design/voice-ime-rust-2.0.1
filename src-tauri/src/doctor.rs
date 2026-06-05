@@ -8,7 +8,7 @@ use reqwest::blocking::Client;
 use serde::Serialize;
 use std::{
     fs,
-    path::PathBuf,
+    path::{Path, PathBuf},
     time::{Duration, Instant},
 };
 
@@ -97,6 +97,7 @@ pub fn repair(paths: &Paths, config: &AppConfig) -> Result<RepairReport> {
     repair_text_file(&mut actions, "规则", &paths.hot_rules_path, || {
         Ok(DEFAULT_HOT_RULES.to_string())
     });
+    repair_model_manifest(&mut actions, paths, config);
 
     let doctor = run(paths, config)?;
     Ok(RepairReport {
@@ -188,6 +189,77 @@ fn repair_text_file<F>(
             name,
             RepairStatus::Failed,
             format!("写入失败：{}；{}", path.to_string_lossy(), err),
+        ),
+    }
+}
+
+fn repair_model_manifest(actions: &mut Vec<RepairAction>, paths: &Paths, config: &AppConfig) {
+    let model_root = crate::config::effective_model_root(config, paths);
+    repair_model_manifest_file(
+        actions,
+        "模型清单 MODELS.json",
+        &paths.model_dir.join("MODELS.json"),
+        &model_root.join("MODELS.json"),
+    );
+    repair_model_manifest_file(
+        actions,
+        "模型清单 MODELS.md",
+        &paths.model_dir.join("MODELS.md"),
+        &model_root.join("MODELS.md"),
+    );
+}
+
+fn repair_model_manifest_file(
+    actions: &mut Vec<RepairAction>,
+    name: &str,
+    source: &Path,
+    target: &Path,
+) {
+    if target.exists() {
+        push_repair(
+            actions,
+            name,
+            RepairStatus::Skipped,
+            format!("已存在，未覆盖：{}", target.to_string_lossy()),
+        );
+        return;
+    }
+    if !source.is_file() {
+        push_repair(
+            actions,
+            name,
+            RepairStatus::Failed,
+            format!("主体包清单缺失：{}", source.to_string_lossy()),
+        );
+        return;
+    }
+    if let Some(parent) = target.parent() {
+        if let Err(err) = fs::create_dir_all(parent) {
+            push_repair(
+                actions,
+                name,
+                RepairStatus::Failed,
+                format!("目录创建失败：{}；{}", parent.to_string_lossy(), err),
+            );
+            return;
+        }
+    }
+    match fs::copy(source, target) {
+        Ok(_) => push_repair(
+            actions,
+            name,
+            RepairStatus::Repaired,
+            format!(
+                "已复制：{} -> {}",
+                source.to_string_lossy(),
+                target.to_string_lossy()
+            ),
+        ),
+        Err(err) => push_repair(
+            actions,
+            name,
+            RepairStatus::Failed,
+            format!("复制失败：{}；{}", target.to_string_lossy(), err),
         ),
     }
 }
@@ -675,6 +747,37 @@ mod tests {
             .any(|action| { action.name == "热词" && action.status == RepairStatus::Skipped }));
         assert!(report.actions.iter().any(|action| {
             action.name == "个人提示词" && action.status == RepairStatus::Repaired
+        }));
+    }
+
+    #[test]
+    fn repair_copies_packaged_model_manifest_to_external_root_without_overwriting() {
+        let temp = tempfile::tempdir().unwrap();
+        let paths = test_paths(temp.path());
+        fs::create_dir_all(&paths.model_dir).unwrap();
+        fs::write(paths.model_dir.join("MODELS.json"), "{\"packaged\":true}").unwrap();
+        fs::write(paths.model_dir.join("MODELS.md"), "# packaged").unwrap();
+        let external = temp.path().join("external-models");
+        fs::create_dir_all(&external).unwrap();
+        fs::write(external.join("MODELS.md"), "# custom").unwrap();
+        let mut config = AppConfig::default();
+        config.asr.model_root = external.to_string_lossy().to_string();
+
+        let report = repair(&paths, &config).unwrap();
+
+        assert_eq!(
+            fs::read_to_string(external.join("MODELS.json")).unwrap(),
+            "{\"packaged\":true}"
+        );
+        assert_eq!(
+            fs::read_to_string(external.join("MODELS.md")).unwrap(),
+            "# custom"
+        );
+        assert!(report.actions.iter().any(|action| {
+            action.name == "模型清单 MODELS.json" && action.status == RepairStatus::Repaired
+        }));
+        assert!(report.actions.iter().any(|action| {
+            action.name == "模型清单 MODELS.md" && action.status == RepairStatus::Skipped
         }));
     }
 

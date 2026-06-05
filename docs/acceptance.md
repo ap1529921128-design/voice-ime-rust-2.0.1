@@ -91,16 +91,17 @@
 4. A `doctor-YYYYMMDD-HHMMSS.txt` report path is shown in the panel and the file exists under `.voice_ime/logs`.
 5. Clicking `导出` still creates the support zip and includes the latest doctor output without including recordings or model binaries.
 6. If the effective external model root has no `MODELS.json/md`, the support zip falls back to the packaged model manifest and records the model root source and manifest source paths in `summary.txt`.
-6. `app/tools/启动语音输入-诊断.bat` exists in packaged builds and runs `VoiceIME.exe --doctor` without adding another visible root launcher.
+7. `app/tools/启动语音输入-诊断.bat` exists in packaged builds and runs `VoiceIME.exe --doctor` without adding another visible root launcher.
 
 ## Conservative Repair
 
 1. Open Settings / Data and click `修复`.
 2. Missing `.voice_ime` runtime directories are created.
 3. Missing `personal_prompt.txt`, `corrections.json`, `hot.txt`, and `hot-rule.txt` are restored with defaults.
-4. Existing user files are reported as skipped and are not overwritten.
-5. The diagnostics panel refreshes after repair and writes a fresh `doctor-YYYYMMDD-HHMMSS.txt` report.
-6. Repair does not download models, change hotkeys, alter existing config values, upload data, or send input to other apps.
+4. If the effective external model root is missing `MODELS.json/md`, repair copies the packaged model manifests there.
+5. Existing user files and model manifests are reported as skipped and are not overwritten.
+6. The diagnostics panel refreshes after repair and writes a fresh `doctor-YYYYMMDD-HHMMSS.txt` report.
+7. Repair does not download models, copy model binaries, change hotkeys, alter existing config values, upload data, or send input to other apps.
 
 ## Model Path Picker
 
@@ -276,7 +277,7 @@
 - History CSV export is automated and unit-tested for escaping; real spreadsheet review still depends on manual sample data from target machines.
 - Long recording retention can be disabled and existing long recordings can be cleared from Settings / Data; short recordings remain non-retained by design.
 - Portable packaging now includes an automated layout/release gate and `BUILD.txt`; manual smoke is still useful after packaging because it proves WebView startup on this machine.
-- Settings / Data now shows an inline diagnostics panel after running Doctor; support export records the effective model root source and falls back to packaged model manifests when an external model root lacks `MODELS.json/md`; one-click repair actions are still future work.
+- Settings / Data now shows an inline diagnostics panel after running Doctor; support export records the effective model root source and falls back to packaged model manifests when an external model root lacks `MODELS.json/md`; repair can also copy packaged model manifests into the effective model root without overwriting or copying model binaries.
 - Settings / Models now has native file and directory pickers; real removable-drive acceptance should still be tested on target machines.
 - Settings / Shortcuts now shows global-hotkey registration status and re-registers after save; manual conflict coverage is still required with real third-party apps.
 - `--benchmark-asr` and Settings / Data / `ASR 基准` now provide a repeatable timing and CER/accuracy CSV harness; real quality still depends on recorded sample audio from target machines.
