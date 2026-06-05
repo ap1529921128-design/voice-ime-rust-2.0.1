@@ -276,6 +276,7 @@
 - Confirm paste now restores previous text clipboard where feasible, retries focus recovery before Ctrl+V, logs previous clipboard format/status, and exposes a short "pasted" UI state; manual image/file clipboard preservation is still future work.
 - Cursor positioning now logs `uia-caret` when UI Automation exposes text-range caret rectangles, then falls back to `uia-element`, guarded `uia-focused`, `gui-thread`, or `fallback`; real overlay placement still needs visual target-machine coverage.
 - Clipboard failure can now fall back to direct Unicode typing for short single-line text; broad app coverage still needs manual acceptance.
+- Task-style background workers now catch unwind panics in release builds, update the UI with a worker error, and write JSON rows to `worker-error-YYYYMMDD.log`; low-level OS hook loop panic coverage is still future work.
 - `npm run ui:smoke` now covers main/settings/history/overlay layout with QA mock data across 100%, 125%, 150%, and 200% device scale; true OS DPI and WebView screenshots still need manual release checks.
 - Packaged builds now include `app/tools/启动语音输入-诊断.bat`; portable root layout still visibly exposes only the main launcher.
 - Packaged builds now include `app/tools/Notepad-Input-Acceptance.ps1`; Notepad has an automated paste-path smoke, while other real apps still need manual coverage.

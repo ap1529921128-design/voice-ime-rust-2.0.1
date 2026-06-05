@@ -24,7 +24,13 @@ use crate::core::{AppState, SessionState, UiSnapshot};
 use anyhow::Result;
 use once_cell::sync::Lazy;
 use serde::Serialize;
-use std::{collections::HashSet, fs, path::PathBuf, time::Duration};
+use std::{
+    collections::HashSet,
+    fs,
+    panic::{self, AssertUnwindSafe},
+    path::PathBuf,
+    time::Duration,
+};
 use tauri::{AppHandle, Manager, State};
 use tauri_plugin_global_shortcut::{GlobalShortcutExt, ShortcutState};
 use tauri_plugin_opener::OpenerExt;
@@ -209,22 +215,28 @@ fn prewarm_asr(app: AppHandle, state: State<'_, AppState>) -> UiSnapshot {
     let paths = state.paths.clone();
     let app_handle = app.clone();
     std::thread::spawn(move || {
-        let result = asr::prewarm(&config, &paths);
-        let Some(state) = app_handle.try_state::<AppState>() else {
-            return;
-        };
-        match result {
-            Ok(status) => {
-                state.set_runtime_notice(
-                    &app_handle,
-                    "ASR 已预热",
-                    format!("{} / {:.1}s", status.profile, status.elapsed_seconds),
-                );
+        if let Err(payload) = panic::catch_unwind(AssertUnwindSafe(|| {
+            let result = asr::prewarm(&config, &paths);
+            let Some(state) = app_handle.try_state::<AppState>() else {
+                return;
+            };
+            match result {
+                Ok(status) => {
+                    state.set_runtime_notice(
+                        &app_handle,
+                        "ASR 已预热",
+                        format!("{} / {:.1}s", status.profile, status.elapsed_seconds),
+                    );
+                }
+                Err(err) => {
+                    state.set_runtime_notice(&app_handle, "ASR 预热跳过", err.to_string());
+                }
+            };
+        })) {
+            if let Some(state) = app_handle.try_state::<AppState>() {
+                state.report_worker_panic(&app_handle, "asr-prewarm", None, payload);
             }
-            Err(err) => {
-                state.set_runtime_notice(&app_handle, "ASR 预热跳过", err.to_string());
-            }
-        };
+        }
     });
     snapshot
 }
@@ -403,23 +415,29 @@ fn run_asr_benchmark(
     let paths = state.paths.clone();
     let app_handle = app.clone();
     std::thread::spawn(move || {
-        let result = benchmark::run_asr(&samples_path, &paths, &config);
-        let Some(state) = app_handle.try_state::<AppState>() else {
-            return;
-        };
-        match result {
-            Ok(report) => {
-                state.set_runtime_notice(
-                    &app_handle,
-                    "ASR 基准完成",
-                    format!(
-                        "{} 个样本，{} 个错误；{}",
-                        report.sample_count, report.error_count, report.output_path
-                    ),
-                );
+        if let Err(payload) = panic::catch_unwind(AssertUnwindSafe(|| {
+            let result = benchmark::run_asr(&samples_path, &paths, &config);
+            let Some(state) = app_handle.try_state::<AppState>() else {
+                return;
+            };
+            match result {
+                Ok(report) => {
+                    state.set_runtime_notice(
+                        &app_handle,
+                        "ASR 基准完成",
+                        format!(
+                            "{} 个样本，{} 个错误；{}",
+                            report.sample_count, report.error_count, report.output_path
+                        ),
+                    );
+                }
+                Err(err) => {
+                    state.set_runtime_notice(&app_handle, "ASR 基准失败", err.to_string());
+                }
             }
-            Err(err) => {
-                state.set_runtime_notice(&app_handle, "ASR 基准失败", err.to_string());
+        })) {
+            if let Some(state) = app_handle.try_state::<AppState>() {
+                state.report_worker_panic(&app_handle, "asr-benchmark", None, payload);
             }
         }
     });
@@ -443,25 +461,31 @@ fn run_translation_benchmark(
     let paths = state.paths.clone();
     let app_handle = app.clone();
     std::thread::spawn(move || {
-        let sample_path = (!samples.trim().is_empty()).then(|| PathBuf::from(samples));
-        let result =
-            translation_benchmark::run_translation(sample_path.as_deref(), &paths, &config);
-        let Some(state) = app_handle.try_state::<AppState>() else {
-            return;
-        };
-        match result {
-            Ok(report) => {
-                state.set_runtime_notice(
-                    &app_handle,
-                    "翻译基准完成",
-                    format!(
-                        "{} 个样例，{} 个错误；{}",
-                        report.sample_count, report.error_count, report.output_path
-                    ),
-                );
+        if let Err(payload) = panic::catch_unwind(AssertUnwindSafe(|| {
+            let sample_path = (!samples.trim().is_empty()).then(|| PathBuf::from(samples));
+            let result =
+                translation_benchmark::run_translation(sample_path.as_deref(), &paths, &config);
+            let Some(state) = app_handle.try_state::<AppState>() else {
+                return;
+            };
+            match result {
+                Ok(report) => {
+                    state.set_runtime_notice(
+                        &app_handle,
+                        "翻译基准完成",
+                        format!(
+                            "{} 个样例，{} 个错误；{}",
+                            report.sample_count, report.error_count, report.output_path
+                        ),
+                    );
+                }
+                Err(err) => {
+                    state.set_runtime_notice(&app_handle, "翻译基准失败", err.to_string());
+                }
             }
-            Err(err) => {
-                state.set_runtime_notice(&app_handle, "翻译基准失败", err.to_string());
+        })) {
+            if let Some(state) = app_handle.try_state::<AppState>() {
+                state.report_worker_panic(&app_handle, "translation-benchmark", None, payload);
             }
         }
     });
@@ -651,23 +675,29 @@ fn schedule_idle_asr_prewarm(app: AppHandle, paths: Paths, config: AppConfig) {
         return;
     }
     std::thread::spawn(move || {
-        std::thread::sleep(Duration::from_millis(1800));
-        let Some(state) = app.try_state::<AppState>() else {
-            return;
-        };
-        let snapshot = state.snapshot();
-        if snapshot.state != SessionState::Idle || state.recorder.is_recording() {
-            return;
-        }
-        let Ok(status) = asr::prewarm(&config, &paths) else {
-            return;
-        };
-        if state.snapshot().state == SessionState::Idle {
-            state.set_runtime_notice(
-                &app,
-                "ASR 已预热",
-                format!("{} / {:.1}s", status.profile, status.elapsed_seconds),
-            );
+        if let Err(payload) = panic::catch_unwind(AssertUnwindSafe(|| {
+            std::thread::sleep(Duration::from_millis(1800));
+            let Some(state) = app.try_state::<AppState>() else {
+                return;
+            };
+            let snapshot = state.snapshot();
+            if snapshot.state != SessionState::Idle || state.recorder.is_recording() {
+                return;
+            }
+            let Ok(status) = asr::prewarm(&config, &paths) else {
+                return;
+            };
+            if state.snapshot().state == SessionState::Idle {
+                state.set_runtime_notice(
+                    &app,
+                    "ASR 已预热",
+                    format!("{} / {:.1}s", status.profile, status.elapsed_seconds),
+                );
+            }
+        })) {
+            if let Some(state) = app.try_state::<AppState>() {
+                state.report_worker_panic(&app, "idle-asr-prewarm", None, payload);
+            }
         }
     });
 }

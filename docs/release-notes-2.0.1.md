@@ -27,6 +27,8 @@ The app never sends Enter automatically. Confirmed text is pasted into the targe
 
 2.0.1 now retries focus recovery before Ctrl+V, briefly shows an `已粘贴` state before hiding the overlay, and writes focus/clipboard diagnostics into `input-target-YYYYMMDD.log`. Text clipboard contents are restored where feasible; non-text clipboard formats are logged clearly instead of being reported as restored.
 
+Task-style background workers now run with unwind panic guards in release builds. Recording/ASR, translation, model download, overlay cleanup, cancellation cleanup, prewarm, and benchmark panics report a UI error and append JSON rows to `worker-error-YYYYMMDD.log` instead of silently killing the task.
+
 ## Verification
 
 The release gate passed on the build machine for:

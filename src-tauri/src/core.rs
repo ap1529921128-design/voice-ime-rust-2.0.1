@@ -9,9 +9,11 @@ use crate::{
 use anyhow::{anyhow, Result};
 use serde::Serialize;
 use std::{
+    any::Any,
     fs::{self, OpenOptions},
     io::Write,
     ops::Deref,
+    panic::{self, AssertUnwindSafe},
     path::PathBuf,
     sync::atomic::{AtomicU64, Ordering},
     sync::Arc,
@@ -188,10 +190,18 @@ impl AppState {
         let state = self.clone_for_worker();
         let app_handle = app.clone();
         std::thread::spawn(move || {
-            if let Err(err) =
+            let result = panic::catch_unwind(AssertUnwindSafe(|| {
                 state.process_recording(&app_handle, session_id, recording, config, base_text)
-            {
-                state.set_error(&app_handle, session_id, err.to_string());
+            }));
+            match result {
+                Ok(Ok(())) => {}
+                Ok(Err(err)) => state.set_error(&app_handle, session_id, err.to_string()),
+                Err(payload) => state.set_worker_panic_error(
+                    &app_handle,
+                    Some(session_id),
+                    "recording",
+                    payload,
+                ),
             }
         });
         Ok(self.snapshot())
@@ -256,6 +266,34 @@ impl AppState {
         }
         emit_snapshot(app, self);
         self.snapshot()
+    }
+
+    pub(crate) fn report_worker_panic(
+        &self,
+        app: &AppHandle,
+        worker: &'static str,
+        session_id: Option<u64>,
+        payload: Box<dyn Any + Send>,
+    ) {
+        let message = panic_payload_message(payload.as_ref());
+        let _ = self.write_worker_error_log(worker, session_id, &message);
+        if let Some(session_id) = session_id {
+            let mut inner = self.inner.lock();
+            if accepts_worker_update(inner.session_id, &inner.state, session_id) {
+                inner.state = SessionState::Error;
+                inner.status = "后台任务异常".into();
+                inner.text = format!("{worker} panic: {message}");
+                inner.meta = "已写入 worker-error 日志".into();
+                drop(inner);
+                emit_snapshot(app, self);
+            }
+            return;
+        }
+        self.set_runtime_notice(
+            app,
+            "后台任务异常",
+            format!("{worker} panic；已写入 worker-error 日志"),
+        );
     }
 
     pub fn confirm_input(&self, app: &AppHandle) -> Result<UiSnapshot> {
@@ -392,7 +430,11 @@ impl AppState {
         let state = self.clone_for_worker();
         let app_handle = app.clone();
         std::thread::spawn(move || {
-            state.process_translation(&app_handle, session_id, text, target_language, config);
+            if let Err(payload) = panic::catch_unwind(AssertUnwindSafe(|| {
+                state.process_translation(&app_handle, session_id, text, target_language, config);
+            })) {
+                state.set_worker_panic_error(&app_handle, Some(session_id), "translation", payload);
+            }
         });
         Ok(self.snapshot())
     }
@@ -430,6 +472,28 @@ impl AppState {
         Ok(())
     }
 
+    fn write_worker_error_log(
+        &self,
+        worker: &'static str,
+        session_id: Option<u64>,
+        message: &str,
+    ) -> Result<()> {
+        fs::create_dir_all(&self.paths.logs_dir)?;
+        let path = self.paths.logs_dir.join(format!(
+            "worker-error-{}.log",
+            chrono::Local::now().format("%Y%m%d")
+        ));
+        let entry = WorkerErrorLogEntry {
+            created_at: chrono::Local::now().format("%Y-%m-%d %H:%M:%S").to_string(),
+            worker,
+            session_id,
+            message,
+        };
+        let mut file = OpenOptions::new().create(true).append(true).open(path)?;
+        writeln!(file, "{}", serde_json::to_string(&entry)?)?;
+        Ok(())
+    }
+
     pub fn download_asr_model(&self, app: &AppHandle, profile: String) -> Result<UiSnapshot> {
         let config = {
             let mut inner = self.inner.lock();
@@ -441,24 +505,28 @@ impl AppState {
         let state = self.clone_for_worker();
         let app_handle = app.clone();
         std::thread::spawn(move || {
-            let paths = state.paths.clone();
-            let result = asr::download_model(&profile, &config, &paths, |message| {
-                state
-                    .app_state()
-                    .set_runtime_notice(&app_handle, "模型下载中", message);
-            });
-            match result {
-                Ok(()) => state.app_state().set_runtime_notice(
-                    &app_handle,
-                    "模型下载完成",
-                    format!("{profile} 档位已就绪"),
-                ),
-                Err(err) => state.app_state().set_runtime_notice(
-                    &app_handle,
-                    "模型下载失败",
-                    format!("{profile}: {err}"),
-                ),
-            };
+            if let Err(payload) = panic::catch_unwind(AssertUnwindSafe(|| {
+                let paths = state.paths.clone();
+                let result = asr::download_model(&profile, &config, &paths, |message| {
+                    state
+                        .app_state()
+                        .set_runtime_notice(&app_handle, "模型下载中", message);
+                });
+                match result {
+                    Ok(()) => state.app_state().set_runtime_notice(
+                        &app_handle,
+                        "模型下载完成",
+                        format!("{profile} 档位已就绪"),
+                    ),
+                    Err(err) => state.app_state().set_runtime_notice(
+                        &app_handle,
+                        "模型下载失败",
+                        format!("{profile}: {err}"),
+                    ),
+                };
+            })) {
+                state.set_worker_panic_error(&app_handle, None, "model-download", payload);
+            }
         });
         Ok(self.snapshot())
     }
@@ -492,6 +560,17 @@ struct WorkerState {
 impl WorkerState {
     fn app_state(&self) -> &AppState {
         &self.app_state
+    }
+
+    fn set_worker_panic_error(
+        &self,
+        app: &AppHandle,
+        session_id: Option<u64>,
+        worker: &'static str,
+        payload: Box<dyn Any + Send>,
+    ) {
+        self.app_state()
+            .report_worker_panic(app, worker, session_id, payload);
     }
 
     fn process_recording(
@@ -865,6 +944,14 @@ struct InputTargetLogEntry<'a> {
     target: &'a InputTargetInfo,
 }
 
+#[derive(Serialize)]
+struct WorkerErrorLogEntry<'a> {
+    created_at: String,
+    worker: &'static str,
+    session_id: Option<u64>,
+    message: &'a str,
+}
+
 pub fn emit_snapshot(app: &AppHandle, state: &AppState) {
     let snapshot = state.snapshot();
     let _ = app.emit("voice-ime://snapshot", snapshot);
@@ -889,15 +976,19 @@ pub fn hide_overlay(app: &AppHandle) {
 
 fn hide_overlay_after(app: AppHandle, worker: WorkerState, session_id: u64, delay: Duration) {
     std::thread::spawn(move || {
-        std::thread::sleep(delay);
-        let state = worker.app_state();
-        {
-            let inner = state.inner.lock();
-            if inner.session_id != session_id || inner.state != SessionState::Idle {
-                return;
+        if let Err(payload) = panic::catch_unwind(AssertUnwindSafe(|| {
+            std::thread::sleep(delay);
+            let state = worker.app_state();
+            {
+                let inner = state.inner.lock();
+                if inner.session_id != session_id || inner.state != SessionState::Idle {
+                    return;
+                }
             }
+            hide_overlay(&app);
+        })) {
+            worker.set_worker_panic_error(&app, Some(session_id), "overlay-hide", payload);
         }
-        hide_overlay(&app);
     });
 }
 
@@ -907,18 +998,23 @@ fn read_prompt(paths: &Paths) -> String {
 
 fn finish_cancelling_async(app: AppHandle, worker: WorkerState, cancel_session_id: u64) {
     std::thread::spawn(move || {
-        std::thread::sleep(Duration::from_millis(120));
-        let state = worker.app_state();
-        {
-            let mut inner = state.inner.lock();
-            if inner.session_id != cancel_session_id || inner.state != SessionState::Cancelling {
-                return;
+        if let Err(payload) = panic::catch_unwind(AssertUnwindSafe(|| {
+            std::thread::sleep(Duration::from_millis(120));
+            let state = worker.app_state();
+            {
+                let mut inner = state.inner.lock();
+                if inner.session_id != cancel_session_id || inner.state != SessionState::Cancelling
+                {
+                    return;
+                }
+                inner.state = SessionState::Idle;
+                inner.status = "已清空".into();
+                inner.meta = "旧任务结果会被忽略".into();
             }
-            inner.state = SessionState::Idle;
-            inner.status = "已清空".into();
-            inner.meta = "旧任务结果会被忽略".into();
+            emit_snapshot(&app, state);
+        })) {
+            worker.set_worker_panic_error(&app, Some(cancel_session_id), "cancelling", payload);
         }
-        emit_snapshot(&app, state);
     });
 }
 
@@ -962,6 +1058,16 @@ fn join_raw_transcript_chunks(chunks: &[String]) -> String {
         result.push_str(&chunk);
     }
     text::normalize_text(&result)
+}
+
+fn panic_payload_message(payload: &(dyn Any + Send)) -> String {
+    if let Some(message) = payload.downcast_ref::<&'static str>() {
+        return (*message).to_string();
+    }
+    if let Some(message) = payload.downcast_ref::<String>() {
+        return message.clone();
+    }
+    "unknown panic payload".into()
 }
 
 fn current_punctuation_policy(inner: &InnerState) -> String {
@@ -1050,6 +1156,24 @@ mod tests {
             inner.status = "共享运行时".into();
         }
         assert_eq!(cloned.snapshot().status, "共享运行时");
+    }
+
+    #[test]
+    fn panic_payload_message_reads_common_payloads() {
+        let static_message: Box<dyn Any + Send> = Box::new("static panic");
+        assert_eq!(
+            panic_payload_message(static_message.as_ref()),
+            "static panic"
+        );
+
+        let owned_message: Box<dyn Any + Send> = Box::new(String::from("owned panic"));
+        assert_eq!(panic_payload_message(owned_message.as_ref()), "owned panic");
+
+        let unknown: Box<dyn Any + Send> = Box::new(42_u32);
+        assert_eq!(
+            panic_payload_message(unknown.as_ref()),
+            "unknown panic payload"
+        );
     }
 
     fn test_paths(root: &Path) -> Paths {
