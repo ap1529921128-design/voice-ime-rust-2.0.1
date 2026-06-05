@@ -6,6 +6,7 @@ import { open as dialogOpen } from "@tauri-apps/plugin-dialog";
 const qaParams = new URLSearchParams(window.location.search);
 const qaMode = qaParams.has("qa");
 let qaSnapshot = createQaSnapshot();
+let qaPersonalPrompt = "请优先识别为简体中文，保留 Voice IME、Rust、Tauri、sherpa-onnx、llama-server。\n";
 
 export function currentWindowLabel() {
   if (qaMode) return qaParams.get("window") === "overlay" ? "overlay" : "main";
@@ -43,6 +44,15 @@ function qaInvoke(command: string, args?: Record<string, unknown>) {
   if (command === "repair_doctor") return qaRepairReport();
   if (command === "llm_service_status") return qaLlmServiceStatus();
   if (command === "start_llm_service") return { ...qaLlmServiceStatus(), reachable: true };
+  if (command === "personal_prompt") return qaPersonalPrompt;
+  if (command === "save_personal_prompt") {
+    qaPersonalPrompt = String(args?.prompt || "").trim() + "\n";
+    return { ...qaSnapshot, status: "提示词已保存", meta: "QA prompt" };
+  }
+  if (command === "reset_personal_prompt") {
+    qaPersonalPrompt = "请优先识别为简体中文，保留 Voice IME、Rust、Tauri、sherpa-onnx、llama-server。\n";
+    return { ...qaSnapshot, status: "提示词已恢复", meta: "QA prompt" };
+  }
   if (command === "install_model_pack") {
     return {
       ...qaSnapshot,

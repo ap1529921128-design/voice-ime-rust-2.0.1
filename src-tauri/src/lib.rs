@@ -133,6 +133,35 @@ fn save_config(
 }
 
 #[tauri::command]
+fn personal_prompt(state: State<'_, AppState>) -> Result<String, String> {
+    config::read_personal_prompt(&state.paths).map_err(to_string)
+}
+
+#[tauri::command]
+fn save_personal_prompt(
+    app: AppHandle,
+    state: State<'_, AppState>,
+    prompt: String,
+) -> Result<UiSnapshot, String> {
+    let prompt = config::save_personal_prompt(&state.paths, &prompt).map_err(to_string)?;
+    Ok(state.set_runtime_notice(
+        &app,
+        "提示词已保存",
+        format!("{} 字 / 下次智能纠错生效", prompt.chars().count()),
+    ))
+}
+
+#[tauri::command]
+fn reset_personal_prompt(app: AppHandle, state: State<'_, AppState>) -> Result<UiSnapshot, String> {
+    let prompt = config::reset_personal_prompt(&state.paths).map_err(to_string)?;
+    Ok(state.set_runtime_notice(
+        &app,
+        "提示词已恢复",
+        format!("默认提示词 / {} 字", prompt.chars().count()),
+    ))
+}
+
+#[tauri::command]
 fn clear_history(app: AppHandle, state: State<'_, AppState>) -> Result<UiSnapshot, String> {
     state.clear_history(&app).map_err(to_string)
 }
@@ -563,6 +592,9 @@ pub fn run() {
             cycle_language,
             translate_text,
             save_config,
+            personal_prompt,
+            save_personal_prompt,
+            reset_personal_prompt,
             clear_history,
             clear_recordings,
             audio_devices,

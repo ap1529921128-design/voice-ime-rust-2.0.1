@@ -200,6 +200,7 @@ let audioProbeInFlight = false;
 let doctorReport: DoctorReport | null = null;
 let repairReport: RepairReport | null = null;
 let llmServiceStatus: LlmServiceStatus | null = null;
+let personalPrompt: string | null = null;
 let hotkeyRows: HotkeyCheck[] = [];
 let hotkeyCapturePath: string | null = null;
 let activeView: "compose" | "settings" | "history" = "compose";
@@ -694,6 +695,17 @@ function smartSettingsPanel(cfg: AppConfig) {
       <label>外部翻译命令
         <input value="${escapeAttr(cfg.translation.external_command)}" data-config="translation.external_command" />
       </label>
+      <div class="prompt-editor">
+        <div class="app-profile-head">
+          <strong>个人提示词</strong>
+          <span>${personalPrompt ? Array.from(personalPrompt).length : 0} 字</span>
+        </div>
+        <textarea data-prompt-editor>${escapeHtml(personalPrompt ?? "")}</textarea>
+        <div class="settings-tools">
+          <button class="tool-btn" data-action="save-personal-prompt">${icon("Save", "保存提示词")}<span>保存提示词</span></button>
+          <button class="tool-btn" data-action="reset-personal-prompt">${icon("RotateCcw", "恢复默认提示词")}<span>恢复默认</span></button>
+        </div>
+      </div>
       <div class="settings-tools">
         <button class="tool-btn" data-action="check-llm-service">${icon("Activity", "检查本地 LLM")}<span>检查服务</span></button>
         <button class="tool-btn" data-action="start-llm-service">${icon("Power", "启动本地 LLM")}<span>启动服务</span></button>
@@ -1041,6 +1053,8 @@ function wireCommon() {
       if (action === "capture-hotkey") captureHotkey(button.dataset.configPath || "");
       if (action === "check-llm-service") await refreshLlmServiceStatus(true);
       if (action === "start-llm-service") await startLlmService();
+      if (action === "save-personal-prompt") await savePersonalPrompt();
+      if (action === "reset-personal-prompt") await resetPersonalPrompt();
       if (action === "download-model") await downloadModel(button.dataset.profile || "");
       if (action === "pick-model-file") await pickModelFile(button.dataset.configPath || "");
       if (action === "pick-model-dir") await pickModelDirectory(button.dataset.profile || "");
@@ -1105,7 +1119,10 @@ function wireMain() {
       activeView = tab.dataset.view as typeof activeView;
       if (activeView === "settings") {
         statusRows = await invoke<AsrModelStatus[]>("asr_status");
-        if (activeSettingsTab === "smart") await refreshLlmServiceStatus(false);
+        if (activeSettingsTab === "smart") {
+          await refreshLlmServiceStatus(false);
+          await refreshPersonalPrompt(false);
+        }
         await refreshHotkeyStatus();
       }
       render();
@@ -1115,14 +1132,17 @@ function wireMain() {
     tab.addEventListener("click", async () => {
       activeSettingsTab = tab.dataset.settingsTab as typeof activeSettingsTab;
       if (activeSettingsTab === "voice") await refreshAudioDevices(false);
-      if (activeSettingsTab === "smart") await refreshLlmServiceStatus(false);
+      if (activeSettingsTab === "smart") {
+        await refreshLlmServiceStatus(false);
+        await refreshPersonalPrompt(false);
+      }
       if (activeSettingsTab === "shortcuts") await refreshHotkeyStatus();
       render();
     });
   });
   app.querySelectorAll<HTMLInputElement | HTMLSelectElement>("[data-config]").forEach((input) => {
     const syncDraft = () => {
-      const value = input instanceof HTMLInputElement && input.type === "checkbox" ? String(input.checked) : input.value;
+      const value = configInputValue(input);
       if (snapshot) setPath(snapshot.config, input.dataset.config!, value);
       if (input.dataset.config === "asr.input_device_name") {
         audioLevel = null;
@@ -1132,6 +1152,11 @@ function wireMain() {
     };
     input.addEventListener("input", syncDraft);
     input.addEventListener("change", syncDraft);
+  });
+  app.querySelectorAll<HTMLTextAreaElement>("[data-prompt-editor]").forEach((input) => {
+    input.addEventListener("input", () => {
+      personalPrompt = input.value;
+    });
   });
   app.querySelectorAll<HTMLInputElement>("[data-hotkey-capture]").forEach((input) => {
     input.addEventListener("keydown", (event) => handleHotkeyCapture(event, input));
@@ -1308,16 +1333,22 @@ function collectConfigDraft() {
   if (!snapshot) throw new Error("配置尚未加载");
   const next = structuredClone(snapshot.config);
   app.querySelectorAll<HTMLInputElement | HTMLSelectElement>("[data-config]").forEach((input) => {
-    setPath(next, input.dataset.config!, input.value);
+    setPath(next, input.dataset.config!, configInputValue(input));
   });
   return next;
+}
+
+function configInputValue(input: HTMLInputElement | HTMLSelectElement) {
+  return input instanceof HTMLInputElement && input.type === "checkbox" ? String(input.checked) : input.value;
 }
 
 async function saveConfigDraft(next: AppConfig) {
   await run("save_config", { config: next });
   if (activeView === "settings") {
     if (activeSettingsTab === "models") await refreshModelStatus();
-    if (activeSettingsTab === "smart") await refreshLlmServiceStatus(false);
+    if (activeSettingsTab === "smart") {
+      await refreshLlmServiceStatus(false);
+    }
     if (activeSettingsTab === "shortcuts") await refreshHotkeyStatus();
     render();
   }
@@ -1334,6 +1365,42 @@ async function refreshHotkeyStatus() {
 async function refreshLlmServiceStatus(shouldRender = false) {
   llmServiceStatus = await invoke<LlmServiceStatus>("llm_service_status");
   if (shouldRender) render();
+}
+
+async function refreshPersonalPrompt(shouldRender = false) {
+  personalPrompt = await invoke<string>("personal_prompt");
+  if (shouldRender) render();
+}
+
+async function savePersonalPrompt() {
+  try {
+    const prompt = app.querySelector<HTMLTextAreaElement>("[data-prompt-editor]")?.value ?? personalPrompt ?? "";
+    const result = await invoke<Snapshot>("save_personal_prompt", { prompt });
+    snapshot = result;
+    personalPrompt = await invoke<string>("personal_prompt");
+    render();
+  } catch (error) {
+    if (snapshot) {
+      snapshot.status = "出错";
+      snapshot.meta = String(error);
+    }
+    render();
+  }
+}
+
+async function resetPersonalPrompt() {
+  try {
+    const result = await invoke<Snapshot>("reset_personal_prompt");
+    snapshot = result;
+    personalPrompt = await invoke<string>("personal_prompt");
+    render();
+  } catch (error) {
+    if (snapshot) {
+      snapshot.status = "出错";
+      snapshot.meta = String(error);
+    }
+    render();
+  }
 }
 
 async function startLlmService() {

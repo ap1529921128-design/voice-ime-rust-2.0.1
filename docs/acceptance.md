@@ -274,6 +274,7 @@
 - `--benchmark-asr` and Settings / Data / `ASR 基准` now provide a repeatable timing and CER/accuracy CSV harness; real quality still depends on recorded sample audio from target machines.
 - `--benchmark-translation` and Settings / Data / `翻译基准` now provide a repeatable CSV harness for translation latency, backend errors, target-language hints, and prompt-like chatter filtering.
 - Confirm paste now restores previous text clipboard where feasible, retries focus recovery before Ctrl+V, logs previous clipboard format/status, and exposes a short "pasted" UI state; manual image/file clipboard preservation is still future work.
+- Settings / Smart now includes a personal prompt editor backed by `.voice_ime/personal_prompt.txt`, with save validation and restore-default action.
 - Cursor positioning now logs `uia-caret` when UI Automation exposes text-range caret rectangles, then falls back to `uia-element`, guarded `uia-focused`, `gui-thread`, or `fallback`; real overlay placement still needs visual target-machine coverage.
 - Recording/transcribing/result/postprocess/pasted UI meta now shows compact target diagnostics such as `Notepad.exe / GUI thread`, while detailed process/class/title/caret-source data remains in input-target logs.
 - Overlay placement now clamps to the nearest monitor work area and flips above the caret when the lower edge would run off-screen; multi-monitor and unusual taskbar layouts still need manual target-machine coverage.

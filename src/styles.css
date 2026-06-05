@@ -603,6 +603,30 @@ label {
   border-radius: 14px;
 }
 
+.prompt-editor {
+  display: grid;
+  grid-column: 1 / -1;
+  gap: 10px;
+  min-width: 0;
+  border-radius: 16px;
+  padding: 12px;
+  background: rgba(255, 255, 255, 0.46);
+}
+
+.prompt-editor textarea {
+  width: 100%;
+  min-height: 150px;
+  max-height: 260px;
+  resize: vertical;
+  border: 1px solid rgba(49, 93, 147, 0.14);
+  border-radius: 14px;
+  padding: 12px;
+  outline: 0;
+  color: #0a1f3d;
+  background: rgba(255, 255, 255, 0.62);
+  line-height: 1.5;
+}
+
 .app-profile-list {
   display: grid;
   grid-column: 1 / -1;

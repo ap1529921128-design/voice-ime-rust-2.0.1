@@ -1,4 +1,4 @@
-use anyhow::{Context, Result};
+use anyhow::{anyhow, Context, Result};
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use std::{
@@ -326,6 +326,42 @@ pub fn save_config(paths: &Paths, config: &AppConfig) -> Result<()> {
     let body = serde_json::to_string_pretty(&config)?;
     fs::write(&paths.config_path, body)?;
     Ok(())
+}
+
+pub fn read_personal_prompt(paths: &Paths) -> Result<String> {
+    paths.ensure()?;
+    if !paths.prompt_path.exists() {
+        fs::write(&paths.prompt_path, DEFAULT_PERSONAL_PROMPT)?;
+    }
+    fs::read_to_string(&paths.prompt_path).context("read personal_prompt.txt")
+}
+
+pub fn save_personal_prompt(paths: &Paths, prompt: &str) -> Result<String> {
+    paths.ensure()?;
+    let prompt = normalize_personal_prompt(prompt)?;
+    fs::write(&paths.prompt_path, &prompt).context("write personal_prompt.txt")?;
+    Ok(prompt)
+}
+
+pub fn reset_personal_prompt(paths: &Paths) -> Result<String> {
+    save_personal_prompt(paths, DEFAULT_PERSONAL_PROMPT)
+}
+
+pub fn normalize_personal_prompt(prompt: &str) -> Result<String> {
+    let mut normalized = prompt.replace("\r\n", "\n").replace('\r', "\n");
+    while normalized.contains("\n\n\n") {
+        normalized = normalized.replace("\n\n\n", "\n\n");
+    }
+    normalized = normalized.trim().to_string();
+    let char_count = normalized.chars().count();
+    if char_count == 0 {
+        return Err(anyhow!("个人提示词不能为空"));
+    }
+    if char_count > 8_000 {
+        return Err(anyhow!("个人提示词过长：{} / 8000 字", char_count));
+    }
+    normalized.push('\n');
+    Ok(normalized)
 }
 
 pub fn normalized(mut config: AppConfig) -> AppConfig {
@@ -747,6 +783,23 @@ fn default_whisper_tokens() -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::path::Path;
+
+    fn temp_paths(root: &Path) -> Paths {
+        let app_dir = root.join(".voice_ime");
+        Paths {
+            root_dir: root.to_path_buf(),
+            app_dir: app_dir.clone(),
+            config_path: app_dir.join("config.json"),
+            history_path: app_dir.join("history.json"),
+            prompt_path: app_dir.join("personal_prompt.txt"),
+            corrections_path: app_dir.join("corrections.json"),
+            hotwords_path: app_dir.join("hot.txt"),
+            hot_rules_path: app_dir.join("hot-rule.txt"),
+            recordings_dir: app_dir.join("recordings"),
+            logs_dir: app_dir.join("logs"),
+        }
+    }
 
     #[test]
     fn migrates_legacy_fields() {
@@ -846,6 +899,27 @@ mod tests {
         assert_eq!(cfg.input.paste_delay_ms, 500);
         assert_eq!(cfg.input.confirm_hide_delay_ms, 5_000);
         assert!(!cfg.input.hide_overlay_after_confirm);
+    }
+
+    #[test]
+    fn personal_prompt_roundtrip_validates_and_resets() {
+        let temp = tempfile::tempdir().unwrap();
+        let paths = temp_paths(temp.path());
+
+        assert!(normalize_personal_prompt(" \n ").is_err());
+        assert!(normalize_personal_prompt(&"长".repeat(8_001)).is_err());
+
+        let saved = save_personal_prompt(&paths, " 常用词：Voice IME\r\n\r\n\r\n命令：cargo test ")
+            .unwrap();
+        assert_eq!(saved, "常用词：Voice IME\n\n命令：cargo test\n");
+        assert_eq!(read_personal_prompt(&paths).unwrap(), saved);
+
+        let reset = reset_personal_prompt(&paths).unwrap();
+        assert_eq!(reset, DEFAULT_PERSONAL_PROMPT);
+        assert_eq!(
+            read_personal_prompt(&paths).unwrap(),
+            DEFAULT_PERSONAL_PROMPT
+        );
     }
 
     #[test]
