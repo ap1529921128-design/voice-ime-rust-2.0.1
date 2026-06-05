@@ -18,6 +18,27 @@ pub struct AsrBenchmarkReport {
     pub error_count: usize,
 }
 
+#[derive(Debug, Clone, Serialize)]
+pub struct AsrBenchmarkTemplateReport {
+    pub output_dir: String,
+    pub sample_count: usize,
+    pub files_written: usize,
+    pub files_skipped: usize,
+}
+
+pub const CHINESE_SAMPLE_SENTENCES: &[&str] = &[
+    "今天下午三点半我们开一个十分钟的短会。",
+    "请把非洲之星和海洋之泪加入个人词表。",
+    "这个判断很准，输入法的边界就是不要替我说话。",
+    "订单金额是一百二十三点四五元，折扣是百分之十二点五。",
+    "二零二六年六月五号早上九点提醒我检查模型目录。",
+    "Voice IME 的 fast 模型应该优先保证响应速度。",
+    "帮我把这句话改得更正式一点，但不要改变原意。",
+    "我明天要在单位的老电脑上测试麦克风和快捷键。",
+    "如果光标定位失败，就回到主窗口确认栏。",
+    "这段语音比较长，需要测试三十秒以上的连续转写。",
+];
+
 pub fn run_asr_cli(samples_dir: PathBuf) -> Result<()> {
     run_asr_cli_with_profile(samples_dir, None)
 }
@@ -33,6 +54,12 @@ pub fn run_asr_cli_with_profile(samples_dir: PathBuf, profile: Option<&str>) -> 
     Ok(())
 }
 
+pub fn write_sample_template_cli(samples_dir: PathBuf) -> Result<()> {
+    let report = write_sample_template(&samples_dir)?;
+    println!("{}", serde_json::to_string_pretty(&report)?);
+    Ok(())
+}
+
 fn cli_profile(profile: &str) -> Result<String> {
     let profile = profile.trim();
     if matches!(profile, "fast" | "balanced" | "fallback" | "accurate") {
@@ -42,6 +69,34 @@ fn cli_profile(profile: &str) -> Result<String> {
             "unknown ASR profile '{profile}', expected fast, balanced, fallback, or accurate"
         ))
     }
+}
+
+pub fn write_sample_template(samples_dir: &Path) -> Result<AsrBenchmarkTemplateReport> {
+    fs::create_dir_all(samples_dir)?;
+    let mut files_written = 0;
+    let mut files_skipped = 0;
+    for (index, sentence) in CHINESE_SAMPLE_SENTENCES.iter().enumerate() {
+        let path = samples_dir.join(format!("{:03}.txt", index + 1));
+        if path.exists() {
+            files_skipped += 1;
+            continue;
+        }
+        fs::write(&path, sentence)?;
+        files_written += 1;
+    }
+    let readme_path = samples_dir.join("README.md");
+    if readme_path.exists() {
+        files_skipped += 1;
+    } else {
+        fs::write(&readme_path, sample_template_readme())?;
+        files_written += 1;
+    }
+    Ok(AsrBenchmarkTemplateReport {
+        output_dir: samples_dir.to_string_lossy().to_string(),
+        sample_count: CHINESE_SAMPLE_SENTENCES.len(),
+        files_written,
+        files_skipped,
+    })
 }
 
 pub fn run_asr(
@@ -216,6 +271,32 @@ fn expected_text_for(wav_path: &Path) -> Option<String> {
         .ok()
         .map(|text| text.trim().to_string())
         .filter(|text| !text.is_empty())
+}
+
+fn sample_template_readme() -> String {
+    let mut lines = vec![
+        "# Voice IME ASR Benchmark Samples".to_string(),
+        String::new(),
+        "Record one wav for each txt file, keeping the same base name.".to_string(),
+        "Example: 001.txt is the expected text for 001.wav.".to_string(),
+        String::new(),
+        "Run all profiles from the portable app directory:".to_string(),
+        String::new(),
+        "```powershell".to_string(),
+        r"app\VoiceIME.exe --benchmark-asr-profile fast <this-folder>".to_string(),
+        r"app\VoiceIME.exe --benchmark-asr-profile balanced <this-folder>".to_string(),
+        r"app\VoiceIME.exe --benchmark-asr-profile fallback <this-folder>".to_string(),
+        r"app\VoiceIME.exe --benchmark-asr-profile accurate <this-folder>".to_string(),
+        "```".to_string(),
+        String::new(),
+        "Suggested references:".to_string(),
+        String::new(),
+    ];
+    for (index, sentence) in CHINESE_SAMPLE_SENTENCES.iter().enumerate() {
+        lines.push(format!("{}. {}", index + 1, sentence));
+    }
+    lines.push(String::new());
+    lines.join("\n")
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -402,5 +483,30 @@ mod tests {
         assert_eq!(cli_profile(" balanced ").unwrap(), "balanced");
         assert_eq!(cli_profile("accurate").unwrap(), "accurate");
         assert!(cli_profile("large").is_err());
+    }
+
+    #[test]
+    fn writes_sample_template_without_overwriting_existing_files() {
+        let temp = tempfile::tempdir().unwrap();
+        let samples = temp.path().join("samples");
+        fs::create_dir_all(&samples).unwrap();
+        fs::write(samples.join("001.txt"), "用户自己的样本").unwrap();
+
+        let report = write_sample_template(&samples).unwrap();
+
+        assert_eq!(report.sample_count, 10);
+        assert_eq!(report.files_written, 10);
+        assert_eq!(report.files_skipped, 1);
+        assert_eq!(
+            fs::read_to_string(samples.join("001.txt")).unwrap(),
+            "用户自己的样本"
+        );
+        assert_eq!(
+            fs::read_to_string(samples.join("002.txt")).unwrap(),
+            CHINESE_SAMPLE_SENTENCES[1]
+        );
+        assert!(fs::read_to_string(samples.join("README.md"))
+            .unwrap()
+            .contains("--benchmark-asr-profile balanced"));
     }
 }

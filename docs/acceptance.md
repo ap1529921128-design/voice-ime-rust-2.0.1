@@ -159,13 +159,14 @@
 ## ASR Benchmark
 
 1. Prepare a directory of `.wav` files and optional same-name `.txt` expected transcripts.
-2. Run `app\VoiceIME.exe --benchmark-asr <samples-dir>` from a portable package, or open Settings / Data and click `ASR 基准` to choose the same sample directory.
-3. An `asr-benchmark-YYYYMMDD-HHMMSS.csv` file appears under `.voice_ime/logs`.
-4. The CSV includes file, duration, profile, worker mode, backend, model, transcribe seconds, realtime factor, expected text, transcript text, expected character count, edit distance, CER, accuracy, and error.
-5. If the sample directory is missing or empty, the command still writes a CSV row with `no wav samples found`.
-6. `app\VoiceIME.exe --benchmark-asr-profile <fast|balanced|fallback|accurate> <samples-dir>` writes the same CSV without changing the saved default profile.
-7. When `asr.profile=accurate`, `asr.accurate_external_command` receives a UTF-8 JSON payload with `wav_path`, `sample_rate`, `language`, `profile`, and `prompt`, and may return plain text or JSON `text`/`transcript`.
-7. Settings / Models / profile-row `基准` writes the same CSV, with the row `profile` set to the clicked profile even if Settings / Voice currently selects a different default profile.
+2. Run `app\VoiceIME.exe --write-asr-benchmark-template <samples-dir>` to create the 10 reference `.txt` files and local README; existing files must not be overwritten.
+3. Run `app\VoiceIME.exe --benchmark-asr <samples-dir>` from a portable package, or open Settings / Data and click `ASR 基准` to choose the same sample directory.
+4. An `asr-benchmark-YYYYMMDD-HHMMSS.csv` file appears under `.voice_ime/logs`.
+5. The CSV includes file, duration, profile, worker mode, backend, model, transcribe seconds, realtime factor, expected text, transcript text, expected character count, edit distance, CER, accuracy, and error.
+6. If the sample directory is missing or empty, the command still writes a CSV row with `no wav samples found`.
+7. `app\VoiceIME.exe --benchmark-asr-profile <fast|balanced|fallback|accurate> <samples-dir>` writes the same CSV without changing the saved default profile.
+8. When `asr.profile=accurate`, `asr.accurate_external_command` receives a UTF-8 JSON payload with `wav_path`, `sample_rate`, `language`, `profile`, and `prompt`, and may return plain text or JSON `text`/`transcript`.
+9. Settings / Models / profile-row `基准` writes the same CSV, with the row `profile` set to the clicked profile even if Settings / Voice currently selects a different default profile.
 
 ## Translation Benchmark
 
@@ -247,9 +248,10 @@
 4. It starts the full and core apps with temporary `VOICE_IME_APP_DIR` values and requires each GUI process to stay alive for 5 seconds.
 5. It runs packaged `VoiceIME.exe --doctor` with a temporary app data directory and requires a doctor report containing the local LLM file check.
 6. It runs packaged `VoiceIME.exe --benchmark-asr-profile fallback <empty-samples-dir>` and requires a CSV with the fallback profile and `no wav samples found`.
-7. It runs packaged `VoiceIME.exe --benchmark-asr-profile accurate <samples-dir>` with `Mock-External-Asr.ps1` configured as `asr.accurate_external_command`, requiring an `external-asr` CSV row with `accuracy=1.0000`.
-7. Unless skipped, it runs the packaged Notepad, Browser, Translation, and model-pack import acceptance scripts.
-8. At the end it removes any `.voice_ime` runtime data created under the portable package.
+7. It runs packaged `VoiceIME.exe --write-asr-benchmark-template <samples-dir>` and requires 10 reference `.txt` files plus README.
+8. It runs packaged `VoiceIME.exe --benchmark-asr-profile accurate <samples-dir>` with `Mock-External-Asr.ps1` configured as `asr.accurate_external_command`, requiring an `external-asr` CSV row with `accuracy=1.0000`.
+9. Unless skipped, it runs the packaged Notepad, Browser, Translation, and model-pack import acceptance scripts.
+10. At the end it removes any `.voice_ime` runtime data created under the portable package.
 
 ## Release Asset Packaging
 

@@ -324,6 +324,49 @@ function Invoke-AsrBenchmarkProfileSmoke {
     Write-Host "ASR benchmark profile smoke passed: $($report.FullName)"
 }
 
+function Invoke-AsrBenchmarkTemplateSmoke {
+    param([Parameter(Mandatory = $true)][string]$Root)
+
+    $app = Join-Path $Root "app"
+    $exe = Join-Path $app "VoiceIME.exe"
+    $samplesDir = Join-Path ([System.IO.Path]::GetTempPath()) ("voice-ime-asr-template-" + [guid]::NewGuid().ToString("N"))
+    $previousAppDir = [Environment]::GetEnvironmentVariable("VOICE_IME_APP_DIR", "Process")
+    try {
+        $env:VOICE_IME_APP_DIR = Join-Path ([System.IO.Path]::GetTempPath()) ("voice-ime-asr-template-app-" + [guid]::NewGuid().ToString("N"))
+        $process = Start-Process -FilePath $exe -ArgumentList @("--write-asr-benchmark-template", $samplesDir) -WorkingDirectory $app -WindowStyle Hidden -Wait -PassThru
+        if ($process.ExitCode -ne 0) {
+            throw "ASR benchmark template smoke exited with code $($process.ExitCode)"
+        }
+        $txtFiles = @(Get-ChildItem -LiteralPath $samplesDir -Filter "*.txt" -File)
+        if ($txtFiles.Count -ne 10) {
+            throw "ASR benchmark template expected 10 txt files, got $($txtFiles.Count)"
+        }
+        foreach ($name in @("001.txt", "010.txt", "README.md")) {
+            if (-not (Test-Path -LiteralPath (Join-Path $samplesDir $name) -PathType Leaf)) {
+                throw "ASR benchmark template missing $name"
+            }
+        }
+        $readme = Get-Content -LiteralPath (Join-Path $samplesDir "README.md") -Raw
+        foreach ($needle in @("--benchmark-asr-profile fast", "--benchmark-asr-profile balanced", "--benchmark-asr-profile accurate")) {
+            if (-not $readme.Contains($needle)) {
+                throw "ASR benchmark template README missing '$needle'"
+            }
+        }
+    }
+    finally {
+        if ([string]::IsNullOrEmpty($previousAppDir)) {
+            Remove-Item Env:\VOICE_IME_APP_DIR -ErrorAction SilentlyContinue
+        }
+        else {
+            $env:VOICE_IME_APP_DIR = $previousAppDir
+        }
+        if (Test-Path -LiteralPath $samplesDir) {
+            Remove-Item -LiteralPath $samplesDir -Recurse -Force -ErrorAction SilentlyContinue
+        }
+    }
+    Write-Host "ASR benchmark template smoke passed"
+}
+
 function Invoke-MockAsrBenchmarkSmoke {
     param([Parameter(Mandatory = $true)][string]$Root)
 
@@ -582,6 +625,7 @@ Invoke-ModelRootFileSmoke -CoreRoot $CoreReleaseRoot
 Invoke-ShutdownSmoke -Root $ReleaseRoot
 Invoke-PanicSmoke -Root $ReleaseRoot
 Invoke-AsrBenchmarkProfileSmoke -Root $ReleaseRoot
+Invoke-AsrBenchmarkTemplateSmoke -Root $ReleaseRoot
 Invoke-MockAsrBenchmarkSmoke -Root $ReleaseRoot
 Invoke-AccurateExternalAsrSmoke -Root $ReleaseRoot
 Invoke-TranslationProfileCliSmoke -Root $ReleaseRoot

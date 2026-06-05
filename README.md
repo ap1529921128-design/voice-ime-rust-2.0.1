@@ -148,6 +148,12 @@ ASR 后处理会做基础 ITN，把常见中文数字、百分比、金额、日
 可以把一组 `.wav` 样本放进同一个目录，并给每条音频放一个同名 `.txt` 作为参考文本，然后运行：
 
 ```powershell
+app\VoiceIME.exe --write-asr-benchmark-template D:\voice-ime-benchmarks\asr
+```
+
+这个命令会生成 `001.txt` 到 `010.txt` 和 README，不覆盖已有文件；你只需要在同一目录录制同名 `001.wav` 到 `010.wav`。
+
+```powershell
 app\VoiceIME.exe --benchmark-asr D:\voice-ime-benchmarks\asr
 ```
 

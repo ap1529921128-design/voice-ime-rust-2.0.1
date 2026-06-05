@@ -2,6 +2,14 @@
 
 Use this file as the reference list for repeatable local ASR timing. Record each sentence as a separate wav file, then save a same-name `.txt` file with the expected text.
 
+Generate the 10 reference `.txt` files and a local README:
+
+```powershell
+app\VoiceIME.exe --write-asr-benchmark-template D:\voice-ime-benchmarks\asr
+```
+
+The command writes `001.txt` through `010.txt` and does not overwrite existing files. Record matching `001.wav` through `010.wav` in the same folder before running benchmark commands.
+
 Example:
 
 ```text

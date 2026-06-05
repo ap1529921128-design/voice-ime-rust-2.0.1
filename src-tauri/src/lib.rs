@@ -791,6 +791,17 @@ pub fn run_cli_worker_if_requested() -> bool {
         }
         return true;
     }
+    if first == std::ffi::OsStr::new("--write-asr-benchmark-template") {
+        let samples_dir = args
+            .next()
+            .map(std::path::PathBuf::from)
+            .unwrap_or_else(|| std::path::PathBuf::from("benchmarks/asr"));
+        if let Err(err) = benchmark::write_sample_template_cli(samples_dir) {
+            eprintln!("{err:?}");
+            std::process::exit(2);
+        }
+        return true;
+    }
     if first == std::ffi::OsStr::new("--benchmark-translation") {
         let samples_path = args.next().map(std::path::PathBuf::from);
         if let Err(err) = translation_benchmark::run_translation_cli(samples_path) {
