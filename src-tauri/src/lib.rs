@@ -576,7 +576,7 @@ fn benchmark_profile_label(profile: Option<&str>) -> String {
 
 fn normalized_benchmark_profile(profile: Option<&str>) -> Option<String> {
     let profile = profile?.trim();
-    if matches!(profile, "fast" | "balanced" | "fallback") {
+    if matches!(profile, "fast" | "balanced" | "fallback" | "accurate") {
         Some(profile.to_string())
     } else {
         None
@@ -777,7 +777,7 @@ pub fn run_cli_worker_if_requested() -> bool {
     }
     if first == std::ffi::OsStr::new("--benchmark-asr-profile") {
         let Some(profile) = args.next() else {
-            eprintln!("missing ASR profile, expected fast, balanced, or fallback");
+            eprintln!("missing ASR profile, expected fast, balanced, fallback, or accurate");
             std::process::exit(2);
         };
         let profile = profile.to_string_lossy().to_string();
@@ -1190,6 +1190,12 @@ mod tests {
             "fast"
         );
         assert_eq!(
+            benchmark_config_for_profile(config.clone(), Some("accurate"))
+                .asr
+                .profile,
+            "accurate"
+        );
+        assert_eq!(
             benchmark_config_for_profile(config.clone(), Some("bad"))
                 .asr
                 .profile,
@@ -1197,5 +1203,6 @@ mod tests {
         );
         assert_eq!(benchmark_profile_label(None), "当前档位");
         assert_eq!(benchmark_profile_label(Some("fallback")), "fallback");
+        assert_eq!(benchmark_profile_label(Some("accurate")), "accurate");
     }
 }

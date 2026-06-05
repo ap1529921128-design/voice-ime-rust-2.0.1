@@ -44,7 +44,9 @@ Settings / Shortcuts now gives clearer guidance when a shortcut is duplicated, u
 
 Settings / Models now has a per-profile `基准` action. It runs the same ASR CSV benchmark for the clicked `fast`, `balanced`, or `fallback` profile without changing the saved default profile.
 
-The packaged CLI also supports `VoiceIME.exe --benchmark-asr-profile <profile> <samples-dir>`, making it easier to run fast/balanced/fallback comparisons on a target machine or removable drive. The portable release gate checks this path with an empty fallback sample directory.
+The packaged CLI also supports `VoiceIME.exe --benchmark-asr-profile <profile> <samples-dir>`, making it easier to run fast/balanced/fallback/accurate comparisons on a target machine or removable drive. The portable release gate checks this path with an empty fallback sample directory.
+
+The `accurate` ASR profile is now an experimental external-command adapter for Qwen3/FunASR-style local backends. Configure `asr.accurate_external_command`; Voice IME sends UTF-8 JSON with a temporary wav path and accepts plain text or JSON `text`/`transcript` output. Large accurate models remain outside the core package.
 
 2.0.1 also has deterministic test backends. `asr.default_engine=mock` bypasses model loading and lets ASR benchmark use same-name `.txt` files as transcript fixtures, while `mock://echo`, `mock://translate`, and `mock://fixed/<text>` exercise correction/translation cleanup without MiniCPM or network access. These paths are for release gates and CI-style plumbing tests, not real ASR/translation quality.
 
@@ -54,7 +56,7 @@ The release gate passed on the build machine for:
 
 - full and core startup smoke
 - `VoiceIME.exe --doctor`
-- ASR profile CLI smoke and no-model mock ASR CSV smoke
+- ASR profile CLI smoke, no-model mock ASR CSV smoke, and accurate external-command ASR smoke
 - Notepad paste acceptance
 - Edge/Chrome textarea paste acceptance
 - external translation JSON-pipeline acceptance

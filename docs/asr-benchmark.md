@@ -21,7 +21,22 @@ To compare profiles without changing the saved config:
 app\VoiceIME.exe --benchmark-asr-profile fast D:\voice-ime-benchmarks\asr
 app\VoiceIME.exe --benchmark-asr-profile balanced D:\voice-ime-benchmarks\asr
 app\VoiceIME.exe --benchmark-asr-profile fallback D:\voice-ime-benchmarks\asr
+app\VoiceIME.exe --benchmark-asr-profile accurate D:\voice-ime-benchmarks\asr
 ```
+
+The `accurate` profile is experimental and uses `asr.accurate_external_command`. The command receives UTF-8 JSON on stdin:
+
+```json
+{
+  "wav_path": "C:/Temp/voice_ime_accurate_asr.wav",
+  "sample_rate": 16000,
+  "language": "zh",
+  "profile": "accurate",
+  "prompt": ""
+}
+```
+
+It may print plain transcript text or JSON such as `{"text":"..."}` / `{"transcript":"..."}`. This lets Qwen3-ASR, FunASR, or a local ASR service be wrapped by a small script without putting large experimental models into the core app package.
 
 For deterministic release or CI checks, set `.voice_ime/config.json` temporarily:
 

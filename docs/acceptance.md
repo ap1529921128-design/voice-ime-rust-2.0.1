@@ -163,7 +163,8 @@
 3. An `asr-benchmark-YYYYMMDD-HHMMSS.csv` file appears under `.voice_ime/logs`.
 4. The CSV includes file, duration, profile, worker mode, backend, model, transcribe seconds, realtime factor, expected text, transcript text, expected character count, edit distance, CER, accuracy, and error.
 5. If the sample directory is missing or empty, the command still writes a CSV row with `no wav samples found`.
-6. `app\VoiceIME.exe --benchmark-asr-profile <fast|balanced|fallback> <samples-dir>` writes the same CSV without changing the saved default profile.
+6. `app\VoiceIME.exe --benchmark-asr-profile <fast|balanced|fallback|accurate> <samples-dir>` writes the same CSV without changing the saved default profile.
+7. When `asr.profile=accurate`, `asr.accurate_external_command` receives a UTF-8 JSON payload with `wav_path`, `sample_rate`, `language`, `profile`, and `prompt`, and may return plain text or JSON `text`/`transcript`.
 7. Settings / Models / profile-row `基准` writes the same CSV, with the row `profile` set to the clicked profile even if Settings / Voice currently selects a different default profile.
 
 ## Translation Benchmark
@@ -238,6 +239,7 @@
 4. It starts the full and core apps with temporary `VOICE_IME_APP_DIR` values and requires each GUI process to stay alive for 5 seconds.
 5. It runs packaged `VoiceIME.exe --doctor` with a temporary app data directory and requires a doctor report containing the local LLM file check.
 6. It runs packaged `VoiceIME.exe --benchmark-asr-profile fallback <empty-samples-dir>` and requires a CSV with the fallback profile and `no wav samples found`.
+7. It runs packaged `VoiceIME.exe --benchmark-asr-profile accurate <samples-dir>` with `Mock-External-Asr.ps1` configured as `asr.accurate_external_command`, requiring an `external-asr` CSV row with `accuracy=1.0000`.
 7. Unless skipped, it runs the packaged Notepad, Browser, Translation, and model-pack import acceptance scripts.
 8. At the end it removes any `.voice_ime` runtime data created under the portable package.
 
@@ -285,7 +287,7 @@
 
 - Automated regression covers Rust unit tests, Rust compile, clippy, frontend build, release build, and portable packaging.
 - Startup smoke test covers that `VoiceIME.exe` stays alive for 5 seconds after launch instead of panicking before GUI startup. Smoke tests must use a temporary `VOICE_IME_APP_DIR` so they do not write `.voice_ime` into the portable package.
-- ASR smoke now covers `balanced`, `fast`, and `fallback` as worker subprocesses. If sherpa-onnx exits badly, the GUI should show an error instead of closing.
+- ASR smoke now covers `balanced`, `fast`, `fallback`, and the `accurate` external-command path as worker subprocesses. If sherpa-onnx or an external ASR command exits badly, the GUI should show an error instead of closing.
 - Empty ASR output must not call MiniCPM; prompt-like MiniCPM output containing "个人词表", "纠错表", or "ASR 文本" must be discarded.
 - Translation must translate the current editor text only; prompt-like translation output must be discarded.
 - Portable release must not open a console window for `VoiceIME.exe`; local llama-server is launched hidden.
@@ -302,6 +304,7 @@
 - Settings / Models now has native file and directory pickers; real removable-drive acceptance should still be tested on target machines.
 - Settings / Shortcuts now shows global-hotkey registration status, duplicate/invalid/taken-key suggestions, and re-registers after save; manual conflict coverage is still required with real third-party apps.
 - `--benchmark-asr`, `--benchmark-asr-profile`, Settings / Data / `ASR 基准`, and Settings / Models / per-profile `基准` now provide a repeatable timing and CER/accuracy CSV harness; real quality still depends on recorded sample audio from target machines.
+- `accurate` profile now provides an experimental external ASR command interface for Qwen3/FunASR wrappers without bundling those large models into the core package.
 - `asr.default_engine=mock` now provides a deterministic no-model ASR path for release gates and CI-style checks. It uses same-name `.txt` benchmark files as transcript fixtures, so it validates the app/CSV/packaging pipeline but not real recognition quality.
 - LLM endpoints using `mock://echo`, `mock://translate`, or `mock://fixed/<text>` now provide deterministic correction/translation tests without launching MiniCPM or touching the network.
 - `--benchmark-translation` and Settings / Data / `翻译基准` now provide a repeatable CSV harness for translation latency, backend errors, target-language hints, and prompt-like chatter filtering.
@@ -324,4 +327,4 @@
 - Packaged builds now include `app/tools/Foreground-Input-Acceptance.ps1`; WeChat/Feishu, Word/document editors, and IDEs can be checked with the same foreground paste path and target-log validation.
 - Packaged builds now include `app/tools/Translation-Acceptance.ps1` and `Mock-External-Translate.ps1`; the external translation JSON path has an offline acceptance smoke.
 - Packaged builds now include `app/tools\Model-Pack-Import-Acceptance.ps1`; the Rust `--install-model-pack` importer is checked against a copied core package and a real model pack zip.
-- Repo packaging now includes `packaging/Test-PortableRelease.ps1`, which runs the full/core package layout gate, startup smoke, doctor report check, `MODEL_ROOT.txt` model-root smoke, shutdown smoke, panic-log smoke, ASR profile CLI smoke, mock ASR CSV smoke, and automated Notepad/Browser/Translation/model-pack import acceptance in one pass.
+- Repo packaging now includes `packaging/Test-PortableRelease.ps1`, which runs the full/core package layout gate, startup smoke, doctor report check, `MODEL_ROOT.txt` model-root smoke, shutdown smoke, panic-log smoke, ASR profile CLI smoke, mock ASR CSV smoke, accurate external ASR smoke, and automated Notepad/Browser/Translation/model-pack import acceptance in one pass.

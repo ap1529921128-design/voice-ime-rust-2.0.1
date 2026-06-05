@@ -6,7 +6,7 @@ Voice IME 是一个 Windows 优先的本地语音输入工具，使用 Rust + Ta
 
 ## 主要能力
 
-- 本地 ASR 转写：默认使用 `sherpa-onnx`，支持 `fast`、`balanced`、`fallback` 三个档位。
+- 本地 ASR 转写：默认使用 `sherpa-onnx`，支持 `fast`、`balanced`、`fallback` 三个内置档位，并预留 `accurate` 外部命令实验档。
 - 光标旁浮窗：能定位光标时在光标附近显示结果，定位失败时回到主窗口确认栏。
 - 确认后输入：点击确认后恢复目标窗口焦点并粘贴文本，不自动发送。
 - 按住说话：默认按住 `CapsLock` 或鼠标 `X2` 开始录音，松开后转写。
@@ -157,6 +157,7 @@ app\VoiceIME.exe --benchmark-asr D:\voice-ime-benchmarks\asr
 app\VoiceIME.exe --benchmark-asr-profile fast D:\voice-ime-benchmarks\asr
 app\VoiceIME.exe --benchmark-asr-profile balanced D:\voice-ime-benchmarks\asr
 app\VoiceIME.exe --benchmark-asr-profile fallback D:\voice-ime-benchmarks\asr
+app\VoiceIME.exe --benchmark-asr-profile accurate D:\voice-ime-benchmarks\asr
 ```
 
 结果会写到 `app/.voice_ime/logs/asr-benchmark-YYYYMMDD-HHMMSS.csv`，包含音频时长、当前 profile、worker 模式、后端、模型、耗时、实时率、参考文本、转写文本、字符错误率 CER、accuracy 和错误信息。样本句模板见 [docs/asr-benchmark.md](docs/asr-benchmark.md)。
@@ -202,7 +203,7 @@ powershell -NoProfile -ExecutionPolicy Bypass -File .\app\tools\Foreground-Input
 Notepad 脚本会自动打开记事本、粘贴一段测试文本、读回内容并在 `app/.voice_ime/logs/notepad-acceptance-YYYYMMDD-HHMMSS.txt` 写入结果。Browser 脚本会用独立临时 Edge/Chrome profile 打开一个本地文本框页面，并为该临时浏览器强制启用 renderer accessibility，粘贴后通过窗口标题回读结果，并写入 `browser-acceptance-YYYYMMDD-HHMMSS.txt`。两者都会校验 `input-target` 日志里的目标进程，避免前台窗口被抢走时误报通过。Foreground 脚本用于微信、飞书、Word、IDE 等真实 App：运行后按倒计时把光标放进目标输入框，脚本会记录目标进程、窗口类名、标题、光标来源和输入方式；是否真的出现在目标文本框里仍需要肉眼确认。
 Translation 脚本使用包内 `Mock-External-Translate.ps1` 临时切到 `external` 翻译引擎，跑 3 条中日英 benchmark 样例，验证 stdin JSON、stdout JSON、语言匹配、hint 命中和错误列，不依赖真实 NLLB/Bergamot/MiniCPM 服务。
 Model Pack Import 脚本会复制一份 core 包到临时目录，调用 `VoiceIME.exe --install-model-pack` 导入 fallback 小模型包，并按 `MODEL_PACK.json` 校验导入后的文件大小和 SHA-256，不污染正式 core 包。
-发布门禁还会跑一次 mock ASR benchmark：临时生成 wav/txt 样本，确认无模型环境下也能得到 `mock-asr`、`accuracy=1.0000` 的 CSV。
+发布门禁还会跑一次 mock ASR benchmark：临时生成 wav/txt 样本，确认无模型环境下也能得到 `mock-asr`、`accuracy=1.0000` 的 CSV；还会用 `Mock-External-Asr.ps1` 验证 `accurate` 外部 ASR 命令可以经 JSON stdin/stdout 产出同样的 CSV。
 
 设置页“数据 / 导出”会先运行诊断，再生成 `app/.voice_ime/logs/voice-ime-support-YYYYMMDD-HHMMSS.zip`。导出包包含配置、历史、个人提示词、纠错表、热词/规则、日志、模型根目录来源和模型说明；如果外置模型根目录缺少 `MODELS.json/md`，会回退到主体包自带清单。不包含录音文件和模型二进制。“历史 CSV”只导出表格格式的历史记录。
 “数据”页还能控制长录音是否留存，并一键清理 `app/.voice_ime/recordings` 下的长录音文件。短录音只用于当次转写，默认不留存。
@@ -216,6 +217,7 @@ Model Pack Import 脚本会复制一份 core 包到临时目录，调用 `VoiceI
 - 普通电脑：ASR 档位选 `balanced`。
 - 更快响应：ASR 档位选 `fast`。
 - 兼容兜底：ASR 档位选 `fallback`。
+- 高准确率实验：ASR 档位选 `accurate`，并在“设置 / 模型 / accurate 外部命令”里配置 Qwen3/FunASR 本地命令；不配置时会自动回落到其他可用档位。
 - 模型缺文件或放在移动硬盘：进入“设置 / 模型”，先设置“模型根目录”，再点“导入包”合并模型 zip，点对应档位的“选择”挑模型目录，或点路径右侧文件按钮单独选择文件；也可以在 `app\MODEL_ROOT.txt` 第一行写共享模型仓库路径。
 - 追求体感速度：ASR 进程选“常驻加速”，启动空闲时会尝试预热当前可用模型；也可以在“设置 / 模型”手动点“预热”。
 - 多麦克风或远程桌面环境：在“设置 / 语音”选择具体麦克风并保存；主界面电平条可以快速判断是否录到有效输入。

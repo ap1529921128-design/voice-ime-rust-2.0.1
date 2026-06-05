@@ -35,11 +35,11 @@ pub fn run_asr_cli_with_profile(samples_dir: PathBuf, profile: Option<&str>) -> 
 
 fn cli_profile(profile: &str) -> Result<String> {
     let profile = profile.trim();
-    if matches!(profile, "fast" | "balanced" | "fallback") {
+    if matches!(profile, "fast" | "balanced" | "fallback" | "accurate") {
         Ok(profile.to_string())
     } else {
         Err(anyhow!(
-            "unknown ASR profile '{profile}', expected fast, balanced, or fallback"
+            "unknown ASR profile '{profile}', expected fast, balanced, fallback, or accurate"
         ))
     }
 }
@@ -400,6 +400,7 @@ mod tests {
     fn cli_profile_accepts_known_profiles_only() {
         assert_eq!(cli_profile("fast").unwrap(), "fast");
         assert_eq!(cli_profile(" balanced ").unwrap(), "balanced");
-        assert!(cli_profile("accurate").is_err());
+        assert_eq!(cli_profile("accurate").unwrap(), "accurate");
+        assert!(cli_profile("large").is_err());
     }
 }

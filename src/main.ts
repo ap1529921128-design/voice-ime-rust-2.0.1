@@ -43,6 +43,7 @@ type AppConfig = {
     profile: string;
     model_root: string;
     worker_mode: string;
+    accurate_external_command: string;
     language: string;
     input_device_name: string;
     sample_rate: number;
@@ -519,6 +520,7 @@ function voiceSettingsPanel(cfg: AppConfig) {
           ${option("fast", cfg.asr.profile, "fast")}
           ${option("balanced", cfg.asr.profile, "balanced")}
           ${option("fallback", cfg.asr.profile, "fallback")}
+          ${option("accurate", cfg.asr.profile, "accurate")}
         </select>
       </label>
       <label>输入语言
@@ -869,6 +871,11 @@ function modelSettingsPanel(cfg: AppConfig) {
       ${modelPathField("fallback encoder", "asr.models.whisper_encoder", cfg.asr.models.whisper_encoder)}
       ${modelPathField("fallback decoder", "asr.models.whisper_decoder", cfg.asr.models.whisper_decoder)}
       ${modelPathField("fallback tokens", "asr.models.whisper_tokens", cfg.asr.models.whisper_tokens)}
+      <label class="path-field"><span>accurate 外部命令</span>
+        <div class="path-input">
+          <input value="${escapeAttr(cfg.asr.accurate_external_command)}" data-config="asr.accurate_external_command" />
+        </div>
+      </label>
       <div class="settings-tools">
         <button class="tool-btn" data-action="open-model-dir">${icon("FolderOpen", "打开模型目录")}<span>模型目录</span></button>
         <button class="tool-btn" data-action="install-model-pack">${icon("PackageOpen", "导入模型包")}<span>导入包</span></button>

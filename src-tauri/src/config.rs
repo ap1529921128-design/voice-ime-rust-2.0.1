@@ -32,6 +32,8 @@ pub struct AsrConfig {
     pub model_root: String,
     #[serde(default = "default_worker_mode")]
     pub worker_mode: String,
+    #[serde(default = "default_accurate_external_command")]
+    pub accurate_external_command: String,
     #[serde(default = "default_language")]
     pub language: String,
     #[serde(default = "default_input_device_name")]
@@ -195,6 +197,7 @@ impl Default for AsrConfig {
             profile: default_asr_profile(),
             model_root: default_model_root(),
             worker_mode: default_worker_mode(),
+            accurate_external_command: default_accurate_external_command(),
             language: default_language(),
             input_device_name: default_input_device_name(),
             sample_rate: default_sample_rate(),
@@ -442,6 +445,7 @@ fn normalize_config(config: &mut AppConfig) {
     if !matches!(config.asr.worker_mode.as_str(), "persistent" | "isolated") {
         config.asr.worker_mode = default_worker_mode();
     }
+    config.asr.accurate_external_command = config.asr.accurate_external_command.trim().to_string();
     config.asr.input_device_name = normalize_input_device_name(&config.asr.input_device_name);
     config.translation.engine = normalize_translation_engine(&config.translation.engine);
     config.translation.timeout_seconds = config.translation.timeout_seconds.clamp(3, 8);
@@ -769,6 +773,9 @@ fn default_model_root() -> String {
 fn default_worker_mode() -> String {
     "persistent".into()
 }
+fn default_accurate_external_command() -> String {
+    String::new()
+}
 fn default_language() -> String {
     "zh".into()
 }
@@ -1003,6 +1010,18 @@ mod tests {
         cfg.asr.default_engine = "unknown".into();
         normalize_config(&mut cfg);
         assert_eq!(cfg.asr.default_engine, "sherpa-onnx");
+    }
+
+    #[test]
+    fn normalizes_accurate_external_command() {
+        let mut cfg = AppConfig::default();
+        cfg.asr.accurate_external_command = "  powershell -File asr.ps1  ".into();
+        normalize_config(&mut cfg);
+
+        assert_eq!(
+            cfg.asr.accurate_external_command,
+            "powershell -File asr.ps1"
+        );
     }
 
     #[test]

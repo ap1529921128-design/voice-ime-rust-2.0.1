@@ -1,19 +1,21 @@
 use crate::config::{self, AppConfig, Paths};
 use crate::text;
+use crate::translation;
 use anyhow::{anyhow, Context, Result};
 use once_cell::sync::Lazy;
 use reqwest::blocking::Client;
 use serde::Serialize;
+use serde_json::{json, Value};
 use sherpa_onnx::{
     OfflineRecognizer, OfflineRecognizerConfig, OfflineSenseVoiceModelConfig,
     OfflineWhisperModelConfig, OfflineZipformerCtcModelConfig,
 };
 use std::env;
 use std::fs;
-use std::io::{self, BufRead, BufReader, Write};
+use std::io::{self, BufRead, BufReader, Read, Write};
 use std::path::{Path, PathBuf};
 use std::process::{self, Child, ChildStdin, ChildStdout, Command, Stdio};
-use std::time::Instant;
+use std::time::{Duration, Instant};
 
 #[cfg(target_os = "windows")]
 use std::os::windows::process::CommandExt;
@@ -355,6 +357,9 @@ impl DaemonRecognizerCache {
         if is_mock_engine(&config.asr.default_engine) {
             return Ok(transcribe_mock(input, profile));
         }
+        if profile == "accurate" {
+            return transcribe_accurate_external(input, config, paths);
+        }
         let spec = recognizer_spec(input, config, paths, profile)?;
         let needs_reload = self
             .current
@@ -582,7 +587,7 @@ fn transcribe_profile_in_daemon(
 }
 
 pub fn model_status(config: &AppConfig, paths: &Paths) -> Vec<AsrModelStatus> {
-    ["fast", "balanced", "fallback"]
+    ["fast", "balanced", "fallback", "accurate"]
         .into_iter()
         .map(|profile| {
             if is_mock_engine(&config.asr.default_engine) {
@@ -603,17 +608,17 @@ pub fn model_status(config: &AppConfig, paths: &Paths) -> Vec<AsrModelStatus> {
             let target_dir = model_target_dir(config, paths, profile)
                 .map(|path| path.to_string_lossy().to_string())
                 .unwrap_or_default();
-            let missing_files = required_files
-                .iter()
-                .filter(|path| !Path::new(path).exists())
-                .cloned()
-                .collect::<Vec<_>>();
+            let missing_files = if profile == "accurate" {
+                accurate_external_missing(config, paths)
+            } else {
+                required_files
+                    .iter()
+                    .filter(|path| !Path::new(path).exists())
+                    .cloned()
+                    .collect::<Vec<_>>()
+            };
             AsrModelStatus {
-                engine: if profile == "fallback" {
-                    "sherpa-onnx-whisper".into()
-                } else {
-                    "sherpa-onnx".into()
-                },
+                engine: profile_engine(profile).into(),
                 profile: profile.into(),
                 description: profile_description(profile).into(),
                 expected_latency: profile_expected_latency(profile).into(),
@@ -633,6 +638,7 @@ fn profile_description(profile: &str) -> &'static str {
         "fast" => "中文短句速度优先，适合老电脑和即时输入",
         "balanced" => "默认主力，中文/英文/日文兼顾，准确率和速度平衡",
         "fallback" => "小体积多语种兜底，适合先验证环境是否可用",
+        "accurate" => "实验准确率档，接入外部 Qwen3/FunASR 本地命令或服务",
         _ => "自定义 ASR 档位",
     }
 }
@@ -642,7 +648,16 @@ fn profile_expected_latency(profile: &str) -> &'static str {
         "fast" => "10 秒短句约 1-3 秒",
         "balanced" => "10 秒短句约 2-5 秒",
         "fallback" => "10 秒短句约 3-8 秒",
+        "accurate" => "外部后端，视模型和硬件而定",
         _ => "视模型而定",
+    }
+}
+
+fn profile_engine(profile: &str) -> &'static str {
+    match profile {
+        "fallback" => "sherpa-onnx-whisper",
+        "accurate" => "external-asr",
+        _ => "sherpa-onnx",
     }
 }
 
@@ -727,6 +742,11 @@ pub fn download_spec(
                 "tiny-tokens.txt",
             ],
         ),
+        "accurate" => {
+            return Err(anyhow!(
+                "accurate 档位请先导入 Qwen3/FunASR 模型包，并配置 accurate ASR 外部命令"
+            ))
+        }
         other => return Err(anyhow!("未知 ASR profile：{other}")),
     };
     let mirror_base = format!("https://hf-mirror.com/{repo}/resolve/main");
@@ -755,6 +775,9 @@ fn transcribe_profile(
 ) -> Result<AsrOutcome> {
     if is_mock_engine(&config.asr.default_engine) {
         return Ok(transcribe_mock(input, profile));
+    }
+    if profile == "accurate" {
+        return transcribe_accurate_external(input, config, paths);
     }
     let spec = recognizer_spec(input, config, paths, profile)?;
     let recognizer = OfflineRecognizer::create(&spec.config)
@@ -795,6 +818,131 @@ fn mock_asr_text(input: &AsrInput) -> String {
         }
     }
     "Voice IME mock transcript".into()
+}
+
+fn transcribe_accurate_external(
+    input: &AsrInput,
+    config: &AppConfig,
+    paths: &Paths,
+) -> Result<AsrOutcome> {
+    let command_line = config.asr.accurate_external_command.trim();
+    if command_line.is_empty() {
+        return Err(anyhow!("未配置 accurate ASR 外部命令"));
+    }
+    let args = translation::split_command_line(command_line)?;
+    let executable = args
+        .first()
+        .ok_or_else(|| anyhow!("accurate ASR 外部命令为空"))?;
+    let wav_file = tempfile::Builder::new()
+        .prefix("voice_ime_accurate_asr_")
+        .suffix(".wav")
+        .tempfile()?
+        .into_temp_path()
+        .keep()?;
+    let result = (|| -> Result<AsrOutcome> {
+        write_wav_file(&wav_file, &input.samples, input.sample_rate)?;
+        let payload = json!({
+            "wav_path": wav_file.to_string_lossy(),
+            "sample_rate": input.sample_rate,
+            "language": input.language,
+            "profile": "accurate",
+            "prompt": input.prompt,
+        });
+        let mut command = Command::new(executable);
+        command
+            .args(&args[1..])
+            .current_dir(&paths.root_dir)
+            .env("VOICE_IME_ASR_PROFILE", "accurate")
+            .env("VOICE_IME_ASR_LANGUAGE", &input.language)
+            .stdin(Stdio::piped())
+            .stdout(Stdio::piped())
+            .stderr(Stdio::piped());
+        #[cfg(target_os = "windows")]
+        {
+            command.creation_flags(CREATE_NO_WINDOW);
+        }
+        let mut child = command
+            .spawn()
+            .with_context(|| format!("启动 accurate ASR 外部命令失败：{executable}"))?;
+        if let Some(stdin) = child.stdin.as_mut() {
+            stdin
+                .write_all(serde_json::to_string(&payload)?.as_bytes())
+                .context("写入 accurate ASR 输入失败")?;
+        }
+        drop(child.stdin.take());
+
+        wait_external_asr(&mut child, accurate_external_timeout(config, input))?;
+        let mut stdout = String::new();
+        if let Some(mut stream) = child.stdout.take() {
+            stream.read_to_string(&mut stdout)?;
+        }
+        let mut stderr = String::new();
+        if let Some(mut stream) = child.stderr.take() {
+            stream.read_to_string(&mut stderr)?;
+        }
+        let status = child.wait()?;
+        if !status.success() {
+            return Err(anyhow!(
+                "accurate ASR 外部命令退出失败：{}",
+                stderr.trim().chars().take(160).collect::<String>()
+            ));
+        }
+        let text = parse_external_asr_output(&stdout)?;
+        Ok(AsrOutcome {
+            raw_text: text.clone(),
+            text,
+            backend: "external-asr".into(),
+            model: "accurate/external".into(),
+            elapsed_seconds: 0.0,
+        })
+    })();
+    let _ = fs::remove_file(&wav_file);
+    result
+}
+
+fn accurate_external_timeout(config: &AppConfig, input: &AsrInput) -> Duration {
+    let duration_seconds = input.samples.len() as f32 / input.sample_rate.max(1) as f32;
+    let timeout = duration_seconds.ceil() as u64 + 30;
+    Duration::from_secs(timeout.clamp(5, config.asr.max_record_seconds.max(30) as u64))
+}
+
+fn wait_external_asr(child: &mut Child, timeout: Duration) -> Result<()> {
+    let started = Instant::now();
+    loop {
+        if child.try_wait()?.is_some() {
+            return Ok(());
+        }
+        if started.elapsed() >= timeout {
+            let _ = child.kill();
+            let _ = child.wait();
+            return Err(anyhow!("accurate ASR 外部命令超时"));
+        }
+        std::thread::sleep(Duration::from_millis(20));
+    }
+}
+
+fn parse_external_asr_output(stdout: &str) -> Result<String> {
+    let trimmed = stdout.trim().trim_start_matches('\u{feff}').trim();
+    if trimmed.is_empty() {
+        return Err(anyhow!("accurate ASR 外部命令结果为空"));
+    }
+    if trimmed.starts_with('{') || trimmed.starts_with('[') || trimmed.starts_with('"') {
+        let value: Value = serde_json::from_str(trimmed).context("解析 accurate ASR JSON 失败")?;
+        return json_asr_text_field(&value)
+            .ok_or_else(|| anyhow!("accurate ASR JSON 缺少 text/transcript 字段"));
+    }
+    Ok(trimmed.to_string())
+}
+
+fn json_asr_text_field(value: &Value) -> Option<String> {
+    if let Some(text) = value.as_str() {
+        return Some(text.trim().to_string());
+    }
+    ["text", "transcript", "result", "output"]
+        .into_iter()
+        .find_map(|key| value.get(key).and_then(Value::as_str))
+        .map(str::trim)
+        .map(str::to_string)
 }
 
 struct RecognizerSpec {
@@ -929,11 +1077,15 @@ fn profile_order(profile: &str) -> Vec<&'static str> {
     match profile {
         "fast" => vec!["fast", "balanced", "fallback"],
         "fallback" => vec!["fallback", "balanced", "fast"],
+        "accurate" => vec!["accurate", "balanced", "fast", "fallback"],
         _ => vec!["balanced", "fast", "fallback"],
     }
 }
 
 fn required_files_for_profile(config: &AppConfig, paths: &Paths, profile: &str) -> Vec<String> {
+    if profile == "accurate" {
+        return accurate_external_required(config, paths);
+    }
     let candidates = match profile {
         "fast" => vec![
             &config.asr.models.zipformer_ctc_model,
@@ -961,6 +1113,9 @@ fn required_files_for_profile(config: &AppConfig, paths: &Paths, profile: &str) 
 }
 
 fn model_target_dir(config: &AppConfig, paths: &Paths, profile: &str) -> Option<PathBuf> {
+    if profile == "accurate" {
+        return Some(paths.root_dir.join("tools"));
+    }
     let first = match profile {
         "fast" => &config.asr.models.zipformer_ctc_model,
         "balanced" => &config.asr.models.sense_voice_model,
@@ -977,6 +1132,7 @@ pub fn download_url_for_profile(profile: &str) -> &'static str {
         "fast" => "https://huggingface.co/csukuangfj/sherpa-onnx-zipformer-ctc-zh-int8-2025-07-03/tree/main",
         "balanced" => "https://huggingface.co/chris-cao/sherpa-onnx-sense-voice-zh-en-ja-ko-yue-int8-2024-07-17/tree/main",
         "fallback" => "https://huggingface.co/csukuangfj/sherpa-onnx-whisper-tiny/tree/main",
+        "accurate" => "https://github.com/HaujetZhao/CapsWriter-Offline/releases/tag/models",
         _ => "https://k2-fsa.github.io/sherpa/onnx/index.html",
     }
 }
@@ -986,7 +1142,66 @@ pub fn mirror_url_for_profile(profile: &str) -> &'static str {
         "fast" => "https://hf-mirror.com/csukuangfj/sherpa-onnx-zipformer-ctc-zh-int8-2025-07-03/tree/main",
         "balanced" => "https://hf-mirror.com/chris-cao/sherpa-onnx-sense-voice-zh-en-ja-ko-yue-int8-2024-07-17/tree/main",
         "fallback" => "https://hf-mirror.com/csukuangfj/sherpa-onnx-whisper-tiny/tree/main",
+        "accurate" => "https://github.com/HaujetZhao/CapsWriter-Offline/releases/tag/models",
         _ => "https://hf-mirror.com/",
+    }
+}
+
+fn accurate_external_required(config: &AppConfig, paths: &Paths) -> Vec<String> {
+    let command_line = config.asr.accurate_external_command.trim();
+    if command_line.is_empty() {
+        return Vec::new();
+    }
+    match translation::split_command_line(command_line) {
+        Ok(args) => args
+            .first()
+            .map(|executable| resolve_command_label(paths, executable))
+            .into_iter()
+            .collect(),
+        Err(err) => vec![format!("accurate ASR 外部命令格式错误：{err}")],
+    }
+}
+
+fn accurate_external_missing(config: &AppConfig, paths: &Paths) -> Vec<String> {
+    let command_line = config.asr.accurate_external_command.trim();
+    if command_line.is_empty() {
+        return vec!["未配置 accurate ASR 外部命令".into()];
+    }
+    let args = match translation::split_command_line(command_line) {
+        Ok(args) => args,
+        Err(err) => return vec![format!("accurate ASR 外部命令格式错误：{err}")],
+    };
+    let Some(executable) = args.first() else {
+        return vec!["accurate ASR 外部命令为空".into()];
+    };
+    let path = PathBuf::from(executable);
+    if path.components().count() <= 1 {
+        return Vec::new();
+    }
+    let path = absolutize(&paths.root_dir, path);
+    if path.exists() {
+        Vec::new()
+    } else {
+        vec![path.to_string_lossy().to_string()]
+    }
+}
+
+fn resolve_command_label(paths: &Paths, executable: &str) -> String {
+    let path = PathBuf::from(executable);
+    if path.components().count() > 1 {
+        absolutize(&paths.root_dir, path)
+            .to_string_lossy()
+            .to_string()
+    } else {
+        executable.to_string()
+    }
+}
+
+fn absolutize(root_dir: &Path, path: PathBuf) -> PathBuf {
+    if path.is_absolute() {
+        path
+    } else {
+        root_dir.join(path)
     }
 }
 
@@ -1115,6 +1330,7 @@ mod tests {
             vec!["balanced", "fast", "fallback"]
         );
         assert_eq!(profile_order("fast")[0], "fast");
+        assert_eq!(profile_order("accurate")[0], "accurate");
     }
 
     #[test]
@@ -1229,11 +1445,53 @@ mod tests {
 
         let statuses = model_status(&config, &paths);
 
-        assert_eq!(statuses.len(), 3);
+        assert_eq!(statuses.len(), 4);
         assert!(statuses.iter().all(|status| status.ready));
         assert!(statuses.iter().all(|status| status.engine == "mock-asr"));
         assert!(statuses
             .iter()
             .all(|status| status.required_files.is_empty()));
+    }
+
+    #[test]
+    fn accurate_model_status_uses_external_command() {
+        let temp = tempfile::tempdir().unwrap();
+        let paths = test_paths(temp.path());
+        let mut config = AppConfig::default();
+
+        let missing = model_status(&config, &paths)
+            .into_iter()
+            .find(|status| status.profile == "accurate")
+            .unwrap();
+        assert!(!missing.ready);
+        assert!(missing
+            .missing_files
+            .iter()
+            .any(|item| item.contains("未配置 accurate ASR 外部命令")));
+
+        config.asr.accurate_external_command =
+            "powershell -NoProfile -File tools/Mock-External-Asr.ps1".into();
+        let ready = model_status(&config, &paths)
+            .into_iter()
+            .find(|status| status.profile == "accurate")
+            .unwrap();
+
+        assert!(ready.ready);
+        assert_eq!(ready.engine, "external-asr");
+        assert!(ready.required_files.iter().any(|item| item == "powershell"));
+    }
+
+    #[test]
+    fn parses_external_asr_plain_or_json_output() {
+        assert_eq!(
+            parse_external_asr_output("非洲之星和海洋之泪").unwrap(),
+            "非洲之星和海洋之泪"
+        );
+        assert_eq!(
+            parse_external_asr_output(r#"{"transcript":"Voice IME"}"#).unwrap(),
+            "Voice IME"
+        );
+        assert_eq!(parse_external_asr_output(r#""hello""#).unwrap(), "hello");
+        assert!(parse_external_asr_output(r#"{"ok":true}"#).is_err());
     }
 }

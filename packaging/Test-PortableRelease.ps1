@@ -382,6 +382,69 @@ function Invoke-MockAsrBenchmarkSmoke {
     Write-Host "Mock ASR benchmark smoke passed: $($report.FullName)"
 }
 
+function Invoke-AccurateExternalAsrSmoke {
+    param([Parameter(Mandatory = $true)][string]$Root)
+
+    $app = Join-Path $Root "app"
+    $exe = Join-Path $app "VoiceIME.exe"
+    $mockAsr = Join-Path $app "tools\Mock-External-Asr.ps1"
+    if (-not (Test-Path -LiteralPath $mockAsr -PathType Leaf)) {
+        throw "Mock external ASR helper missing: $mockAsr"
+    }
+    $appDir = Join-Path ([System.IO.Path]::GetTempPath()) ("voice-ime-accurate-asr-" + [guid]::NewGuid().ToString("N"))
+    $samplesDir = Join-Path ([System.IO.Path]::GetTempPath()) ("voice-ime-accurate-asr-samples-" + [guid]::NewGuid().ToString("N"))
+    $previousAppDir = [Environment]::GetEnvironmentVariable("VOICE_IME_APP_DIR", "Process")
+    try {
+        New-Item -ItemType Directory -Path $appDir -Force | Out-Null
+        New-Item -ItemType Directory -Path $samplesDir -Force | Out-Null
+        $utf8NoBom = [System.Text.UTF8Encoding]::new($false)
+        $mockText = ([string][char]38750 + [string][char]27954 + [string][char]20043 + [string][char]26143 + [string][char]21644 + [string][char]28023 + [string][char]27915 + [string][char]20043 + [string][char]27882)
+        $command = "powershell -NoProfile -ExecutionPolicy Bypass -File `"$mockAsr`""
+        $config = @{
+            asr = @{
+                profile = "accurate"
+                worker_mode = "isolated"
+                accurate_external_command = $command
+            }
+            smart = @{
+                enabled = $false
+            }
+        } | ConvertTo-Json -Depth 6
+        [System.IO.File]::WriteAllText((Join-Path $appDir "config.json"), $config, $utf8NoBom)
+        New-TestWavFile -Path (Join-Path $samplesDir "001.wav")
+        [System.IO.File]::WriteAllText((Join-Path $samplesDir "001.txt"), $mockText, $utf8NoBom)
+        $env:VOICE_IME_APP_DIR = $appDir
+        $process = Start-Process -FilePath $exe -ArgumentList @("--benchmark-asr-profile", "accurate", $samplesDir) -WorkingDirectory $app -WindowStyle Hidden -Wait -PassThru
+        if ($process.ExitCode -ne 0) {
+            throw "Accurate external ASR smoke exited with code $($process.ExitCode)"
+        }
+    }
+    finally {
+        if ([string]::IsNullOrEmpty($previousAppDir)) {
+            Remove-Item Env:\VOICE_IME_APP_DIR -ErrorAction SilentlyContinue
+        }
+        else {
+            $env:VOICE_IME_APP_DIR = $previousAppDir
+        }
+        if (Test-Path -LiteralPath $samplesDir) {
+            Remove-Item -LiteralPath $samplesDir -Recurse -Force
+        }
+    }
+    $reports = @(Get-ChildItem -LiteralPath (Join-Path $appDir "logs") -Filter "asr-benchmark-*.csv" -File -ErrorAction SilentlyContinue)
+    if ($reports.Count -eq 0) {
+        throw "Accurate external ASR smoke did not write a CSV under $appDir"
+    }
+    $report = $reports | Sort-Object LastWriteTime -Descending | Select-Object -First 1
+    $body = [System.IO.File]::ReadAllText($report.FullName, [System.Text.Encoding]::UTF8)
+    $mockText = ([string][char]38750 + [string][char]27954 + [string][char]20043 + [string][char]26143 + [string][char]21644 + [string][char]28023 + [string][char]27915 + [string][char]20043 + [string][char]27882)
+    foreach ($needle in @("accurate", "external-asr", "accurate/external", "1.0000", $mockText)) {
+        if (-not $body.Contains($needle)) {
+            throw "Accurate external ASR CSV missing '$needle'"
+        }
+    }
+    Write-Host "Accurate external ASR smoke passed: $($report.FullName)"
+}
+
 function Invoke-AcceptanceScript {
     param(
         [Parameter(Mandatory = $true)][string]$Root,
@@ -462,6 +525,7 @@ Invoke-ShutdownSmoke -Root $ReleaseRoot
 Invoke-PanicSmoke -Root $ReleaseRoot
 Invoke-AsrBenchmarkProfileSmoke -Root $ReleaseRoot
 Invoke-MockAsrBenchmarkSmoke -Root $ReleaseRoot
+Invoke-AccurateExternalAsrSmoke -Root $ReleaseRoot
 if (-not $SkipNotepad) {
     Invoke-AcceptanceScript -Root $ReleaseRoot -ScriptName "Notepad-Input-Acceptance.ps1"
 }

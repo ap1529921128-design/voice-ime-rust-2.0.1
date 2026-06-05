@@ -150,6 +150,7 @@ function createQaSnapshot() {
         profile: "balanced",
         model_root: "E:/voice-ime-model-packs",
         worker_mode: "persistent",
+        accurate_external_command: "powershell -NoProfile -File tools/Mock-External-Asr.ps1",
         language: "zh",
         input_device_name: "",
         sample_rate: 16000,
@@ -328,6 +329,18 @@ function qaModelStatus() {
       target_dir: "D:/voice-ime/models/sherpa-onnx-whisper-tiny",
       required_files: ["tiny-encoder.int8.onnx", "tiny-decoder.int8.onnx", "tiny-tokens.txt"],
       missing_files: ["tiny-decoder.int8.onnx"],
+    },
+    {
+      engine: "external-asr",
+      profile: "accurate",
+      description: "实验准确率档，接入外部 Qwen3/FunASR 本地命令或服务",
+      expected_latency: "外部后端，视模型和硬件而定",
+      ready: true,
+      download_url: "https://github.com/HaujetZhao/CapsWriter-Offline/releases/tag/models",
+      mirror_url: "https://github.com/HaujetZhao/CapsWriter-Offline/releases/tag/models",
+      target_dir: "D:/voice-ime-build-release/voice-ime-2.0.1-rust-portable/app/tools",
+      required_files: ["powershell"],
+      missing_files: [],
     },
   ];
 }
