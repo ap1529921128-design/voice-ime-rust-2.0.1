@@ -9,7 +9,7 @@ app/.voice_ime/hot.txt
 app/.voice_ime/hot-rule.txt
 ```
 
-Open them from Settings with the `热词` and `规则` buttons. Changes apply on the next transcription. Settings / Data / `刷新词表` and Doctor show the current hotword entry count, alias count, valid rule count, and invalid regex examples.
+Open them from Settings with the `热词` and `规则` buttons. Changes apply on the next transcription. Settings / Data / `刷新词表` and Doctor show the current hotword entry count, alias count, valid rule count, and invalid regex examples. Settings / Data / `词表试算` can preview one sentence through normalization, built-in corrections, hotwords, rules, ITN, and final cleanup before real dictation.
 
 ## hot.txt
 
@@ -41,6 +41,10 @@ Examples:
 ```
 
 The replacement side supports `\1`, `\2`, and other capture references. Invalid regex rules are skipped and surfaced in Settings / Data / `刷新词表` and Doctor.
+
+## Preview
+
+Open Settings / Data, enter a sentence in `词表试算`, and click `试算`. The preview shows each deterministic stage, whether it changed the text, and the local match count.
 
 ## Boundary
 

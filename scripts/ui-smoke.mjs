@@ -92,6 +92,7 @@ try {
       actions: [
         ["click", "[data-view='settings']"],
         ["click", "[data-settings-tab='data']"],
+        ["click", "[data-action='test-dictionary-text']"],
       ],
     });
     await runScenario(browser, {

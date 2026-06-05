@@ -420,6 +420,11 @@ fn dictionary_stats(state: State<'_, AppState>) -> text::UserDictionaryStats {
 }
 
 #[tauri::command]
+fn test_dictionary_text(state: State<'_, AppState>, text: String) -> text::DictionaryTestResult {
+    text::dictionary_test_result(&text, &state.paths.corrections_path)
+}
+
+#[tauri::command]
 fn export_diagnostics(app: AppHandle, state: State<'_, AppState>) -> Result<UiSnapshot, String> {
     let snapshot = state.snapshot();
     let _ = doctor::run(&state.paths, &snapshot.config).map_err(to_string)?;
@@ -688,6 +693,7 @@ pub fn run() {
             repair_doctor,
             hotkey_status,
             dictionary_stats,
+            test_dictionary_text,
             export_diagnostics,
             export_history_csv,
             llm_service_status,

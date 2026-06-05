@@ -172,6 +172,116 @@ pub fn correction_trace(text: &str, corrections_path: &Path) -> CorrectionTrace 
     }
 }
 
+#[derive(Debug, Clone, Serialize, PartialEq, Eq)]
+pub struct DictionaryTestStage {
+    pub name: String,
+    pub text: String,
+    pub changed: bool,
+    pub hits: usize,
+}
+
+#[derive(Debug, Clone, Serialize, PartialEq, Eq)]
+pub struct DictionaryTestResult {
+    pub input: String,
+    pub final_text: String,
+    pub changed: bool,
+    pub stages: Vec<DictionaryTestStage>,
+}
+
+pub fn dictionary_test_result(text: &str, corrections_path: &Path) -> DictionaryTestResult {
+    let trace = correction_trace(text, corrections_path);
+    let dictionary = load_corrections(corrections_path);
+    let hotwords_path = hotwords_path_for(corrections_path);
+    let hot_rules_path = hot_rules_path_for(corrections_path);
+    let hotwords = load_hotword_replacements(&hotwords_path);
+    let dictionary_hits = plain_replacement_hit_count(
+        &trace.normalized_text,
+        dictionary.keys().map(String::as_str),
+    );
+    let hotword_hits = plain_replacement_hit_count(
+        &trace.dictionary_text,
+        hotwords.iter().map(|item| item.0.as_str()),
+    );
+    let rule_hits = hot_rule_match_count(&trace.hotword_text, &hot_rules_path);
+    let stages = vec![
+        dictionary_stage(
+            "规范化",
+            &trace.raw_text,
+            &trace.normalized_text,
+            changed_hit(&trace.raw_text, &trace.normalized_text),
+        ),
+        dictionary_stage(
+            "内置词表",
+            &trace.normalized_text,
+            &trace.dictionary_text,
+            dictionary_hits,
+        ),
+        dictionary_stage(
+            "热词",
+            &trace.dictionary_text,
+            &trace.hotword_text,
+            hotword_hits,
+        ),
+        dictionary_stage("规则", &trace.hotword_text, &trace.rule_text, rule_hits),
+        dictionary_stage(
+            "ITN",
+            &trace.rule_text,
+            &trace.itn_text,
+            changed_hit(&trace.rule_text, &trace.itn_text),
+        ),
+        dictionary_stage(
+            "收尾",
+            &trace.itn_text,
+            &trace.final_text,
+            changed_hit(&trace.itn_text, &trace.final_text),
+        ),
+    ];
+    DictionaryTestResult {
+        input: trace.raw_text,
+        changed: stages.iter().any(|stage| stage.changed),
+        final_text: trace.final_text,
+        stages,
+    }
+}
+
+fn dictionary_stage(name: &str, before: &str, after: &str, hits: usize) -> DictionaryTestStage {
+    DictionaryTestStage {
+        name: name.to_string(),
+        text: after.to_string(),
+        changed: before != after,
+        hits,
+    }
+}
+
+fn changed_hit(before: &str, after: &str) -> usize {
+    usize::from(before != after)
+}
+
+fn plain_replacement_hit_count<'a>(text: &str, needles: impl Iterator<Item = &'a str>) -> usize {
+    needles
+        .filter(|needle| !needle.is_empty())
+        .map(|needle| text.matches(needle).count())
+        .sum()
+}
+
+fn hot_rule_match_count(text: &str, path: &Path) -> usize {
+    let Ok(body) = fs::read_to_string(path) else {
+        return 0;
+    };
+    body.lines()
+        .filter_map(|raw_line| {
+            let line = strip_inline_comment(raw_line).trim();
+            let (pattern, _replacement) = line.split_once('=')?;
+            let pattern = pattern.trim();
+            if pattern.is_empty() {
+                return None;
+            }
+            Regex::new(pattern).ok()
+        })
+        .map(|regex| regex.find_iter(text).count())
+        .sum()
+}
+
 pub fn apply_punctuation_policy(text: &str, policy: &str) -> String {
     let mut text = normalize_text(text);
     if policy == "short-no-period"
@@ -773,6 +883,28 @@ mod tests {
         assert_eq!(trace.hotword_text, "minicpm 非洲之星 一千毫安时");
         assert_eq!(trace.rule_text, "minicpm 非洲之星 一千mAh");
         assert_eq!(trace.final_text, "minicpm 非洲之星 1000mAh");
+    }
+
+    #[test]
+    fn previews_dictionary_test_result_with_hits() {
+        let temp = tempfile::tempdir().unwrap();
+        let corrections = temp.path().join("corrections.json");
+        let hotwords = temp.path().join("hot.txt");
+        let rules = temp.path().join("hot-rule.txt");
+        fs::write(&corrections, r#"{"mini CPM":"minicpm"}"#).unwrap();
+        fs::write(&hotwords, "非洲之星 | 非州之星\n").unwrap();
+        fs::write(&rules, "毫安时 = mAh\n").unwrap();
+
+        let result = dictionary_test_result("mini CPM 非州之星 一千毫安时", &corrections);
+
+        assert!(result.changed);
+        assert_eq!(result.final_text, "minicpm 非洲之星 1000mAh");
+        assert_eq!(result.stages.len(), 6);
+        assert_eq!(result.stages[1].name, "内置词表");
+        assert_eq!(result.stages[1].hits, 1);
+        assert_eq!(result.stages[2].hits, 1);
+        assert_eq!(result.stages[3].hits, 1);
+        assert!(result.stages[4].changed);
     }
 
     #[test]

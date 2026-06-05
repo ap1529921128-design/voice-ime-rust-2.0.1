@@ -627,6 +627,62 @@ label {
   line-height: 1.5;
 }
 
+.dictionary-test-panel {
+  align-content: start;
+}
+
+.dictionary-test-input {
+  width: 100%;
+  min-height: 86px;
+  resize: vertical;
+  border: 1px solid rgba(49, 93, 147, 0.14);
+  border-radius: 14px;
+  padding: 12px;
+  outline: 0;
+  color: #0a1f3d;
+  background: rgba(255, 255, 255, 0.62);
+  line-height: 1.5;
+}
+
+.dictionary-final {
+  display: grid;
+  grid-template-columns: minmax(64px, 0.18fr) minmax(0, 1fr);
+  gap: 10px;
+  border-radius: 12px;
+  padding: 9px 10px;
+  background: rgba(255, 255, 255, 0.58);
+}
+
+.dictionary-final strong {
+  color: #0a1f3d;
+  font-size: 13px;
+}
+
+.dictionary-final span {
+  min-width: 0;
+  color: #5f6d78;
+  font-size: 12px;
+  line-height: 1.45;
+  overflow-wrap: anywhere;
+}
+
+.dictionary-stage {
+  align-items: start;
+}
+
+.dictionary-stage span {
+  display: grid;
+  gap: 2px;
+  white-space: normal;
+  overflow-wrap: anywhere;
+}
+
+.dictionary-stage span b {
+  color: #315d93;
+  font-size: 11px;
+  font-weight: 700;
+}
+
 .app-profile-list {
   display: grid;
   grid-column: 1 / -1;

@@ -179,6 +179,20 @@ type UserDictionaryStats = {
   hot_rule_invalid_examples: string[];
 };
 
+type DictionaryTestStage = {
+  name: string;
+  text: string;
+  changed: boolean;
+  hits: number;
+};
+
+type DictionaryTestResult = {
+  input: string;
+  final_text: string;
+  changed: boolean;
+  stages: DictionaryTestStage[];
+};
+
 type RepairAction = {
   name: string;
   status: "repaired" | "skipped" | "failed";
@@ -248,6 +262,9 @@ let historyModel = "all";
 let historyDate = "";
 let pendingTextSync: number | undefined;
 let dictionaryStats: UserDictionaryStats | null = null;
+let dictionaryTestText = "mini CPM 非州之星 一千毫安时";
+let dictionaryTestResult: DictionaryTestResult | null = null;
+let dictionaryTestError = "";
 
 type IconName = keyof typeof icons;
 
@@ -948,6 +965,7 @@ function dataSettingsPanel(cfg: AppConfig) {
         <button class="tool-btn danger" data-action="clear-history">${icon("Eraser", "清空历史")}<span>清空历史</span></button>
       </div>
       ${dictionaryStatsPanel()}
+      ${dictionaryTestPanel()}
       ${doctorPanel()}
     </div>
   `;
@@ -988,6 +1006,63 @@ function dictionaryStatsPanel() {
       <div class="doctor-list">
         ${rows.map((row) => doctorRow(row)).join("")}
       </div>
+    </div>
+  `;
+}
+
+function dictionaryTestPanel() {
+  const status = dictionaryTestError
+    ? "失败"
+    : dictionaryTestResult
+    ? dictionaryTestResult.changed
+      ? "已变化"
+      : "无变化"
+    : "等待输入";
+  return `
+    <div class="doctor-panel dictionary-test-panel">
+      <div class="doctor-head">
+        <strong>词表试算</strong>
+        <span>${escapeHtml(status)}</span>
+      </div>
+      <textarea class="dictionary-test-input" data-dictionary-test="input" spellcheck="false">${escapeHtml(dictionaryTestText)}</textarea>
+      <div class="settings-tools">
+        <button class="tool-btn" data-action="test-dictionary-text">${icon("ScanSearch", "试算")}<span>试算</span></button>
+        <button class="tool-btn" data-action="dictionary-test-current">${icon("FileInput", "使用当前文本")}<span>当前文本</span></button>
+      </div>
+      ${dictionaryTestResultPanel()}
+    </div>
+  `;
+}
+
+function dictionaryTestResultPanel() {
+  if (dictionaryTestError) {
+    return `
+      <div class="doctor-list dictionary-trace">
+        ${doctorRow({ name: "错误", status: "fail", detail: dictionaryTestError })}
+      </div>
+    `;
+  }
+  if (!dictionaryTestResult) return "";
+  return `
+    <div class="dictionary-final">
+      <strong>结果</strong>
+      <span>${escapeHtml(dictionaryTestResult.final_text || "空")}</span>
+    </div>
+    <div class="doctor-list dictionary-trace">
+      ${dictionaryTestResult.stages.map((stage) => dictionaryStageRow(stage)).join("")}
+    </div>
+  `;
+}
+
+function dictionaryStageRow(stage: DictionaryTestStage) {
+  const status = stage.changed ? "pass" : "warn";
+  const label = stage.changed ? `${stage.hits} 命中` : "未命中";
+  const iconName = stage.changed ? "CheckCircle2" : "CircleMinus";
+  return `
+    <div class="doctor-row dictionary-stage ${status}">
+      ${icon(iconName as IconName, label)}
+      <strong>${escapeHtml(stage.name)}</strong>
+      <span><b>${escapeHtml(label)}</b>${escapeHtml(stage.text || "空")}</span>
     </div>
   `;
 }
@@ -1230,6 +1305,8 @@ function wireCommon() {
       if (action === "run-asr-benchmark") await runAsrBenchmark();
       if (action === "run-translation-benchmark") await run("run_translation_benchmark", { samplesPath: "" });
       if (action === "refresh-dictionary-stats") await refreshDictionaryStats(true);
+      if (action === "test-dictionary-text") await testDictionaryText();
+      if (action === "dictionary-test-current") await testDictionaryWithCurrentText();
       if (action === "open-hotwords") {
         await invoke("open_hotwords_file");
         await refreshDictionaryStats(true);
@@ -1329,6 +1406,12 @@ function wireMain() {
   app.querySelectorAll<HTMLTextAreaElement>("[data-prompt-editor]").forEach((input) => {
     input.addEventListener("input", () => {
       personalPrompt = input.value;
+    });
+  });
+  app.querySelectorAll<HTMLTextAreaElement>("[data-dictionary-test='input']").forEach((input) => {
+    input.addEventListener("input", () => {
+      dictionaryTestText = input.value;
+      dictionaryTestError = "";
     });
   });
   app.querySelectorAll<HTMLInputElement>("[data-hotkey-capture]").forEach((input) => {
@@ -1545,6 +1628,22 @@ async function refreshHotkeyStatus() {
 async function refreshDictionaryStats(shouldRender = false) {
   dictionaryStats = await invoke<UserDictionaryStats>("dictionary_stats");
   if (shouldRender) render();
+}
+
+async function testDictionaryText() {
+  try {
+    dictionaryTestResult = await invoke<DictionaryTestResult>("test_dictionary_text", { text: dictionaryTestText });
+    dictionaryTestError = "";
+  } catch (error) {
+    dictionaryTestResult = null;
+    dictionaryTestError = String(error);
+  }
+  render();
+}
+
+async function testDictionaryWithCurrentText() {
+  dictionaryTestText = snapshot?.text || dictionaryTestText;
+  await testDictionaryText();
 }
 
 async function refreshLlmServiceStatus(shouldRender = false) {

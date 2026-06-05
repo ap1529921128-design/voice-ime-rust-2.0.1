@@ -50,6 +50,7 @@ function qaInvoke(command: string, args?: Record<string, unknown>) {
   if (command === "audio_level") return qaAudioLevel();
   if (command === "hotkey_status") return qaHotkeys();
   if (command === "dictionary_stats") return qaDictionaryStats();
+  if (command === "test_dictionary_text") return qaDictionaryTest(String(args?.text || ""));
   if (command === "doctor_report") return qaDoctorReport();
   if (command === "repair_doctor") return qaRepairReport();
   if (command === "llm_service_status") return qaLlmServiceStatus();
@@ -254,6 +255,34 @@ function qaDictionaryStats() {
     hot_rule_count: 4,
     hot_rule_invalid: 1,
     hot_rule_invalid_examples: ["line 8: regex parse error"],
+  };
+}
+
+function qaDictionaryTest(input: string) {
+  const normalized = input.trim().replace(/\s+/g, " ");
+  const dictionary = normalized.replace("mini CPM", "minicpm");
+  const hotword = dictionary.replace("非州之星", "非洲之星");
+  const rule = hotword.replace("毫安时", "mAh");
+  const itn = rule.replace("一千", "1000");
+  const finalText = itn.trim();
+  const stage = (name: string, before: string, after: string, hits: number) => ({
+    name,
+    text: after,
+    changed: before !== after,
+    hits,
+  });
+  return {
+    input,
+    final_text: finalText,
+    changed: input !== finalText,
+    stages: [
+      stage("规范化", input, normalized, input === normalized ? 0 : 1),
+      stage("内置词表", normalized, dictionary, normalized.includes("mini CPM") ? 1 : 0),
+      stage("热词", dictionary, hotword, dictionary.includes("非州之星") ? 1 : 0),
+      stage("规则", hotword, rule, hotword.includes("毫安时") ? 1 : 0),
+      stage("ITN", rule, itn, rule.includes("一千") ? 1 : 0),
+      stage("收尾", itn, finalText, itn === finalText ? 0 : 1),
+    ],
   };
 }
 

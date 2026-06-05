@@ -38,6 +38,8 @@ GUI translation clicks now append `translation-YYYYMMDD.log` rows with engine, m
 
 Settings / Data now shows hotword and hot-rule stats, including hotword entries, aliases, valid regex rules, and invalid rule examples. Doctor includes the same check so broken `hot-rule.txt` lines are visible before the next dictation.
 
+Settings / Data also includes `词表试算`. Paste or type a sentence, click `试算`, and the app shows normalization, built-in corrections, hotword aliases, regex rules, ITN, and final cleanup with per-stage change and hit counts.
+
 ## Verification
 
 The release gate passed on the build machine for:

@@ -110,7 +110,9 @@
 3. Click `规则` and edit `hot-rule.txt`, using `regex = replacement` lines.
 4. Click `刷新词表`; the panel shows hotword entries, aliases, valid rules, and invalid rule examples.
 5. Running Settings / Data / `诊断` includes a `热词规则统计` row and warns when any regex rule is invalid.
-6. Changes apply on the next transcription without restarting the app.
+6. Enter `mini CPM 非州之星 一千毫安时` in `词表试算` and click `试算`.
+7. The preview shows changed stages for built-in corrections, hotwords, rules, and ITN, with final text `minicpm 非洲之星 1000mAh`.
+8. Changes apply on the next transcription without restarting the app.
 
 ## Model Path Picker
 
@@ -291,6 +293,7 @@
 - Long recording retention can be disabled and existing long recordings can be cleared from Settings / Data; short recordings remain non-retained by design.
 - Portable packaging now includes an automated layout/release gate and `BUILD.txt`; manual smoke is still useful after packaging because it proves WebView startup on this machine.
 - Settings / Data now shows an inline diagnostics panel after running Doctor; support export records the effective model root source and falls back to packaged model manifests when an external model root lacks `MODELS.json/md`; repair can also copy packaged model manifests into the effective model root without overwriting or copying model binaries.
+- Settings / Data now includes `词表试算`, which previews a sentence through normalization, built-in corrections, hotwords, hot rules, ITN, and final cleanup with per-stage change and match rows.
 - Settings / Models now has native file and directory pickers; real removable-drive acceptance should still be tested on target machines.
 - Settings / Shortcuts now shows global-hotkey registration status and re-registers after save; manual conflict coverage is still required with real third-party apps.
 - `--benchmark-asr` and Settings / Data / `ASR 基准` now provide a repeatable timing and CER/accuracy CSV harness; real quality still depends on recorded sample audio from target machines.
