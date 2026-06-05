@@ -206,7 +206,11 @@ impl AppState {
             }
             inner.state = SessionState::Idle;
             inner.status = "录音时间过短，已忽略".into();
-            inner.meta.clear();
+            inner.meta = short_recording_meta(
+                recording.duration_seconds,
+                config.asr.min_record_seconds,
+                !base_text.trim().is_empty(),
+            );
             drop(inner);
             let _ = fs::remove_file(&recording.wav_path);
             self.finish_task(session_id);
@@ -223,8 +227,12 @@ impl AppState {
             }
             inner.state = SessionState::Idle;
             inner.status = "没检测到有效麦克风输入".into();
-            inner.text = "没检测到有效麦克风输入。\n\n建议：\n1. 检查 Windows 麦克风权限\n2. 尝试切换默认麦克风\n3. 靠近麦克风重新录音".into();
-            inner.meta = format!("peak={:.5}, rms={:.5}", recording.peak, recording.rms);
+            let (replacement_text, meta) =
+                silent_recording_feedback(&base_text, recording.peak, recording.rms);
+            if let Some(text) = replacement_text {
+                inner.text = text;
+            }
+            inner.meta = meta;
             drop(inner);
             let _ = fs::remove_file(&recording.wav_path);
             self.finish_task(session_id);
@@ -1435,6 +1443,34 @@ fn audio_trim_meta(leading_seconds: f32, trailing_seconds: f32) -> String {
     }
 }
 
+fn short_recording_meta(duration_seconds: f32, min_record_seconds: f32, had_text: bool) -> String {
+    let detail = format!(
+        "{:.1}s < {:.1}s",
+        duration_seconds.max(0.0),
+        min_record_seconds.max(0.0)
+    );
+    if had_text {
+        format!("{detail} / 确认栏已保留")
+    } else {
+        detail
+    }
+}
+
+fn silent_recording_feedback(base_text: &str, peak: f32, rms: f32) -> (Option<String>, String) {
+    let detail = format!("peak={:.5}, rms={:.5}", peak, rms);
+    if base_text.trim().is_empty() {
+        (
+            Some(
+                "没检测到有效麦克风输入。\n\n建议：\n1. 检查 Windows 麦克风权限\n2. 尝试切换默认麦克风\n3. 靠近麦克风重新录音"
+                    .into(),
+            ),
+            detail,
+        )
+    } else {
+        (None, format!("{detail} / 确认栏已保留"))
+    }
+}
+
 fn target_label(language: &str) -> &'static str {
     match language {
         "en" => "英语",
@@ -1593,6 +1629,23 @@ mod tests {
         assert_eq!(audio_sample_rate_meta(0, 16_000, true), "采样率未知");
         assert_eq!(audio_trim_meta(0.12, 0.34), "裁剪 0.5s");
         assert_eq!(audio_trim_meta(0.01, 0.01), "");
+    }
+
+    #[test]
+    fn short_and_silent_recording_feedback_preserves_existing_text() {
+        assert_eq!(short_recording_meta(0.08, 0.2, false), "0.1s < 0.2s");
+        assert_eq!(
+            short_recording_meta(0.08, 0.2, true),
+            "0.1s < 0.2s / 确认栏已保留"
+        );
+
+        let (replacement, meta) = silent_recording_feedback("已有确认文本", 0.0001, 0.00003);
+        assert!(replacement.is_none());
+        assert_eq!(meta, "peak=0.00010, rms=0.00003 / 确认栏已保留");
+
+        let (replacement, meta) = silent_recording_feedback("", 0.0001, 0.00003);
+        assert!(replacement.unwrap().contains("没检测到有效麦克风输入"));
+        assert_eq!(meta, "peak=0.00010, rms=0.00003");
     }
 
     #[test]

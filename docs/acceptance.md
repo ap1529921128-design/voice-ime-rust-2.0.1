@@ -10,6 +10,7 @@
 6. Click the stop button or press `Alt+R` again to stop.
 7. Text appears in the overlay or main confirmation editor.
 8. Confirm input pastes into the focused target and does not send.
+9. If the editor already has text, an accidental too-short or silent recording keeps that text and reports the reason in status/meta instead of replacing it.
 
 ## Clipboard-Safe Paste
 
