@@ -133,6 +133,7 @@ function createQaSnapshot() {
         ptt_key: "CapsLock",
         ptt_mouse_button: "X2",
         ptt_suppress: true,
+        ptt_hold_threshold_ms: 180,
         app_profiles: [
           {
             name: "微信",

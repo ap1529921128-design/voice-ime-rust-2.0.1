@@ -115,6 +115,14 @@
 5. Change a shortcut and click save; the app re-registers global hotkeys immediately without restart.
 6. Running Settings / Data / `诊断` includes the hotkey rows in the diagnostics panel.
 
+## Push To Talk
+
+1. Open Settings / Shortcuts and keep push-to-talk enabled with keyboard trigger `CapsLock`.
+2. Set `长按阈值` to the default 180 ms and save.
+3. Short-tap `CapsLock`; it should toggle CapsLock normally and should not start recording.
+4. Hold `CapsLock` longer than the threshold; recording should start, and releasing the key should stop and transcribe.
+5. Mouse X1/X2 triggers remain hold-to-record and are not short-tap passed through.
+
 ## Input Profiles
 
 1. Open Settings / Input.

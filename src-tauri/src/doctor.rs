@@ -414,11 +414,12 @@ fn write_report(
         config.asr.profile, config.asr.worker_mode, config.asr.num_threads
     ));
     lines.push(format!(
-        "Input: mode={} ptt={} key={} mouse={}",
+        "Input: mode={} ptt={} key={} mouse={} hold_threshold_ms={}",
         config.input.mode,
         config.input.ptt_enabled,
         config.input.ptt_key,
-        config.input.ptt_mouse_button
+        config.input.ptt_mouse_button,
+        config.input.ptt_hold_threshold_ms
     ));
     lines.push(format!(
         "Translation: engine={} timeout={}s",

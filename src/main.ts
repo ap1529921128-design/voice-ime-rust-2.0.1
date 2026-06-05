@@ -68,6 +68,7 @@ type AppConfig = {
     ptt_key: string;
     ptt_mouse_button: string;
     ptt_suppress: boolean;
+    ptt_hold_threshold_ms: number;
     app_profiles: {
       name: string;
       process_name: string;
@@ -533,6 +534,9 @@ function shortcutSettingsPanel(cfg: AppConfig) {
           ${option("true", String(cfg.input.ptt_suppress), "开启")}
           ${option("false", String(cfg.input.ptt_suppress), "关闭")}
         </select>
+      </label>
+      <label>长按阈值
+        <input type="number" min="0" max="1000" value="${cfg.input.ptt_hold_threshold_ms}" data-config="input.ptt_hold_threshold_ms" />
       </label>
       ${hotkeyStatusPanel()}
     </div>

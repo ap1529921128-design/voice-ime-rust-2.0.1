@@ -4,7 +4,7 @@ use crate::{
 };
 use std::{
     sync::{
-        atomic::{AtomicBool, Ordering},
+        atomic::{AtomicBool, AtomicU64, Ordering},
         mpsc::{self, Receiver, Sender},
         OnceLock, RwLock,
     },
@@ -30,6 +30,7 @@ struct HookSettings {
     key_code: Option<u32>,
     mouse_button: Option<u16>,
     suppress: bool,
+    hold_threshold_ms: u64,
 }
 
 impl HookSettings {
@@ -39,6 +40,7 @@ impl HookSettings {
             key_code: key_code(&input.ptt_key),
             mouse_button: mouse_button(&input.ptt_mouse_button),
             suppress: input.ptt_suppress,
+            hold_threshold_ms: input.ptt_hold_threshold_ms,
         }
     }
 }
@@ -50,6 +52,8 @@ struct HookRuntime {
 
 static RUNTIME: OnceLock<HookRuntime> = OnceLock::new();
 static KEY_IS_DOWN: AtomicBool = AtomicBool::new(false);
+static KEY_RECORDING_ACTIVE: AtomicBool = AtomicBool::new(false);
+static KEY_PRESS_ID: AtomicU64 = AtomicU64::new(0);
 static MOUSE_IS_DOWN: AtomicBool = AtomicBool::new(false);
 
 pub fn install(app: &AppHandle, config: &AppConfig) {
@@ -73,6 +77,8 @@ pub fn update_config(config: &AppConfig) {
 
 fn update_settings(settings: HookSettings) {
     KEY_IS_DOWN.store(false, Ordering::SeqCst);
+    KEY_RECORDING_ACTIVE.store(false, Ordering::SeqCst);
+    KEY_PRESS_ID.fetch_add(1, Ordering::SeqCst);
     MOUSE_IS_DOWN.store(false, Ordering::SeqCst);
     if let Some(runtime) = RUNTIME.get() {
         if let Ok(mut guard) = runtime.settings.write() {
@@ -149,18 +155,32 @@ fn mouse_button(value: &str) -> Option<u16> {
     }
 }
 
+fn should_passthrough_short_key(key_code: Option<u32>) -> bool {
+    key_code == Some(vk::CAPS_LOCK)
+}
+
 #[cfg(target_os = "windows")]
 mod platform {
-    use super::{current_settings, send_event, PttEvent, PttSource, KEY_IS_DOWN, MOUSE_IS_DOWN};
-    use std::{mem::MaybeUninit, ptr::null_mut, sync::atomic::Ordering, thread};
+    use super::{
+        current_settings, send_event, should_passthrough_short_key, PttEvent, PttSource,
+        KEY_IS_DOWN, KEY_PRESS_ID, KEY_RECORDING_ACTIVE, MOUSE_IS_DOWN,
+    };
+    use std::{mem::MaybeUninit, ptr::null_mut, sync::atomic::Ordering, thread, time::Duration};
     use windows_sys::Win32::{
         Foundation::{LPARAM, LRESULT, WPARAM},
-        UI::WindowsAndMessaging::{
-            CallNextHookEx, GetMessageW, SetWindowsHookExW, HHOOK, KBDLLHOOKSTRUCT, MSG,
-            MSLLHOOKSTRUCT, WH_KEYBOARD_LL, WH_MOUSE_LL, WM_KEYDOWN, WM_KEYUP, WM_SYSKEYDOWN,
-            WM_SYSKEYUP, WM_XBUTTONDOWN, WM_XBUTTONUP,
+        UI::{
+            Input::KeyboardAndMouse::{
+                SendInput, INPUT, INPUT_0, INPUT_KEYBOARD, KEYBDINPUT, KEYEVENTF_KEYUP, VIRTUAL_KEY,
+            },
+            WindowsAndMessaging::{
+                CallNextHookEx, GetMessageW, SetWindowsHookExW, HHOOK, KBDLLHOOKSTRUCT, MSG,
+                MSLLHOOKSTRUCT, WH_KEYBOARD_LL, WH_MOUSE_LL, WM_KEYDOWN, WM_KEYUP, WM_SYSKEYDOWN,
+                WM_SYSKEYUP, WM_XBUTTONDOWN, WM_XBUTTONUP,
+            },
         },
     };
+
+    const LLKHF_INJECTED: u32 = 0x10;
 
     pub fn spawn_hook_thread() {
         let _ = thread::Builder::new()
@@ -197,15 +217,42 @@ mod platform {
             if let Some(settings) = current_settings() {
                 if settings.enabled {
                     let keyboard = unsafe { &*(lparam as *const KBDLLHOOKSTRUCT) };
+                    if keyboard.flags & LLKHF_INJECTED != 0 {
+                        return unsafe { CallNextHookEx(null_mut(), code, wparam, lparam) };
+                    }
                     if settings.key_code == Some(keyboard.vkCode) {
                         match wparam as u32 {
                             WM_KEYDOWN | WM_SYSKEYDOWN => {
                                 if !KEY_IS_DOWN.swap(true, Ordering::SeqCst) {
-                                    send_event(PttEvent::Pressed(PttSource::Keyboard));
+                                    KEY_RECORDING_ACTIVE.store(false, Ordering::SeqCst);
+                                    let press_id = KEY_PRESS_ID.fetch_add(1, Ordering::SeqCst) + 1;
+                                    if settings.hold_threshold_ms == 0 {
+                                        KEY_RECORDING_ACTIVE.store(true, Ordering::SeqCst);
+                                        send_event(PttEvent::Pressed(PttSource::Keyboard));
+                                    } else {
+                                        let threshold =
+                                            Duration::from_millis(settings.hold_threshold_ms);
+                                        thread::spawn(move || {
+                                            thread::sleep(threshold);
+                                            if KEY_IS_DOWN.load(Ordering::SeqCst)
+                                                && KEY_PRESS_ID.load(Ordering::SeqCst) == press_id
+                                            {
+                                                KEY_RECORDING_ACTIVE.store(true, Ordering::SeqCst);
+                                                send_event(PttEvent::Pressed(PttSource::Keyboard));
+                                            }
+                                        });
+                                    }
                                 }
                             }
                             WM_KEYUP | WM_SYSKEYUP if KEY_IS_DOWN.swap(false, Ordering::SeqCst) => {
-                                send_event(PttEvent::Released(PttSource::Keyboard));
+                                KEY_PRESS_ID.fetch_add(1, Ordering::SeqCst);
+                                if KEY_RECORDING_ACTIVE.swap(false, Ordering::SeqCst) {
+                                    send_event(PttEvent::Released(PttSource::Keyboard));
+                                } else if settings.suppress
+                                    && should_passthrough_short_key(settings.key_code)
+                                {
+                                    send_key_tap(keyboard.vkCode);
+                                }
                             }
                             _ => {}
                         }
@@ -217,6 +264,35 @@ mod platform {
             }
         }
         unsafe { CallNextHookEx(null_mut(), code, wparam, lparam) }
+    }
+
+    fn send_key_tap(key_code: u32) {
+        let inputs = [
+            keyboard_input(key_code as VIRTUAL_KEY, false),
+            keyboard_input(key_code as VIRTUAL_KEY, true),
+        ];
+        unsafe {
+            let _ = SendInput(
+                inputs.len() as u32,
+                inputs.as_ptr(),
+                std::mem::size_of::<INPUT>() as i32,
+            );
+        }
+    }
+
+    fn keyboard_input(vk: VIRTUAL_KEY, key_up: bool) -> INPUT {
+        INPUT {
+            r#type: INPUT_KEYBOARD,
+            Anonymous: INPUT_0 {
+                ki: KEYBDINPUT {
+                    wVk: vk,
+                    wScan: 0,
+                    dwFlags: if key_up { KEYEVENTF_KEYUP } else { 0 },
+                    time: 0,
+                    dwExtraInfo: 0,
+                },
+            },
+        }
     }
 
     unsafe extern "system" fn mouse_proc(code: i32, wparam: WPARAM, lparam: LPARAM) -> LRESULT {
@@ -287,6 +363,7 @@ mod tests {
         assert_eq!(settings.key_code, Some(vk::CAPS_LOCK));
         assert_eq!(settings.mouse_button, Some(mouse::X2));
         assert!(settings.suppress);
+        assert_eq!(settings.hold_threshold_ms, 180);
     }
 
     #[test]
@@ -299,5 +376,12 @@ mod tests {
         let settings = HookSettings::from_input(&input);
         assert_eq!(settings.key_code, None);
         assert_eq!(settings.mouse_button, None);
+    }
+
+    #[test]
+    fn only_capslock_short_press_passes_through() {
+        assert!(should_passthrough_short_key(Some(vk::CAPS_LOCK)));
+        assert!(!should_passthrough_short_key(Some(vk::F8)));
+        assert!(!should_passthrough_short_key(None));
     }
 }

@@ -8,6 +8,7 @@
 - Added a versioned model manifest and a core portable package strategy so the app body can be tested and upgraded separately from large ASR/LLM model packs.
 - Added `hot.txt` alias replacement and `hot-rule.txt` regex replacement, with Settings buttons to open both files.
 - Added optional push-to-talk recording with CapsLock and mouse X2 hold triggers, plus Settings controls for trigger key, mouse button, and event suppression.
+- Added a configurable push-to-talk hold threshold; short CapsLock taps are passed through while long holds start recording.
 - Added input-target logging for confirmed paste operations, recording target process, class, title, caret source, result, and paste timing under `.voice_ime/logs`.
 - Added a lightweight doctor report command and Settings button for local path, microphone, clipboard, ASR model, LLM endpoint, and user text-file checks.
 - Added built-in and editable per-app input profiles for common chat, browser, document, and IDE targets, applying safer paste delays, punctuation policy, and matched-profile logging.

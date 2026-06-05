@@ -94,6 +94,8 @@ pub struct InputConfig {
     pub ptt_mouse_button: String,
     #[serde(default = "default_ptt_suppress")]
     pub ptt_suppress: bool,
+    #[serde(default = "default_ptt_hold_threshold_ms")]
+    pub ptt_hold_threshold_ms: u64,
     #[serde(default = "default_app_profiles")]
     pub app_profiles: Vec<AppInputProfile>,
 }
@@ -227,6 +229,7 @@ impl Default for InputConfig {
             ptt_key: default_ptt_key(),
             ptt_mouse_button: default_ptt_mouse_button(),
             ptt_suppress: default_ptt_suppress(),
+            ptt_hold_threshold_ms: default_ptt_hold_threshold_ms(),
             app_profiles: default_app_profiles(),
         }
     }
@@ -396,6 +399,7 @@ fn normalize_config(config: &mut AppConfig) {
     config.input.hotkey_japanese = normalize_hotkey(&config.input.hotkey_japanese);
     config.input.ptt_key = normalize_ptt_key(&config.input.ptt_key);
     config.input.ptt_mouse_button = normalize_ptt_mouse_button(&config.input.ptt_mouse_button);
+    config.input.ptt_hold_threshold_ms = config.input.ptt_hold_threshold_ms.min(1000);
     if config.input.app_profiles.is_empty() {
         config.input.app_profiles = default_app_profiles();
     }
@@ -643,6 +647,9 @@ fn default_ptt_mouse_button() -> String {
 fn default_ptt_suppress() -> bool {
     true
 }
+fn default_ptt_hold_threshold_ms() -> u64 {
+    180
+}
 fn default_app_profiles() -> Vec<AppInputProfile> {
     vec![
         app_profile("微信", "WeChat.exe", 80, "short-no-period"),
@@ -797,12 +804,15 @@ mod tests {
         assert_eq!(cfg.input.ptt_key, "CapsLock");
         assert_eq!(cfg.input.ptt_mouse_button, "X2");
         assert!(cfg.input.ptt_suppress);
+        assert_eq!(cfg.input.ptt_hold_threshold_ms, 180);
 
         cfg.input.ptt_key = "caps".into();
         cfg.input.ptt_mouse_button = "mouse4".into();
+        cfg.input.ptt_hold_threshold_ms = 2_000;
         normalize_config(&mut cfg);
         assert_eq!(cfg.input.ptt_key, "CapsLock");
         assert_eq!(cfg.input.ptt_mouse_button, "X1");
+        assert_eq!(cfg.input.ptt_hold_threshold_ms, 1_000);
 
         cfg.input.ptt_key = "unknown".into();
         cfg.input.ptt_mouse_button = "unknown".into();

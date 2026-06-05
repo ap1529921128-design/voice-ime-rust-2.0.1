@@ -21,7 +21,7 @@ Voice IME Rust 2.0.1 is the first hardened portable release after the Rust/Tauri
    - `下载`: download the files for that profile.
    - `选择`: point the profile to a model folder on another drive.
 4. Confirm that Settings / Models shows the ASR profile as ready.
-5. Hold `CapsLock` or mouse `X2`, speak, then release to transcribe.
+5. Hold `CapsLock` or mouse `X2`, speak, then release to transcribe. A short `CapsLock` tap still passes through as CapsLock.
 
 The app never sends Enter automatically. Confirmed text is pasted into the target app; if the caret cannot be located, the main confirmation box remains the fallback.
 
