@@ -353,6 +353,45 @@ fn export_history_csv(app: AppHandle, state: State<'_, AppState>) -> Result<UiSn
 }
 
 #[tauri::command]
+fn run_asr_benchmark(
+    app: AppHandle,
+    state: State<'_, AppState>,
+    samples_dir: String,
+) -> UiSnapshot {
+    let samples_path = PathBuf::from(samples_dir);
+    let snapshot = state.set_runtime_notice(
+        &app,
+        "ASR 基准中",
+        format!("样本目录：{}", samples_path.to_string_lossy()),
+    );
+    let config = snapshot.config.clone();
+    let paths = state.paths.clone();
+    let app_handle = app.clone();
+    std::thread::spawn(move || {
+        let result = benchmark::run_asr(&samples_path, &paths, &config);
+        let Some(state) = app_handle.try_state::<AppState>() else {
+            return;
+        };
+        match result {
+            Ok(report) => {
+                state.set_runtime_notice(
+                    &app_handle,
+                    "ASR 基准完成",
+                    format!(
+                        "{} 个样本，{} 个错误；{}",
+                        report.sample_count, report.error_count, report.output_path
+                    ),
+                );
+            }
+            Err(err) => {
+                state.set_runtime_notice(&app_handle, "ASR 基准失败", err.to_string());
+            }
+        }
+    });
+    snapshot
+}
+
+#[tauri::command]
 fn open_hotwords_file(app: AppHandle, state: State<'_, AppState>) -> Result<(), String> {
     ensure_text_file(&state.paths.hotwords_path, "# hot.txt\n").map_err(to_string)?;
     app.opener()
@@ -438,6 +477,7 @@ pub fn run() {
             hotkey_status,
             export_diagnostics,
             export_history_csv,
+            run_asr_benchmark,
             open_hotwords_file,
             open_hot_rules_file,
             hide_overlay,

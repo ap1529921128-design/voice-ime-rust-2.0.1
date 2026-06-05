@@ -3,6 +3,7 @@ use crate::{
     config::{self, Paths},
 };
 use anyhow::Result;
+use serde::Serialize;
 use std::{
     ffi::OsStr,
     fs,
@@ -10,16 +11,35 @@ use std::{
     time::Instant,
 };
 
+#[derive(Debug, Clone, Serialize)]
+pub struct AsrBenchmarkReport {
+    pub output_path: String,
+    pub sample_count: usize,
+    pub error_count: usize,
+}
+
 pub fn run_asr_cli(samples_dir: PathBuf) -> Result<()> {
     let paths = Paths::discover()?;
     let config = config::load_or_create(&paths)?;
+    let report = run_asr(&samples_dir, &paths, &config)?;
+    println!("{}", report.output_path);
+    Ok(())
+}
+
+pub fn run_asr(
+    samples_dir: &Path,
+    paths: &Paths,
+    config: &config::AppConfig,
+) -> Result<AsrBenchmarkReport> {
     paths.ensure()?;
     fs::create_dir_all(&paths.logs_dir)?;
     let output_path = paths.logs_dir.join(format!(
         "asr-benchmark-{}.csv",
         chrono::Local::now().format("%Y%m%d-%H%M%S")
     ));
-    let files = collect_wav_files(&samples_dir);
+    let files = collect_wav_files(samples_dir);
+    let sample_count = files.len();
+    let mut error_count = 0;
     let mut rows = vec![[
         "file",
         "duration_seconds",
@@ -40,6 +60,7 @@ pub fn run_asr_cli(samples_dir: PathBuf) -> Result<()> {
     .join(",")];
 
     if files.is_empty() {
+        error_count += 1;
         let samples_label = samples_dir.to_string_lossy().to_string();
         rows.push(csv_row(&[
             &samples_label,
@@ -72,7 +93,7 @@ pub fn run_asr_cli(samples_dir: PathBuf) -> Result<()> {
                 language: config.asr.language.clone(),
                 prompt: String::new(),
             };
-            asr::transcribe(&input, &config, &paths).map(|outcome| (duration_seconds, outcome))
+            asr::transcribe(&input, config, paths).map(|outcome| (duration_seconds, outcome))
         });
         match result {
             Ok((duration_seconds, outcome)) => {
@@ -117,29 +138,35 @@ pub fn run_asr_cli(samples_dir: PathBuf) -> Result<()> {
                     "",
                 ]));
             }
-            Err(err) => rows.push(csv_row(&[
-                &file_label,
-                "",
-                &config.asr.profile,
-                &config.asr.worker_mode,
-                "",
-                "",
-                &format!("{:.3}", started.elapsed().as_secs_f32()),
-                "",
-                "",
-                "",
-                "",
-                "",
-                &expected,
-                "",
-                &err.to_string(),
-            ])),
+            Err(err) => {
+                error_count += 1;
+                rows.push(csv_row(&[
+                    &file_label,
+                    "",
+                    &config.asr.profile,
+                    &config.asr.worker_mode,
+                    "",
+                    "",
+                    &format!("{:.3}", started.elapsed().as_secs_f32()),
+                    "",
+                    "",
+                    "",
+                    "",
+                    "",
+                    &expected,
+                    "",
+                    &err.to_string(),
+                ]));
+            }
         }
     }
 
     fs::write(&output_path, rows.join("\n"))?;
-    println!("{}", output_path.to_string_lossy());
-    Ok(())
+    Ok(AsrBenchmarkReport {
+        output_path: output_path.to_string_lossy().to_string(),
+        sample_count,
+        error_count,
+    })
 }
 
 fn collect_wav_files(samples_dir: &Path) -> Vec<PathBuf> {
@@ -273,5 +300,32 @@ mod tests {
         assert_eq!(score.edit_distance, 0);
         assert_eq!(score.char_error_rate, 0.0);
         assert_eq!(score.accuracy, 1.0);
+    }
+
+    #[test]
+    fn benchmark_empty_directory_writes_no_samples_row() {
+        let temp = tempfile::tempdir().unwrap();
+        let paths = Paths {
+            root_dir: temp.path().join("root"),
+            app_dir: temp.path().join(".voice_ime"),
+            config_path: temp.path().join(".voice_ime/config.json"),
+            history_path: temp.path().join(".voice_ime/history.json"),
+            prompt_path: temp.path().join(".voice_ime/personal_prompt.txt"),
+            corrections_path: temp.path().join(".voice_ime/corrections.json"),
+            hotwords_path: temp.path().join(".voice_ime/hot.txt"),
+            hot_rules_path: temp.path().join(".voice_ime/hot-rule.txt"),
+            recordings_dir: temp.path().join(".voice_ime/recordings"),
+            logs_dir: temp.path().join(".voice_ime/logs"),
+        };
+        let samples = temp.path().join("samples");
+        fs::create_dir_all(&samples).unwrap();
+
+        let report = run_asr(&samples, &paths, &config::AppConfig::default()).unwrap();
+
+        assert_eq!(report.sample_count, 0);
+        assert_eq!(report.error_count, 1);
+        let csv = fs::read_to_string(report.output_path).unwrap();
+        assert!(csv.contains("expected_chars,edit_distance,cer,accuracy"));
+        assert!(csv.contains("no wav samples found"));
     }
 }

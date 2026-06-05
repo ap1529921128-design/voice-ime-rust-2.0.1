@@ -142,6 +142,8 @@ app\VoiceIME.exe --benchmark-asr D:\voice-ime-benchmarks\asr
 
 结果会写到 `app/.voice_ime/logs/asr-benchmark-YYYYMMDD-HHMMSS.csv`，包含音频时长、当前 profile、worker 模式、后端、模型、耗时、实时率、参考文本、转写文本、字符错误率 CER、accuracy 和错误信息。样本句模板见 [docs/asr-benchmark.md](docs/asr-benchmark.md)。
 
+也可以在“设置 / 数据”点击“ASR 基准”，选择同样的样本目录后后台生成 CSV。
+
 ## 按应用输入画像
 
 内置了微信、飞书/Lark、Word、Chrome/Edge、VS Code 和 JetBrains 的输入 profile。当前版本只自动应用更稳妥的粘贴延迟，并把命中的 profile 写入输入目标日志；不会自动发送 Enter。

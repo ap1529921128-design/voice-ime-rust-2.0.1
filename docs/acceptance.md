@@ -110,7 +110,7 @@
 ## ASR Benchmark
 
 1. Prepare a directory of `.wav` files and optional same-name `.txt` expected transcripts.
-2. Run `app\VoiceIME.exe --benchmark-asr <samples-dir>` from a portable package.
+2. Run `app\VoiceIME.exe --benchmark-asr <samples-dir>` from a portable package, or open Settings / Data and click `ASR 基准` to choose the same sample directory.
 3. An `asr-benchmark-YYYYMMDD-HHMMSS.csv` file appears under `.voice_ime/logs`.
 4. The CSV includes file, duration, profile, worker mode, backend, model, transcribe seconds, realtime factor, expected text, transcript text, expected character count, edit distance, CER, accuracy, and error.
 5. If the sample directory is missing or empty, the command still writes a CSV row with `no wav samples found`.
@@ -190,7 +190,7 @@
 - Settings / Data now shows an inline diagnostics panel after running Doctor; one-click repair actions are still future work.
 - Settings / Models now has native file and directory pickers; real removable-drive acceptance should still be tested on target machines.
 - Settings / Shortcuts now shows global-hotkey registration status and re-registers after save; manual conflict coverage is still required with real third-party apps.
-- `--benchmark-asr` now provides a repeatable timing and CER/accuracy CSV harness; real quality still depends on recorded sample audio from target machines.
+- `--benchmark-asr` and Settings / Data / `ASR 基准` now provide a repeatable timing and CER/accuracy CSV harness; real quality still depends on recorded sample audio from target machines.
 - Confirm paste now restores previous text clipboard where feasible and logs restore status; manual image/file clipboard preservation is still future work.
 - Cursor positioning now logs `uia-caret` when UI Automation exposes text-range caret rectangles, then falls back to `uia-element`, guarded `uia-focused`, `gui-thread`, or `fallback`; real overlay placement still needs visual target-machine coverage.
 - Clipboard failure can now fall back to direct Unicode typing for short single-line text; broad app coverage still needs manual acceptance.

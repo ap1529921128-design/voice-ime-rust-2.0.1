@@ -651,6 +651,7 @@ function dataSettingsPanel(cfg: AppConfig) {
         <button class="tool-btn" data-action="repair-doctor">${icon("Wrench", "修复诊断")}<span>修复</span></button>
         <button class="tool-btn" data-action="export-diagnostics">${icon("Archive", "导出诊断")}<span>导出</span></button>
         <button class="tool-btn" data-action="export-history-csv">${icon("Download", "导出历史")}<span>历史 CSV</span></button>
+        <button class="tool-btn" data-action="run-asr-benchmark">${icon("Gauge", "ASR 基准")}<span>ASR 基准</span></button>
         <button class="tool-btn danger" data-action="clear-recordings">${icon("Trash2", "清理录音")}<span>清理录音</span></button>
         <button class="tool-btn" data-action="open-hotwords">${icon("BookOpen", "打开热词")}<span>热词</span></button>
         <button class="tool-btn" data-action="open-hot-rules">${icon("ListChecks", "打开规则")}<span>规则</span></button>
@@ -876,6 +877,7 @@ function wireCommon() {
       if (action === "repair-doctor") await repairDoctorReport();
       if (action === "export-diagnostics") await run("export_diagnostics");
       if (action === "export-history-csv") await run("export_history_csv");
+      if (action === "run-asr-benchmark") await runAsrBenchmark();
       if (action === "open-hotwords") await invoke("open_hotwords_file");
       if (action === "open-hot-rules") await invoke("open_hot_rules_file");
     });
@@ -1160,6 +1162,16 @@ async function installModelPack() {
   await run("install_model_pack", { packPath: selected });
   await refreshModelStatus();
   render();
+}
+
+async function runAsrBenchmark() {
+  const selected = await openDialog({
+    multiple: false,
+    directory: true,
+    title: "选择 ASR 样本目录",
+  });
+  if (typeof selected !== "string") return;
+  await run("run_asr_benchmark", { samplesDir: selected });
 }
 
 function isModelProfile(value: string): value is ModelProfile {

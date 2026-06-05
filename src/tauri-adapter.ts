@@ -48,6 +48,13 @@ function qaInvoke(command: string, args?: Record<string, unknown>) {
       meta: String(args?.packPath || "QA model pack"),
     };
   }
+  if (command === "run_asr_benchmark") {
+    return {
+      ...qaSnapshot,
+      status: "ASR 基准中",
+      meta: String(args?.samplesDir || "QA samples"),
+    };
+  }
   if (command === "set_text") {
     const text = String(args?.text || "");
     qaSnapshot = { ...qaSnapshot, text, word_count: Array.from(text).length };
