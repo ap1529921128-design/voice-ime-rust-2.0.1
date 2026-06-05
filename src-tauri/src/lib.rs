@@ -57,6 +57,16 @@ enum HotkeyCheckStatus {
     Fail,
 }
 
+#[derive(Debug, Clone, Serialize)]
+struct ModelRootOverrideStatus {
+    file_path: String,
+    exists: bool,
+    value: String,
+    effective_root: String,
+    effective_source: String,
+    env_override_active: bool,
+}
+
 #[tauri::command]
 fn get_snapshot(state: State<'_, AppState>) -> UiSnapshot {
     state.snapshot()
@@ -239,6 +249,52 @@ fn install_model_pack(
             report.output_dir
         ),
     ))
+}
+
+#[tauri::command]
+fn model_root_override_status(state: State<'_, AppState>) -> ModelRootOverrideStatus {
+    let snapshot = state.snapshot();
+    let file_path = config::model_root_override_path(&state.paths);
+    ModelRootOverrideStatus {
+        file_path: file_path.to_string_lossy().to_string(),
+        exists: file_path.is_file(),
+        value: config::model_root_override_value(&state.paths).unwrap_or_default(),
+        effective_root: config::effective_model_root(&snapshot.config, &state.paths)
+            .to_string_lossy()
+            .to_string(),
+        effective_source: config::effective_model_root_source(&snapshot.config, &state.paths)
+            .to_string(),
+        env_override_active: std::env::var_os("VOICE_IME_MODEL_DIR").is_some(),
+    }
+}
+
+#[tauri::command]
+fn write_model_root_override(
+    app: AppHandle,
+    state: State<'_, AppState>,
+    model_root: String,
+) -> Result<UiSnapshot, String> {
+    let written =
+        config::write_model_root_override(&state.paths, &model_root).map_err(to_string)?;
+    Ok(state.set_runtime_notice(
+        &app,
+        "便携模型目录已写入",
+        format!("MODEL_ROOT.txt -> {}", written.to_string_lossy()),
+    ))
+}
+
+#[tauri::command]
+fn clear_model_root_override(
+    app: AppHandle,
+    state: State<'_, AppState>,
+) -> Result<UiSnapshot, String> {
+    let removed = config::clear_model_root_override(&state.paths).map_err(to_string)?;
+    let detail = if removed {
+        "已清除 MODEL_ROOT.txt"
+    } else {
+        "MODEL_ROOT.txt 原本不存在"
+    };
+    Ok(state.set_runtime_notice(&app, "便携模型目录已清除", detail))
 }
 
 #[tauri::command]
@@ -613,6 +669,9 @@ pub fn run() {
             asr_status,
             download_asr_model,
             install_model_pack,
+            model_root_override_status,
+            write_model_root_override,
+            clear_model_root_override,
             prewarm_asr,
             open_model_download_page,
             open_model_mirror_page,

@@ -132,6 +132,15 @@ type AsrModelStatus = {
   missing_files: string[];
 };
 
+type ModelRootOverrideStatus = {
+  file_path: string;
+  exists: boolean;
+  value: string;
+  effective_root: string;
+  effective_source: string;
+  env_override_active: boolean;
+};
+
 type AudioDeviceInfo = {
   index: number;
   name: string;
@@ -207,6 +216,7 @@ const app = document.querySelector<HTMLDivElement>("#app")!;
 const isOverlay = currentWindowLabel() === "overlay";
 let snapshot: Snapshot | null = null;
 let statusRows: AsrModelStatus[] = [];
+let modelRootOverride: ModelRootOverrideStatus | null = null;
 let audioDevices: AudioDeviceInfo[] = [];
 let audioLevel: AudioLevelInfo | null = null;
 let audioDeviceError = "";
@@ -818,6 +828,7 @@ function modelSettingsPanel(cfg: AppConfig) {
           .join("")}
       </div>
       ${modelRootField(cfg.asr.model_root)}
+      ${modelRootOverridePanel()}
       ${modelPathField("fast 模型", "asr.models.zipformer_ctc_model", cfg.asr.models.zipformer_ctc_model)}
       ${modelPathField("fast tokens", "asr.models.zipformer_ctc_tokens", cfg.asr.models.zipformer_ctc_tokens)}
       ${modelPathField("balanced 模型", "asr.models.sense_voice_model", cfg.asr.models.sense_voice_model)}
@@ -829,6 +840,30 @@ function modelSettingsPanel(cfg: AppConfig) {
         <button class="tool-btn" data-action="open-model-dir">${icon("FolderOpen", "打开模型目录")}<span>模型目录</span></button>
         <button class="tool-btn" data-action="install-model-pack">${icon("PackageOpen", "导入模型包")}<span>导入包</span></button>
         <button class="tool-btn" data-action="prewarm-asr">${icon("Flame", "预热 ASR")}<span>预热</span></button>
+      </div>
+    </div>
+  `;
+}
+
+function modelRootOverridePanel() {
+  const status = modelRootOverride;
+  const source = status?.effective_source || "unknown";
+  const active = source === "MODEL_ROOT.txt";
+  const env = status?.env_override_active;
+  const badge = env ? "环境变量" : active ? "便携根" : source === "asr.model_root" ? "设置页" : "默认";
+  const root = status?.effective_root || "未加载";
+  const file = status?.file_path || "MODEL_ROOT.txt";
+  const value = status?.value || "未写入";
+  return `
+    <div class="model-root-card ${active ? "active" : ""}">
+      <div class="model-root-copy">
+        <strong>${badge}</strong>
+        <span title="${escapeAttr(root)}">${escapeHtml(shortPath(root))}</span>
+        <small title="${escapeAttr(file)}">${escapeHtml(value === "未写入" ? fileNameFromPath(file) : value)}</small>
+      </div>
+      <div class="model-root-actions">
+        <button class="mini-action" data-action="write-model-root-override" title="写入 MODEL_ROOT.txt">${icon("Save", "写入便携模型目录")}<span>写入便携</span></button>
+        <button class="mini-action" data-action="clear-model-root-override" title="清除 MODEL_ROOT.txt">${icon("Unlink", "清除便携模型目录")}<span>清除</span></button>
       </div>
     </div>
   `;
@@ -1128,6 +1163,8 @@ function wireCommon() {
       if (action === "pick-model-root") await pickModelRootDirectory();
       if (action === "pick-model-dir") await pickModelDirectory(button.dataset.profile || "");
       if (action === "install-model-pack") await installModelPack();
+      if (action === "write-model-root-override") await writeModelRootOverride();
+      if (action === "clear-model-root-override") await clearModelRootOverride();
       if (action === "prewarm-asr") await run("prewarm_asr");
       if (action === "open-model-mirror") await invoke("open_model_mirror_page", { profile: button.dataset.profile || "" });
       if (action === "open-model-page") await invoke("open_model_download_page", { profile: button.dataset.profile || "" });
@@ -1188,6 +1225,7 @@ function wireMain() {
       activeView = tab.dataset.view as typeof activeView;
       if (activeView === "settings") {
         statusRows = await invoke<AsrModelStatus[]>("asr_status");
+        await refreshModelRootOverrideStatus();
         if (activeSettingsTab === "smart") {
           await refreshLlmServiceStatus(false);
           await refreshPersonalPrompt(false);
@@ -1200,6 +1238,10 @@ function wireMain() {
   app.querySelectorAll<HTMLButtonElement>("[data-settings-tab]").forEach((tab) => {
     tab.addEventListener("click", async () => {
       activeSettingsTab = tab.dataset.settingsTab as typeof activeSettingsTab;
+      if (activeSettingsTab === "models") {
+        await refreshModelStatus();
+        await refreshModelRootOverrideStatus();
+      }
       if (activeSettingsTab === "voice") await refreshAudioDevices(false);
       if (activeSettingsTab === "smart") {
         await refreshLlmServiceStatus(false);
@@ -1414,7 +1456,10 @@ function configInputValue(input: HTMLInputElement | HTMLSelectElement) {
 async function saveConfigDraft(next: AppConfig) {
   await run("save_config", { config: next });
   if (activeView === "settings") {
-    if (activeSettingsTab === "models") await refreshModelStatus();
+    if (activeSettingsTab === "models") {
+      await refreshModelStatus();
+      await refreshModelRootOverrideStatus();
+    }
     if (activeSettingsTab === "smart") {
       await refreshLlmServiceStatus(false);
     }
@@ -1425,6 +1470,10 @@ async function saveConfigDraft(next: AppConfig) {
 
 async function refreshModelStatus() {
   statusRows = await invoke<AsrModelStatus[]>("asr_status");
+}
+
+async function refreshModelRootOverrideStatus() {
+  modelRootOverride = await invoke<ModelRootOverrideStatus>("model_root_override_status");
 }
 
 async function refreshHotkeyStatus() {
@@ -1536,6 +1585,23 @@ async function installModelPack() {
   if (typeof selected !== "string") return;
   await run("install_model_pack", { packPath: selected });
   await refreshModelStatus();
+  await refreshModelRootOverrideStatus();
+  render();
+}
+
+async function writeModelRootOverride() {
+  if (!snapshot) return;
+  const next = collectConfigDraft();
+  await run("write_model_root_override", { modelRoot: next.asr.model_root });
+  await refreshModelStatus();
+  await refreshModelRootOverrideStatus();
+  render();
+}
+
+async function clearModelRootOverride() {
+  await run("clear_model_root_override");
+  await refreshModelStatus();
+  await refreshModelRootOverrideStatus();
   render();
 }
 
@@ -1775,6 +1841,7 @@ async function bootstrap() {
   });
   if (!isOverlay) {
     await refreshModelStatus();
+    await refreshModelRootOverrideStatus();
   }
   render();
 }

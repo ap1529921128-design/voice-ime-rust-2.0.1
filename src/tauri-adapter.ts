@@ -7,6 +7,14 @@ const qaParams = new URLSearchParams(window.location.search);
 const qaMode = qaParams.has("qa");
 let qaSnapshot = createQaSnapshot();
 let qaPersonalPrompt = "请优先识别为简体中文，保留 Voice IME、Rust、Tauri、sherpa-onnx、llama-server。\n";
+let qaModelRootOverride = {
+  file_path: "D:/voice-ime-build-release/voice-ime-2.0.1-rust-portable/app/MODEL_ROOT.txt",
+  exists: true,
+  value: "E:/voice-ime-model-packs",
+  effective_root: "E:/voice-ime-model-packs",
+  effective_source: "MODEL_ROOT.txt",
+  env_override_active: false,
+};
 
 export function currentWindowLabel() {
   if (qaMode) return qaParams.get("window") === "overlay" ? "overlay" : "main";
@@ -37,6 +45,7 @@ export async function openDialog(options: Parameters<typeof dialogOpen>[0]) {
 function qaInvoke(command: string, args?: Record<string, unknown>) {
   if (command === "get_snapshot") return qaSnapshot;
   if (command === "asr_status") return qaModelStatus();
+  if (command === "model_root_override_status") return qaModelRootOverride;
   if (command === "audio_devices") return qaAudioDevices();
   if (command === "audio_level") return qaAudioLevel();
   if (command === "hotkey_status") return qaHotkeys();
@@ -67,6 +76,27 @@ function qaInvoke(command: string, args?: Record<string, unknown>) {
       status: "模型包已导入",
       meta: String(args?.packPath || "QA model pack"),
     };
+  }
+  if (command === "write_model_root_override") {
+    const modelRoot = String(args?.modelRoot || qaSnapshot.config.asr.model_root || "models");
+    qaModelRootOverride = {
+      ...qaModelRootOverride,
+      exists: true,
+      value: modelRoot,
+      effective_root: modelRoot,
+      effective_source: "MODEL_ROOT.txt",
+    };
+    return { ...qaSnapshot, status: "便携模型目录已写入", meta: modelRoot };
+  }
+  if (command === "clear_model_root_override") {
+    qaModelRootOverride = {
+      ...qaModelRootOverride,
+      exists: false,
+      value: "",
+      effective_root: qaSnapshot.config.asr.model_root,
+      effective_source: "asr.model_root",
+    };
+    return { ...qaSnapshot, status: "便携模型目录已清除", meta: "QA mock" };
   }
   if (command === "run_asr_benchmark") {
     return {

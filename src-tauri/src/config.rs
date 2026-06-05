@@ -640,10 +640,7 @@ fn discover_root_dir() -> PathBuf {
 }
 
 fn discover_model_dir(root_dir: &Path) -> PathBuf {
-    if let Some(env_root) = std::env::var_os("VOICE_IME_MODEL_DIR") {
-        return absolutize(root_dir, PathBuf::from(env_root));
-    }
-    model_root_file(root_dir).unwrap_or_else(|| root_dir.join("models"))
+    root_dir.join("models")
 }
 
 pub fn effective_model_root(config: &AppConfig, paths: &Paths) -> PathBuf {
@@ -675,6 +672,43 @@ pub fn effective_model_root_source(config: &AppConfig, paths: &Paths) -> &'stati
     }
 }
 
+pub fn model_root_override_path(paths: &Paths) -> PathBuf {
+    paths.root_dir.join("MODEL_ROOT.txt")
+}
+
+pub fn model_root_override_value(paths: &Paths) -> Option<String> {
+    model_root_file_value(&paths.root_dir)
+}
+
+pub fn resolve_model_root_value(paths: &Paths, value: &str) -> Result<PathBuf> {
+    let value = normalize_model_root(value);
+    if value.trim().is_empty() {
+        return Err(anyhow!("模型根目录不能为空"));
+    }
+    Ok(absolutize(&paths.root_dir, PathBuf::from(value)))
+}
+
+pub fn write_model_root_override(paths: &Paths, model_root: &str) -> Result<PathBuf> {
+    let target = resolve_model_root_value(paths, model_root)?;
+    fs::create_dir_all(&target)
+        .with_context(|| format!("创建模型根目录 {}", target.to_string_lossy()))?;
+    let body = format!(
+        "# Voice IME portable model root\n# This file is read before .voice_ime/config.json.\n{}\n",
+        target.to_string_lossy()
+    );
+    fs::write(model_root_override_path(paths), body).context("write MODEL_ROOT.txt")?;
+    Ok(target)
+}
+
+pub fn clear_model_root_override(paths: &Paths) -> Result<bool> {
+    let path = model_root_override_path(paths);
+    if !path.exists() {
+        return Ok(false);
+    }
+    fs::remove_file(&path).with_context(|| format!("remove {}", path.to_string_lossy()))?;
+    Ok(true)
+}
+
 pub fn resolve_model_path(config: &AppConfig, paths: &Paths, configured: &str) -> PathBuf {
     let configured = configured.trim();
     let path = PathBuf::from(configured);
@@ -699,11 +733,15 @@ fn absolutize(root_dir: &Path, path: PathBuf) -> PathBuf {
 }
 
 fn model_root_file(root_dir: &Path) -> Option<PathBuf> {
+    model_root_file_value(root_dir).map(|value| absolutize(root_dir, PathBuf::from(value)))
+}
+
+fn model_root_file_value(root_dir: &Path) -> Option<String> {
     let text = fs::read_to_string(root_dir.join("MODEL_ROOT.txt")).ok()?;
     text.lines()
         .map(|line| line.trim().trim_start_matches('\u{feff}').trim())
         .find(|line| !line.is_empty() && !line.starts_with('#'))
-        .map(|line| absolutize(root_dir, PathBuf::from(line)))
+        .map(str::to_string)
 }
 
 pub(crate) const DEFAULT_PERSONAL_PROMPT: &str = "请优先识别为简体中文，保留常见英文工具名和技术名词。\n常用词：Codex, Claude Code, ChatGPT, OpenAI, GitHub, Python, PowerShell, Windows, macOS, ASR, GUI, MVP, PRD, faster-whisper, FunASR, SenseVoice, sherpa-onnx, whisper.cpp, llama-server, MiniCPM, Rust, Tauri。\n常用表达：不要自动发送，放到输入框等我确认；帮我整理需求；帮我判断有没有搞头；问问老金；先做最小验证；移动硬盘环境；最小化到托盘。\n";
@@ -1004,6 +1042,62 @@ mod tests {
             resolve_model_path(&cfg, &paths, "models/foo/bar.onnx"),
             shared.join("foo/bar.onnx")
         );
+    }
+
+    #[test]
+    fn packaged_model_dir_stays_under_app_when_override_exists() {
+        let temp = tempfile::tempdir().unwrap();
+        let shared = temp.path().join("shared-models");
+        std::fs::write(
+            temp.path().join("MODEL_ROOT.txt"),
+            format!("{}\n", shared.display()),
+        )
+        .unwrap();
+
+        assert_eq!(discover_model_dir(temp.path()), temp.path().join("models"));
+
+        let paths = temp_paths(temp.path());
+        assert_eq!(paths.model_dir, temp.path().join("models"));
+        assert_eq!(
+            effective_model_root(&AppConfig::default(), &paths),
+            shared.clone()
+        );
+    }
+
+    #[test]
+    fn writes_and_clears_portable_model_root_override() {
+        let temp = tempfile::tempdir().unwrap();
+        let paths = temp_paths(temp.path());
+        let shared = temp.path().join("shared-models");
+
+        let written = write_model_root_override(&paths, &shared.to_string_lossy()).unwrap();
+
+        assert_eq!(written, shared);
+        assert!(model_root_override_path(&paths).is_file());
+        assert_eq!(
+            model_root_override_value(&paths),
+            Some(shared.to_string_lossy().to_string())
+        );
+        assert_eq!(
+            effective_model_root(&AppConfig::default(), &paths),
+            shared.clone()
+        );
+        assert_eq!(
+            effective_model_root_source(&AppConfig::default(), &paths),
+            "MODEL_ROOT.txt"
+        );
+
+        assert!(clear_model_root_override(&paths).unwrap());
+        assert!(!model_root_override_path(&paths).exists());
+        assert_eq!(
+            effective_model_root(&AppConfig::default(), &paths),
+            temp.path().join("models")
+        );
+        assert_eq!(
+            effective_model_root_source(&AppConfig::default(), &paths),
+            "default"
+        );
+        assert!(!clear_model_root_override(&paths).unwrap());
     }
 
     #[test]

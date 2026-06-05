@@ -47,4 +47,4 @@ The release gate passed on the build machine for:
 
 Real target-machine checks are still needed for WeChat/Feishu, Word/document editors, IDEs, multiple microphones, and long recordings.
 
-Model/app separation now supports `VOICE_IME_MODEL_DIR`, `app/MODEL_ROOT.txt`, and Settings / Models / `模型根目录`. Relative `models/...` paths are resolved under that effective model root, so a core app body can be moved between machines while ASR and MiniCPM model packs stay in one external repository.
+Model/app separation now supports `VOICE_IME_MODEL_DIR`, `app/MODEL_ROOT.txt`, and Settings / Models / `模型根目录`. Settings / Models can now write or clear `MODEL_ROOT.txt` from the UI, while packaged `app/models/MODELS.json/md` remains the manifest and repair source. Relative `models/...` paths are resolved under the effective model root, so a core app body can be moved between machines while ASR and MiniCPM model packs stay in one external repository.

@@ -710,6 +710,54 @@ select:disabled {
   gap: 8px;
 }
 
+.model-root-card {
+  display: flex;
+  grid-column: 1 / -1;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  min-width: 0;
+  border-radius: 14px;
+  padding: 12px 14px;
+  background: rgba(255, 255, 255, 0.46);
+}
+
+.model-root-card.active {
+  box-shadow: inset 3px 0 0 #315d93;
+}
+
+.model-root-copy {
+  display: grid;
+  min-width: 0;
+  gap: 3px;
+}
+
+.model-root-copy strong,
+.model-root-copy span,
+.model-root-copy small {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.model-root-copy strong {
+  color: #0a1f3d;
+}
+
+.model-root-copy span,
+.model-root-copy small {
+  color: #5f6d78;
+  font-size: 12px;
+}
+
+.model-root-actions {
+  display: flex;
+  flex: 0 0 auto;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 6px;
+}
+
 .model-row {
   display: flex;
   align-items: center;
@@ -974,8 +1022,14 @@ select:disabled {
     flex-direction: column;
   }
 
-  .model-actions {
+  .model-actions,
+  .model-root-actions {
     justify-content: flex-start;
+  }
+
+  .model-root-card {
+    align-items: stretch;
+    flex-direction: column;
   }
 
   .app-profile-row {
