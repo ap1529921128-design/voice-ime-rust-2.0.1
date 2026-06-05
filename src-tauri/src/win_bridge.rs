@@ -14,7 +14,9 @@ use windows::Win32::System::{
     Variant::VT_R8,
 };
 use windows_sys::Win32::Foundation::{CloseHandle, HWND, POINT, RECT};
-use windows_sys::Win32::Graphics::Gdi::ClientToScreen;
+use windows_sys::Win32::Graphics::Gdi::{
+    ClientToScreen, GetMonitorInfoW, MonitorFromPoint, MONITORINFO, MONITOR_DEFAULTTONEAREST,
+};
 use windows_sys::Win32::System::DataExchange::{
     CountClipboardFormats, GetClipboardSequenceNumber, IsClipboardFormatAvailable,
 };
@@ -29,6 +31,11 @@ use windows_sys::Win32::UI::WindowsAndMessaging::{
     GetClassNameW, GetForegroundWindow, GetGUIThreadInfo, GetWindowTextLengthW, GetWindowTextW,
     GetWindowThreadProcessId, SetForegroundWindow, GUITHREADINFO,
 };
+
+const OVERLAY_WIDTH: i32 = 480;
+const OVERLAY_HEIGHT: i32 = 242;
+const OVERLAY_GAP: i32 = 12;
+const OVERLAY_MARGIN: i32 = 16;
 
 const CF_TEXT_FORMAT: u32 = 1;
 const CF_BITMAP_FORMAT: u32 = 2;
@@ -393,19 +400,105 @@ fn wide_to_string(buffer: &[u16], copied: i32) -> String {
 }
 
 pub fn overlay_position_from_rect(rect: Option<OverlayRect>) -> OverlayRect {
+    let desired = overlay_position_unclamped(rect);
+    let anchor = rect.unwrap_or(desired);
+    if let Some(bounds) = monitor_work_area(anchor) {
+        overlay_position_in_bounds(rect, bounds)
+    } else {
+        desired
+    }
+}
+
+fn overlay_position_unclamped(rect: Option<OverlayRect>) -> OverlayRect {
     let Some(rect) = rect else {
         return OverlayRect {
             x: 120,
             y: 120,
-            width: 480,
-            height: 242,
+            width: OVERLAY_WIDTH,
+            height: OVERLAY_HEIGHT,
         };
     };
     OverlayRect {
-        x: rect.x.max(16),
-        y: (rect.y + rect.height + 12).max(16),
-        width: 480,
-        height: 242,
+        x: rect.x.max(OVERLAY_MARGIN),
+        y: (rect.y + rect.height + OVERLAY_GAP).max(OVERLAY_MARGIN),
+        width: OVERLAY_WIDTH,
+        height: OVERLAY_HEIGHT,
+    }
+}
+
+fn overlay_position_in_bounds(rect: Option<OverlayRect>, bounds: OverlayRect) -> OverlayRect {
+    let mut overlay = overlay_position_unclamped(rect);
+    if let Some(caret) = rect {
+        let bottom_limit = bounds.y + bounds.height - OVERLAY_MARGIN;
+        let below_bottom = overlay.y + overlay.height;
+        let above_y = caret.y - overlay.height - OVERLAY_GAP;
+        if below_bottom > bottom_limit && above_y >= bounds.y + OVERLAY_MARGIN {
+            overlay.y = above_y;
+        }
+    }
+    clamp_overlay_to_bounds(overlay, bounds)
+}
+
+fn clamp_overlay_to_bounds(overlay: OverlayRect, bounds: OverlayRect) -> OverlayRect {
+    let min_x = bounds.x + OVERLAY_MARGIN;
+    let min_y = bounds.y + OVERLAY_MARGIN;
+    let max_x = bounds.x + bounds.width - overlay.width - OVERLAY_MARGIN;
+    let max_y = bounds.y + bounds.height - overlay.height - OVERLAY_MARGIN;
+    OverlayRect {
+        x: clamp_axis(overlay.x, min_x, max_x),
+        y: clamp_axis(overlay.y, min_y, max_y),
+        width: overlay.width,
+        height: overlay.height,
+    }
+}
+
+fn clamp_axis(value: i32, min: i32, max: i32) -> i32 {
+    if max < min {
+        min
+    } else {
+        value.clamp(min, max)
+    }
+}
+
+fn monitor_work_area(anchor: OverlayRect) -> Option<OverlayRect> {
+    unsafe {
+        let point = POINT {
+            x: anchor.x,
+            y: anchor.y,
+        };
+        let monitor = MonitorFromPoint(point, MONITOR_DEFAULTTONEAREST);
+        if monitor.is_null() {
+            return None;
+        }
+        let mut info = MONITORINFO {
+            cbSize: std::mem::size_of::<MONITORINFO>() as u32,
+            rcMonitor: RECT {
+                left: 0,
+                top: 0,
+                right: 0,
+                bottom: 0,
+            },
+            rcWork: RECT {
+                left: 0,
+                top: 0,
+                right: 0,
+                bottom: 0,
+            },
+            dwFlags: 0,
+        };
+        if GetMonitorInfoW(monitor, &mut info) == 0 {
+            return None;
+        }
+        Some(rect_from_win_rect(info.rcWork))
+    }
+}
+
+fn rect_from_win_rect(rect: RECT) -> OverlayRect {
+    OverlayRect {
+        x: rect.left,
+        y: rect.top,
+        width: (rect.right - rect.left).max(1),
+        height: (rect.bottom - rect.top).max(1),
     }
 }
 
@@ -711,6 +804,67 @@ mod tests {
         assert!(caret_rect_from_bounding_values(&[]).is_none());
         assert!(caret_rect_from_bounding_values(&[-40_000.0, 10.0, 2.0, 18.0]).is_none());
         assert!(caret_rect_from_bounding_values(&[10.0, 10.0, 2.0, 0.5]).is_none());
+    }
+
+    #[test]
+    fn overlay_position_clamps_to_right_edge() {
+        let bounds = OverlayRect {
+            x: 0,
+            y: 0,
+            width: 800,
+            height: 600,
+        };
+        let caret = OverlayRect {
+            x: 760,
+            y: 120,
+            width: 2,
+            height: 22,
+        };
+
+        let overlay = overlay_position_in_bounds(Some(caret), bounds);
+
+        assert_eq!(overlay.x, 304);
+        assert_eq!(overlay.y, 154);
+        assert_eq!(overlay.width, OVERLAY_WIDTH);
+        assert_eq!(overlay.height, OVERLAY_HEIGHT);
+    }
+
+    #[test]
+    fn overlay_position_flips_above_when_bottom_would_overflow() {
+        let bounds = OverlayRect {
+            x: 0,
+            y: 0,
+            width: 1000,
+            height: 600,
+        };
+        let caret = OverlayRect {
+            x: 300,
+            y: 520,
+            width: 2,
+            height: 22,
+        };
+
+        let overlay = overlay_position_in_bounds(Some(caret), bounds);
+
+        assert_eq!(overlay.x, 300);
+        assert_eq!(overlay.y, 266);
+    }
+
+    #[test]
+    fn overlay_position_handles_tiny_bounds() {
+        let bounds = OverlayRect {
+            x: 50,
+            y: 40,
+            width: 300,
+            height: 180,
+        };
+
+        let overlay = overlay_position_in_bounds(None, bounds);
+
+        assert_eq!(overlay.x, 66);
+        assert_eq!(overlay.y, 56);
+        assert_eq!(overlay.width, OVERLAY_WIDTH);
+        assert_eq!(overlay.height, OVERLAY_HEIGHT);
     }
 
     #[test]
