@@ -160,6 +160,19 @@ type RepairReport = {
   doctor: DoctorReport;
 };
 
+type LlmServiceStatus = {
+  endpoint: string;
+  models_url: string;
+  is_local: boolean;
+  reachable: boolean;
+  script_path: string;
+  script_exists: boolean;
+  model_path: string;
+  model_exists: boolean;
+  server_path: string;
+  server_exists: boolean;
+};
+
 type HotkeyCheck = {
   name: string;
   shortcut: string;
@@ -182,6 +195,7 @@ let audioProbeTimer: number | undefined;
 let audioProbeInFlight = false;
 let doctorReport: DoctorReport | null = null;
 let repairReport: RepairReport | null = null;
+let llmServiceStatus: LlmServiceStatus | null = null;
 let hotkeyRows: HotkeyCheck[] = [];
 let hotkeyCapturePath: string | null = null;
 let activeView: "compose" | "settings" | "history" = "compose";
@@ -574,6 +588,57 @@ function smartSettingsPanel(cfg: AppConfig) {
       <label>外部翻译命令
         <input value="${escapeAttr(cfg.translation.external_command)}" data-config="translation.external_command" />
       </label>
+      <div class="settings-tools">
+        <button class="tool-btn" data-action="check-llm-service">${icon("Activity", "检查本地 LLM")}<span>检查服务</span></button>
+        <button class="tool-btn" data-action="start-llm-service">${icon("Power", "启动本地 LLM")}<span>启动服务</span></button>
+      </div>
+      ${llmServicePanel()}
+    </div>
+  `;
+}
+
+function llmServicePanel() {
+  if (!llmServiceStatus) {
+    return `
+      <div class="doctor-panel empty-diagnostics">
+        <div class="doctor-head">
+          <strong>本地 LLM</strong>
+          <span>尚未检查</span>
+        </div>
+      </div>
+    `;
+  }
+  const rows: DoctorCheck[] = [
+    {
+      name: "端点",
+      status: llmServiceStatus.is_local ? (llmServiceStatus.reachable ? "pass" : "warn") : "warn",
+      detail: llmServiceStatus.models_url || llmServiceStatus.endpoint || "未配置",
+    },
+    {
+      name: "脚本",
+      status: llmServiceStatus.script_exists ? "pass" : "warn",
+      detail: llmServiceStatus.script_path,
+    },
+    {
+      name: "模型",
+      status: llmServiceStatus.model_exists ? "pass" : "warn",
+      detail: llmServiceStatus.model_path,
+    },
+    {
+      name: "服务端",
+      status: llmServiceStatus.server_exists ? "pass" : "warn",
+      detail: llmServiceStatus.server_path,
+    },
+  ];
+  return `
+    <div class="doctor-panel">
+      <div class="doctor-head">
+        <strong>${llmServiceStatus.reachable ? "本地 LLM 可用" : "本地 LLM 未就绪"}</strong>
+        <span>${llmServiceStatus.is_local ? "local" : "remote"}</span>
+      </div>
+      <div class="doctor-list">
+        ${rows.map((row) => doctorRow(row)).join("")}
+      </div>
     </div>
   `;
 }
@@ -864,6 +929,8 @@ function wireCommon() {
       if (action === "save-config") await saveConfig();
       if (action === "refresh-audio-devices") await refreshAudioDevices(true);
       if (action === "capture-hotkey") captureHotkey(button.dataset.configPath || "");
+      if (action === "check-llm-service") await refreshLlmServiceStatus(true);
+      if (action === "start-llm-service") await startLlmService();
       if (action === "download-model") await downloadModel(button.dataset.profile || "");
       if (action === "pick-model-file") await pickModelFile(button.dataset.configPath || "");
       if (action === "pick-model-dir") await pickModelDirectory(button.dataset.profile || "");
@@ -927,6 +994,7 @@ function wireMain() {
       activeView = tab.dataset.view as typeof activeView;
       if (activeView === "settings") {
         statusRows = await invoke<AsrModelStatus[]>("asr_status");
+        if (activeSettingsTab === "smart") await refreshLlmServiceStatus(false);
         await refreshHotkeyStatus();
       }
       render();
@@ -936,6 +1004,7 @@ function wireMain() {
     tab.addEventListener("click", async () => {
       activeSettingsTab = tab.dataset.settingsTab as typeof activeSettingsTab;
       if (activeSettingsTab === "voice") await refreshAudioDevices(false);
+      if (activeSettingsTab === "smart") await refreshLlmServiceStatus(false);
       if (activeSettingsTab === "shortcuts") await refreshHotkeyStatus();
       render();
     });
@@ -1111,6 +1180,7 @@ async function saveConfigDraft(next: AppConfig) {
   await run("save_config", { config: next });
   if (activeView === "settings") {
     if (activeSettingsTab === "models") await refreshModelStatus();
+    if (activeSettingsTab === "smart") await refreshLlmServiceStatus(false);
     if (activeSettingsTab === "shortcuts") await refreshHotkeyStatus();
     render();
   }
@@ -1122,6 +1192,25 @@ async function refreshModelStatus() {
 
 async function refreshHotkeyStatus() {
   hotkeyRows = await invoke<HotkeyCheck[]>("hotkey_status");
+}
+
+async function refreshLlmServiceStatus(shouldRender = false) {
+  llmServiceStatus = await invoke<LlmServiceStatus>("llm_service_status");
+  if (shouldRender) render();
+}
+
+async function startLlmService() {
+  try {
+    llmServiceStatus = await invoke<LlmServiceStatus>("start_llm_service");
+    render();
+  } catch (error) {
+    llmServiceStatus = await invoke<LlmServiceStatus>("llm_service_status");
+    if (snapshot) {
+      snapshot.status = "出错";
+      snapshot.meta = String(error);
+    }
+    render();
+  }
 }
 
 async function pickModelFile(configPath: string) {

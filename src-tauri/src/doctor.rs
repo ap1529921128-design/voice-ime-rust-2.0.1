@@ -1,7 +1,7 @@
 use crate::{
     asr, audio,
     config::{AppConfig, Paths, DEFAULT_HOTWORDS, DEFAULT_HOT_RULES, DEFAULT_PERSONAL_PROMPT},
-    translation,
+    llm, translation,
 };
 use anyhow::Result;
 use reqwest::blocking::Client;
@@ -65,6 +65,7 @@ pub fn run(paths: &Paths, config: &AppConfig) -> Result<DoctorReport> {
     check_clipboard(&mut checks);
     check_models(paths, config, &mut checks);
     check_llm_endpoint("智能纠错端点", &config.smart.endpoint, &mut checks);
+    check_llm_artifacts(paths, config, &mut checks);
     check_translation_backend(config, &mut checks);
     check_user_text_files(paths, &mut checks);
 
@@ -298,6 +299,41 @@ fn check_translation_backend(config: &AppConfig, checks: &mut Vec<DoctorCheck>) 
             format!("{other} 未识别"),
         ),
     }
+}
+
+fn check_llm_artifacts(paths: &Paths, config: &AppConfig, checks: &mut Vec<DoctorCheck>) {
+    let status = llm::local_service_status(&config.smart.endpoint, paths);
+    if !status.is_local {
+        push_check(
+            checks,
+            "本地 LLM 文件",
+            DoctorStatus::Warn,
+            "智能端点不是本地地址",
+        );
+        return;
+    }
+    let missing = [
+        (!status.script_exists).then(|| format!("script={}", status.script_path)),
+        (!status.model_exists).then(|| format!("model={}", status.model_path)),
+        (!status.server_exists).then(|| format!("server={}", status.server_path)),
+    ]
+    .into_iter()
+    .flatten()
+    .collect::<Vec<_>>();
+    push_check(
+        checks,
+        "本地 LLM 文件",
+        if missing.is_empty() {
+            DoctorStatus::Pass
+        } else {
+            DoctorStatus::Warn
+        },
+        if missing.is_empty() {
+            "启动脚本、MiniCPM 模型、llama-server 均存在".to_string()
+        } else {
+            missing.join("; ")
+        },
+    );
 }
 
 fn check_llm_endpoint(name: &str, endpoint: &str, checks: &mut Vec<DoctorCheck>) {

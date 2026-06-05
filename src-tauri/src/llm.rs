@@ -1,8 +1,10 @@
 use crate::{config::AppConfig, config::Paths, text};
 use anyhow::{anyhow, Result};
 use reqwest::blocking::Client;
+use serde::Serialize;
 use serde_json::{json, Value};
 use std::{
+    path::PathBuf,
     process::{Command, Stdio},
     sync::{Mutex, OnceLock},
     time::{Duration, Instant},
@@ -12,6 +14,53 @@ use std::{
 use std::os::windows::process::CommandExt;
 
 static LAST_SERVICE_START: OnceLock<Mutex<Option<Instant>>> = OnceLock::new();
+
+#[derive(Debug, Clone, Serialize)]
+pub struct LocalServiceStatus {
+    pub endpoint: String,
+    pub models_url: String,
+    pub is_local: bool,
+    pub reachable: bool,
+    pub script_path: String,
+    pub script_exists: bool,
+    pub model_path: String,
+    pub model_exists: bool,
+    pub server_path: String,
+    pub server_exists: bool,
+}
+
+pub fn local_service_status(endpoint: &str, paths: &Paths) -> LocalServiceStatus {
+    let endpoint = endpoint.trim();
+    let is_local = is_local_endpoint(endpoint);
+    let models_url = if endpoint.is_empty() {
+        String::new()
+    } else {
+        models_endpoint(endpoint)
+    };
+    let script = local_service_script(paths).unwrap_or_else(|| default_local_service_script(paths));
+    let model = local_model_path(paths);
+    let server = local_server_path(paths);
+    LocalServiceStatus {
+        endpoint: endpoint.to_string(),
+        models_url: models_url.clone(),
+        is_local,
+        reachable: is_local && !models_url.is_empty() && http_ok(&models_url),
+        script_exists: script.exists(),
+        script_path: script.to_string_lossy().to_string(),
+        model_exists: model.exists(),
+        model_path: model.to_string_lossy().to_string(),
+        server_exists: server.exists(),
+        server_path: server.to_string_lossy().to_string(),
+    }
+}
+
+pub fn start_local_service(endpoint: &str, paths: &Paths) -> Result<LocalServiceStatus> {
+    if !is_local_endpoint(endpoint) {
+        return Err(anyhow!("当前端点不是本地 llama-server"));
+    }
+    ensure_local_service(endpoint, paths)?;
+    Ok(local_service_status(endpoint, paths))
+}
 
 pub fn smart_correct(
     raw_text: &str,
@@ -240,6 +289,37 @@ fn local_service_script(paths: &Paths) -> Option<std::path::PathBuf> {
     .find(|path| path.exists())
 }
 
+fn default_local_service_script(paths: &Paths) -> PathBuf {
+    paths
+        .root_dir
+        .join("tools")
+        .join("Start-MiniCPM-Translate.ps1")
+}
+
+fn local_model_path(paths: &Paths) -> PathBuf {
+    paths.root_dir.join("models").join("minicpm5-1b-q4.gguf")
+}
+
+fn local_server_path(paths: &Paths) -> PathBuf {
+    [
+        paths
+            .root_dir
+            .join("llama.cpp")
+            .join("cpu")
+            .join("llama-server.exe"),
+        paths.root_dir.join("llama-server.exe"),
+    ]
+    .into_iter()
+    .find(|path| path.exists())
+    .unwrap_or_else(|| {
+        paths
+            .root_dir
+            .join("llama.cpp")
+            .join("cpu")
+            .join("llama-server.exe")
+    })
+}
+
 fn correction_hint(paths: &Paths) -> String {
     text::load_corrections(&paths.corrections_path)
         .into_iter()
@@ -270,4 +350,48 @@ fn is_local_endpoint(endpoint: &str) -> bool {
         || endpoint.contains("localhost")
         || endpoint.contains("[::1]")
         || endpoint.contains("://::1")
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn temp_paths(temp: &tempfile::TempDir) -> Paths {
+        let app_dir = temp.path().join(".voice_ime");
+        Paths {
+            root_dir: temp.path().join("app"),
+            app_dir: app_dir.clone(),
+            config_path: app_dir.join("config.json"),
+            history_path: app_dir.join("history.json"),
+            prompt_path: app_dir.join("personal_prompt.txt"),
+            corrections_path: app_dir.join("corrections.json"),
+            hotwords_path: app_dir.join("hot.txt"),
+            hot_rules_path: app_dir.join("hot-rule.txt"),
+            recordings_dir: app_dir.join("recordings"),
+            logs_dir: app_dir.join("logs"),
+        }
+    }
+
+    #[test]
+    fn local_service_status_reports_packaged_artifacts() {
+        let temp = tempfile::tempdir().unwrap();
+        let paths = temp_paths(&temp);
+        let script = paths.root_dir.join("tools/Start-MiniCPM-Translate.ps1");
+        let model = paths.root_dir.join("models/minicpm5-1b-q4.gguf");
+        let server = paths.root_dir.join("llama.cpp/cpu/llama-server.exe");
+        std::fs::create_dir_all(script.parent().unwrap()).unwrap();
+        std::fs::create_dir_all(model.parent().unwrap()).unwrap();
+        std::fs::create_dir_all(server.parent().unwrap()).unwrap();
+        std::fs::write(&script, "").unwrap();
+        std::fs::write(&model, "").unwrap();
+        std::fs::write(&server, "").unwrap();
+
+        let status = local_service_status("http://127.0.0.1:18080/v1/chat/completions", &paths);
+
+        assert!(status.is_local);
+        assert!(status.script_exists);
+        assert!(status.model_exists);
+        assert!(status.server_exists);
+        assert!(status.models_url.ends_with("/v1/models"));
+    }
 }

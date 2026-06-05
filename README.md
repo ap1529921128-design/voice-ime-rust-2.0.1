@@ -99,6 +99,8 @@ app/llama.cpp/cpu/llama-server.exe
 app/tools/Start-MiniCPM-Translate.ps1
 ```
 
+“设置 / 智能”提供本地 LLM 的“检查服务”和“启动服务”按钮，会显示 `/v1/models` 可达状态、启动脚本、MiniCPM 模型和 `llama-server.exe` 是否存在。
+
 如果本地服务不可用，语音转写仍可使用；智能纠错会退回到确定性词表修正，翻译会提示服务不可用。
 
 外部翻译命令通过标准输入接收 JSON：

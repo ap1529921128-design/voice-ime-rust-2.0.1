@@ -353,6 +353,40 @@ fn export_history_csv(app: AppHandle, state: State<'_, AppState>) -> Result<UiSn
 }
 
 #[tauri::command]
+fn llm_service_status(state: State<'_, AppState>) -> llm::LocalServiceStatus {
+    let snapshot = state.snapshot();
+    llm::local_service_status(&snapshot.config.smart.endpoint, &state.paths)
+}
+
+#[tauri::command]
+fn start_llm_service(
+    app: AppHandle,
+    state: State<'_, AppState>,
+) -> Result<llm::LocalServiceStatus, String> {
+    state.set_runtime_notice(&app, "LLM 服务启动中", "正在检查本地 llama-server");
+    let snapshot = state.snapshot();
+    match llm::start_local_service(&snapshot.config.smart.endpoint, &state.paths) {
+        Ok(status) => {
+            state.set_runtime_notice(
+                &app,
+                if status.reachable {
+                    "LLM 服务可用"
+                } else {
+                    "LLM 服务未就绪"
+                },
+                format!("{}；{}", status.models_url, status.script_path),
+            );
+            Ok(status)
+        }
+        Err(err) => {
+            let message = err.to_string();
+            state.set_runtime_notice(&app, "LLM 服务启动失败", &message);
+            Err(message)
+        }
+    }
+}
+
+#[tauri::command]
 fn run_asr_benchmark(
     app: AppHandle,
     state: State<'_, AppState>,
@@ -477,6 +511,8 @@ pub fn run() {
             hotkey_status,
             export_diagnostics,
             export_history_csv,
+            llm_service_status,
+            start_llm_service,
             run_asr_benchmark,
             open_hotwords_file,
             open_hot_rules_file,

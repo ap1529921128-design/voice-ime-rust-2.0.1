@@ -41,6 +41,14 @@
 3. If MiniCPM is reachable, the existing text is rewritten.
 4. If MiniCPM is unavailable, the original editor text is retained.
 
+## Local LLM Service
+
+1. Open Settings / Smart.
+2. Click `检查服务`.
+3. The service panel shows endpoint reachability, startup script, MiniCPM model, and `llama-server.exe` rows.
+4. Click `启动服务`; if the local script and runtime are present, the app attempts to start `llama-server` hidden and refreshes the same status rows.
+5. Running Settings / Data / `诊断` includes a `本地 LLM 文件` row covering the script, model, and server binary.
+
 ## Long Transcript
 
 1. Record longer than `long_transcript_seconds`.
@@ -76,7 +84,7 @@
 
 1. Open Settings / Data and click `诊断`.
 2. A diagnostics panel appears in the page with pass, warning, or failure rows.
-3. The rows cover app/log paths, microphone, clipboard, ASR models, smart-correction endpoint, translation backend, prompt, correction table, hotwords, and hot rules.
+3. The rows cover app/log paths, microphone, clipboard, ASR models, smart-correction endpoint, local LLM files, translation backend, prompt, correction table, hotwords, and hot rules.
 4. A `doctor-YYYYMMDD-HHMMSS.txt` report path is shown in the panel and the file exists under `.voice_ime/logs`.
 5. Clicking `导出` still creates the support zip and includes the latest doctor output without including recordings or model binaries.
 6. `app/tools/启动语音输入-诊断.bat` exists in packaged builds and runs `VoiceIME.exe --doctor` without adding another visible root launcher.

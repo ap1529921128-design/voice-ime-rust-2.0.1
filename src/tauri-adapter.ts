@@ -41,6 +41,8 @@ function qaInvoke(command: string, args?: Record<string, unknown>) {
   if (command === "hotkey_status") return qaHotkeys();
   if (command === "doctor_report") return qaDoctorReport();
   if (command === "repair_doctor") return qaRepairReport();
+  if (command === "llm_service_status") return qaLlmServiceStatus();
+  if (command === "start_llm_service") return { ...qaLlmServiceStatus(), reachable: true };
   if (command === "install_model_pack") {
     return {
       ...qaSnapshot,
@@ -238,6 +240,21 @@ function qaRepairReport() {
       { name: "热词", status: "skipped", detail: "已存在，未覆盖：D:/voice-ime/.voice_ime/hot.txt" },
     ],
     doctor: qaDoctorReport(),
+  };
+}
+
+function qaLlmServiceStatus() {
+  return {
+    endpoint: "http://127.0.0.1:18080/v1/chat/completions",
+    models_url: "http://127.0.0.1:18080/v1/models",
+    is_local: true,
+    reachable: false,
+    script_path: "D:/voice-ime/app/tools/Start-MiniCPM-Translate.ps1",
+    script_exists: true,
+    model_path: "D:/voice-ime/app/models/minicpm5-1b-q4.gguf",
+    model_exists: true,
+    server_path: "D:/voice-ime/app/llama.cpp/cpu/llama-server.exe",
+    server_exists: true,
   };
 }
 
