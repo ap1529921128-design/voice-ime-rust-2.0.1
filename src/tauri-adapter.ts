@@ -225,7 +225,10 @@ function qaModelStatus() {
       mirror_url: "https://hf-mirror.com/example/fast",
       target_dir: "D:/voice-ime-build-release/voice-ime-2.0.1-rust-portable/app/models/fast",
       required_files: ["model.int8.onnx", "tokens.txt"],
-      missing_files: ["model.int8.onnx"],
+      missing_files: [
+        "D:/voice-ime-build-release/voice-ime-2.0.1-rust-portable/app/models/fast/model.int8.onnx",
+        "D:/voice-ime-build-release/voice-ime-2.0.1-rust-portable/app/models/fast/tokens.txt",
+      ],
     },
     {
       engine: "sherpa-onnx",

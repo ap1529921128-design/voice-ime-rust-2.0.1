@@ -785,6 +785,7 @@ function modelSettingsPanel(cfg: AppConfig) {
               <span>${row.ready ? "ready" : `${row.missing_files.length} missing`} · ${escapeHtml(row.expected_latency)}</span>
               <small title="${escapeAttr(row.description)}">${escapeHtml(row.description)}</small>
               <small title="${escapeAttr(row.target_dir)}">${escapeHtml(shortPath(row.target_dir))}</small>
+              ${modelFileSummary(row)}
             </div>
             <div class="model-actions">
               <button class="mini-action" data-action="download-model" data-profile="${escapeAttr(row.profile)}" title="下载模型">${icon("Download", "下载模型")}<span>下载</span></button>
@@ -821,6 +822,19 @@ function modelRootField(value: string) {
         <button class="icon-btn tiny" data-action="pick-model-root" title="选择模型根目录">${icon("FolderSearch", "选择模型根目录")}</button>
       </div>
     </label>
+  `;
+}
+
+function modelFileSummary(row: AsrModelStatus) {
+  const files = row.ready ? row.required_files : row.missing_files;
+  if (files.length === 0) return "";
+  const label = row.ready ? "需要" : "缺少";
+  const className = row.ready ? "model-files ready" : "model-files missing";
+  return `
+    <div class="${className}" title="${escapeAttr(files.join("\n"))}">
+      <span>${label}</span>
+      ${files.map((file) => `<code>${escapeHtml(fileNameFromPath(file))}</code>`).join("")}
+    </div>
   `;
 }
 
@@ -1703,6 +1717,11 @@ function shortPath(value: string) {
   const normalized = value.replaceAll("\\", "/");
   const index = normalized.lastIndexOf("/models/");
   return index >= 0 ? normalized.slice(index + 1) : normalized;
+}
+
+function fileNameFromPath(value: string) {
+  const normalized = value.replaceAll("\\", "/");
+  return normalized.split("/").filter(Boolean).pop() || normalized;
 }
 
 async function bootstrap() {

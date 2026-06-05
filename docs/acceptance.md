@@ -102,7 +102,7 @@
 
 1. Open Settings / Models.
 2. The page shows a `模型根目录` field with a native directory picker.
-3. Each ASR profile row shows a short description, an expected 10-second latency hint, and `下载`, `选择`, `镜像`, and `官网` actions.
+3. Each ASR profile row shows a short description, an expected 10-second latency hint, missing/required filenames, and `下载`, `选择`, `镜像`, and `官网` actions.
 4. Clicking `模型根目录` opens a native directory picker, saves `asr.model_root`, and refreshes ready/missing rows against that root.
 5. Clicking `选择` opens a native directory picker and fills the matching default filenames for that profile.
 6. Each individual model path has a file-picker icon that updates only that config field.

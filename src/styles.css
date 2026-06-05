@@ -734,6 +734,33 @@ select:disabled {
   white-space: nowrap;
 }
 
+.model-files {
+  display: flex;
+  align-items: center;
+  min-width: 0;
+  flex-wrap: wrap;
+  gap: 5px;
+  color: #5f6d78;
+  font-size: 11px;
+}
+
+.model-files code {
+  max-width: 180px;
+  overflow: hidden;
+  border-radius: 8px;
+  padding: 2px 6px;
+  color: #17304d;
+  background: rgba(255, 255, 255, 0.58);
+  font-family: inherit;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.model-files.missing code {
+  color: #7c270b;
+  background: rgba(255, 239, 226, 0.72);
+}
+
 .model-actions {
   display: flex;
   flex: 0 0 auto;
