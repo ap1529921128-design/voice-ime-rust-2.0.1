@@ -42,6 +42,8 @@ Settings / Data now shows hotword and hot-rule stats, including hotword entries,
 
 Settings / Data also includes `词表试算`. Paste or type a sentence, click `试算`, and the app shows normalization, built-in corrections, hotword aliases, regex rules, ITN, and final cleanup with per-stage change and hit counts.
 
+History details now include a raw-to-final character diff when the final text differs from raw ASR. Insertions and deletions are marked in place, so a single record can show whether the useful change came from hotwords, rules, ITN, or LLM cleanup.
+
 Settings / Shortcuts now gives clearer guidance when a shortcut is duplicated, unavailable, or not recognized. Doctor includes the same suggestion text so hotkey failures are actionable instead of only reporting a raw registration error.
 
 Settings / Models now has a per-profile `基准` action. It runs the same ASR CSV benchmark for the clicked `fast`, `balanced`, or `fallback` profile without changing the saved default profile.

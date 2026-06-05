@@ -1267,6 +1267,7 @@ function historyTrace(record: TranscriptRecord) {
   return `
     <details class="history-trace">
       <summary>过程 · 清理 ${deterministicSeconds.toFixed(2)}s · LLM ${llmSeconds.toFixed(2)}s</summary>
+      ${historyDiff(record)}
       <dl>
         ${rows
           .map(
@@ -1280,6 +1281,68 @@ function historyTrace(record: TranscriptRecord) {
       </dl>
     </details>
   `;
+}
+
+function historyDiff(record: TranscriptRecord) {
+  const before = record.raw_text || record.normalized_text || "";
+  const after = record.text || record.llm_text || record.itn_text || "";
+  if (!before.trim() || !after.trim() || before === after) return "";
+  const diff = diffPreview(before, after);
+  const deleted = Math.max(0, diff.deleted);
+  const inserted = Math.max(0, diff.inserted);
+  return `
+    <div class="history-diff" data-history-diff>
+      <div class="history-diff-head">
+        <strong>原始 → 最终</strong>
+        <span>删 ${deleted} · 增 ${inserted}${diff.truncated ? " · 截断" : ""}</span>
+      </div>
+      <p>${diff.html}</p>
+    </div>
+  `;
+}
+
+function diffPreview(before: string, after: string, maxChars = 180) {
+  const beforeChars = Array.from(before).slice(0, maxChars);
+  const afterChars = Array.from(after).slice(0, maxChars);
+  const beforeTruncated = Array.from(before).length > maxChars;
+  const afterTruncated = Array.from(after).length > maxChars;
+  const table = Array.from({ length: beforeChars.length + 1 }, () => Array(afterChars.length + 1).fill(0) as number[]);
+  for (let i = beforeChars.length - 1; i >= 0; i -= 1) {
+    for (let j = afterChars.length - 1; j >= 0; j -= 1) {
+      table[i][j] = beforeChars[i] === afterChars[j] ? table[i + 1][j + 1] + 1 : Math.max(table[i + 1][j], table[i][j + 1]);
+    }
+  }
+  let i = 0;
+  let j = 0;
+  let deleted = 0;
+  let inserted = 0;
+  const parts: string[] = [];
+  while (i < beforeChars.length || j < afterChars.length) {
+    if (i < beforeChars.length && j < afterChars.length && beforeChars[i] === afterChars[j]) {
+      parts.push(diffSpan("same", beforeChars[i]));
+      i += 1;
+      j += 1;
+    } else if (j < afterChars.length && (i === beforeChars.length || table[i][j + 1] >= table[i + 1][j])) {
+      parts.push(diffSpan("ins", afterChars[j]));
+      inserted += 1;
+      j += 1;
+    } else if (i < beforeChars.length) {
+      parts.push(diffSpan("del", beforeChars[i]));
+      deleted += 1;
+      i += 1;
+    }
+  }
+  if (beforeTruncated || afterTruncated) parts.push(`<span class="diff-more">...</span>`);
+  return {
+    html: parts.join(""),
+    deleted: deleted + Math.max(0, Array.from(before).length - beforeChars.length),
+    inserted: inserted + Math.max(0, Array.from(after).length - afterChars.length),
+    truncated: beforeTruncated || afterTruncated,
+  };
+}
+
+function diffSpan(kind: "same" | "ins" | "del", value: string) {
+  return `<span class="diff-${kind}">${escapeHtml(value)}</span>`;
 }
 
 function wireCommon() {

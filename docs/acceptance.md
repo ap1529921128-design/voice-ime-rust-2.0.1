@@ -156,6 +156,13 @@
 5. Confirm input into a matching app and check `input-target-YYYYMMDD.log`; the row should include the matched profile name, paste delay, and punctuation policy.
 6. The UI smoke suite includes Settings / Input at 150% device scale and must not show outer scrolling or control text overflow.
 
+## History Diff
+
+1. Open History.
+2. Expand a record's `过程` details.
+3. If raw ASR and final text differ, the page shows a raw-to-final diff with deletion and insertion markers.
+4. `npm run ui:smoke` expands the history trace in QA mode and must not report outer overflow.
+
 ## ASR Benchmark
 
 1. Prepare a directory of `.wav` files and optional same-name `.txt` expected transcripts.

@@ -20,6 +20,7 @@
 - Added a one-click support bundle export that zips config, history, dictionaries, logs, doctor output, and model manifests while excluding recordings and model binaries.
 - Added ASR idle prewarming for persistent worker mode, plus a Settings model-page prewarm button, so the current ready profile can load before the first real dictation.
 - Added history filters for text/stage content, backend, model, and date so trace records can be located quickly during accuracy and latency debugging.
+- Added a history raw-to-final character diff view so ASR, dictionary, rule, ITN, and LLM changes can be inspected in-place.
 - Added a real backend `Cancelling` state and worker-update token checks so clear/re-record actions ignore stale ASR, correction, translation, and error results.
 - Added persisted microphone selection and a pre-recording peak/rms input meter in the main input view and Settings / Voice, with audio-device probing serialized against real recording startup.
 - Added one-click history CSV export from History and Settings / Data, including raw ASR, deterministic stages, LLM text, model/backend, session id, and timing columns.

@@ -101,7 +101,10 @@ try {
       path: "/?qa=main",
       viewport: { width: 820, height: 580 },
       deviceScaleFactor: 1.25,
-      actions: [["click", "[data-view='history']"]],
+      actions: [
+        ["click", "[data-view='history']"],
+        ["click", ".history-trace summary"],
+      ],
     });
     await runScenario(browser, {
       name: "overlay-preview-150",

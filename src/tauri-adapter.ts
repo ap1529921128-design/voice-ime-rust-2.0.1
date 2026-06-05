@@ -246,7 +246,7 @@ function createQaSnapshot() {
       history_limit: 100,
     },
     history: [
-      qaHistory(1, "非洲之星和海洋之泪"),
+      qaHistory(1, "非洲之星和海洋之泪", "非州之星和海洋之类"),
       qaHistory(2, "明天上午九点提醒我检查模型目录"),
       qaHistory(3, "Voice IME 的 fast 模型应该优先保证响应速度"),
     ],
@@ -439,13 +439,13 @@ function qaLlmServiceStatus() {
   };
 }
 
-function qaHistory(sessionId: number, text: string) {
+function qaHistory(sessionId: number, text: string, rawText = text) {
   return {
     session_id: sessionId,
     text,
-    raw_text: text,
-    normalized_text: text,
-    dictionary_text: text,
+    raw_text: rawText,
+    normalized_text: rawText,
+    dictionary_text: rawText,
     hotword_text: text,
     rule_text: text,
     itn_text: text,

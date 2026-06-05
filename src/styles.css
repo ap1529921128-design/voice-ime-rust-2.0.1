@@ -1003,7 +1003,67 @@ select:disabled {
   margin: 8px 0 0;
 }
 
-.history-trace div {
+.history-diff {
+  display: grid;
+  gap: 6px;
+  margin-top: 8px;
+  border-radius: 12px;
+  padding: 10px;
+  background: rgba(240, 246, 252, 0.72);
+}
+
+.history-diff-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  color: #315d93;
+}
+
+.history-diff-head strong {
+  font-size: 12px;
+  white-space: nowrap;
+}
+
+.history-diff-head span {
+  flex: 0 0 auto;
+  color: #5f6d78;
+  font-size: 11px;
+  white-space: nowrap;
+}
+
+.history-diff p {
+  max-height: 92px;
+  overflow: hidden;
+  color: #0a1f3d;
+  line-height: 1.7;
+  overflow-wrap: anywhere;
+  white-space: normal;
+}
+
+.diff-ins,
+.diff-del {
+  border-radius: 5px;
+  padding: 0 2px;
+}
+
+.diff-ins {
+  background: rgba(49, 93, 147, 0.16);
+  color: #173f6d;
+}
+
+.diff-del {
+  background: rgba(174, 67, 67, 0.16);
+  color: #8b2e36;
+  text-decoration: line-through;
+}
+
+.diff-more {
+  color: #5f6d78;
+  font-weight: 700;
+}
+
+.history-trace dl > div {
   display: grid;
   grid-template-columns: 42px minmax(0, 1fr);
   gap: 8px;
