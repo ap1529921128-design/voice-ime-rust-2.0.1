@@ -11,6 +11,7 @@
 7. Text appears in the overlay or main confirmation editor.
 8. Confirm input pastes into the focused target and does not send.
 9. If the editor already has text, an accidental too-short or silent recording keeps that text and reports the reason in status/meta instead of replacing it.
+10. If recording reaches `max_record_seconds`, the status warns shortly before the limit and then automatically stops into the normal transcription path; manually stopped or cleared sessions must not be stopped again by a stale timer.
 
 ## Clipboard-Safe Paste
 

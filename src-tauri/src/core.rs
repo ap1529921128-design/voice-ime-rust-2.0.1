@@ -161,6 +161,12 @@ impl AppState {
         }
         position_overlay(app, overlay_rect);
         emit_snapshot(app, self);
+        schedule_recording_timeout(
+            app.clone(),
+            self.clone(),
+            session_id,
+            config.asr.max_record_seconds,
+        );
         Ok(self.snapshot())
     }
 
@@ -389,6 +395,47 @@ impl AppState {
         }
         emit_snapshot(app, self);
         self.snapshot()
+    }
+
+    fn set_recording_timeout_warning(
+        &self,
+        app: &AppHandle,
+        session_id: u64,
+        remaining_seconds: u32,
+        max_seconds: u32,
+    ) {
+        {
+            let mut inner = self.inner.lock();
+            if inner.session_id != session_id || inner.state != SessionState::Recording {
+                return;
+            }
+            inner.status = "即将自动停止".into();
+            let target_meta = current_target_debug_meta(&inner)
+                .map(|meta| format!(" / {meta}"))
+                .unwrap_or_default();
+            inner.meta = format!(
+                "剩余约 {}s / 上限 {}s{}",
+                remaining_seconds, max_seconds, target_meta
+            );
+        }
+        emit_snapshot(app, self);
+    }
+
+    fn mark_recording_timeout_reached(&self, app: &AppHandle, session_id: u64, max_seconds: u32) {
+        {
+            let mut inner = self.inner.lock();
+            if inner.session_id != session_id || inner.state != SessionState::Recording {
+                return;
+            }
+            inner.status = "已到最大录音时长".into();
+            inner.meta = format!("{}s 上限，正在自动转写", max_seconds);
+        }
+        emit_snapshot(app, self);
+    }
+
+    fn should_auto_stop_recording(&self, session_id: u64) -> bool {
+        let inner = self.inner.lock();
+        inner.session_id == session_id && inner.state == SessionState::Recording
     }
 
     pub(crate) fn report_worker_panic(
@@ -1316,6 +1363,44 @@ fn finish_cancelling_async(app: AppHandle, worker: WorkerState, cancel_session_i
     });
 }
 
+fn schedule_recording_timeout(app: AppHandle, state: AppState, session_id: u64, max_seconds: u32) {
+    let max_seconds = max_seconds.clamp(5, 600);
+    std::thread::spawn(move || {
+        if let Err(payload) = panic::catch_unwind(AssertUnwindSafe(|| {
+            let warning_lead = recording_timeout_warning_lead_seconds(max_seconds);
+            if warning_lead > 0 && max_seconds > warning_lead {
+                std::thread::sleep(Duration::from_secs((max_seconds - warning_lead) as u64));
+                for remaining in (1..=warning_lead).rev() {
+                    if !state.should_auto_stop_recording(session_id) {
+                        return;
+                    }
+                    state.set_recording_timeout_warning(&app, session_id, remaining, max_seconds);
+                    std::thread::sleep(Duration::from_secs(1));
+                }
+            } else {
+                std::thread::sleep(Duration::from_secs(max_seconds as u64));
+            }
+            if !state.should_auto_stop_recording(session_id) {
+                return;
+            }
+            state.mark_recording_timeout_reached(&app, session_id, max_seconds);
+            if let Err(err) = state.stop_recording(&app) {
+                state.set_runtime_notice(&app, "自动停止失败", err.to_string());
+            }
+        })) {
+            state.report_worker_panic(&app, "recording-timeout", Some(session_id), payload);
+        }
+    });
+}
+
+fn recording_timeout_warning_lead_seconds(max_seconds: u32) -> u32 {
+    if max_seconds <= 5 {
+        1
+    } else {
+        5
+    }
+}
+
 fn accepts_worker_update(
     current_session_id: u64,
     current_state: &SessionState,
@@ -1629,6 +1714,13 @@ mod tests {
         assert_eq!(audio_sample_rate_meta(0, 16_000, true), "采样率未知");
         assert_eq!(audio_trim_meta(0.12, 0.34), "裁剪 0.5s");
         assert_eq!(audio_trim_meta(0.01, 0.01), "");
+    }
+
+    #[test]
+    fn recording_timeout_warning_lead_is_short_and_predictable() {
+        assert_eq!(recording_timeout_warning_lead_seconds(5), 1);
+        assert_eq!(recording_timeout_warning_lead_seconds(6), 5);
+        assert_eq!(recording_timeout_warning_lead_seconds(120), 5);
     }
 
     #[test]

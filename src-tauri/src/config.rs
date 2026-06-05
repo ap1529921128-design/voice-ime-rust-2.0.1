@@ -436,6 +436,8 @@ fn migrate_legacy_config(value: Value) -> AppConfig {
 fn normalize_config(config: &mut AppConfig) {
     config.asr.model_root = normalize_model_root(&config.asr.model_root);
     config.asr.num_threads = config.asr.num_threads.clamp(1, 4);
+    config.asr.min_record_seconds = config.asr.min_record_seconds.clamp(0.1, 10.0);
+    config.asr.max_record_seconds = config.asr.max_record_seconds.clamp(5, 600);
     if !matches!(config.asr.worker_mode.as_str(), "persistent" | "isolated") {
         config.asr.worker_mode = default_worker_mode();
     }
@@ -940,6 +942,22 @@ mod tests {
         cfg.asr.worker_mode = "isolated".into();
         normalize_config(&mut cfg);
         assert_eq!(cfg.asr.worker_mode, "isolated");
+    }
+
+    #[test]
+    fn clamps_recording_duration_bounds() {
+        let mut cfg = AppConfig::default();
+        cfg.asr.min_record_seconds = 0.0;
+        cfg.asr.max_record_seconds = 1;
+        normalize_config(&mut cfg);
+        assert_eq!(cfg.asr.min_record_seconds, 0.1);
+        assert_eq!(cfg.asr.max_record_seconds, 5);
+
+        cfg.asr.min_record_seconds = 30.0;
+        cfg.asr.max_record_seconds = 1_000;
+        normalize_config(&mut cfg);
+        assert_eq!(cfg.asr.min_record_seconds, 10.0);
+        assert_eq!(cfg.asr.max_record_seconds, 600);
     }
 
     #[test]
