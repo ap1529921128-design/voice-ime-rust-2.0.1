@@ -3,7 +3,7 @@ use chrono::Local;
 use serde::{Deserialize, Serialize};
 use std::{fs, path::Path};
 
-const CSV_HEADERS: [&str; 21] = [
+const CSV_HEADERS: [&str; 23] = [
     "session_id",
     "created_at",
     "text",
@@ -19,6 +19,8 @@ const CSV_HEADERS: [&str; 21] = [
     "source_sample_rate",
     "sample_rate",
     "resampled",
+    "trim_leading_seconds",
+    "trim_trailing_seconds",
     "transcribe_seconds",
     "deterministic_seconds",
     "llm_seconds",
@@ -56,6 +58,10 @@ pub struct TranscriptRecord {
     pub sample_rate: u32,
     #[serde(default)]
     pub resampled: bool,
+    #[serde(default)]
+    pub trim_leading_seconds: f32,
+    #[serde(default)]
+    pub trim_trailing_seconds: f32,
     pub transcribe_seconds: f32,
     #[serde(default)]
     pub deterministic_seconds: f32,
@@ -83,6 +89,8 @@ impl TranscriptRecord {
         source_sample_rate: u32,
         sample_rate: u32,
         resampled: bool,
+        trim_leading_seconds: f32,
+        trim_trailing_seconds: f32,
         transcribe_seconds: f32,
         deterministic_seconds: f32,
         total_seconds: f32,
@@ -105,6 +113,8 @@ impl TranscriptRecord {
             source_sample_rate,
             sample_rate,
             resampled,
+            trim_leading_seconds,
+            trim_trailing_seconds,
             transcribe_seconds,
             deterministic_seconds,
             llm_seconds: 0.0,
@@ -153,6 +163,8 @@ fn records_to_csv(records: &[TranscriptRecord]) -> String {
             record.source_sample_rate.to_string(),
             record.sample_rate.to_string(),
             record.resampled.to_string(),
+            format!("{:.3}", record.trim_leading_seconds),
+            format!("{:.3}", record.trim_trailing_seconds),
             format!("{:.3}", record.transcribe_seconds),
             format!("{:.3}", record.deterministic_seconds),
             format!("{:.3}", record.llm_seconds),
@@ -286,6 +298,8 @@ mod tests {
                 48_000,
                 16_000,
                 true,
+                0.1,
+                0.2,
                 0.5,
                 0.01,
                 0.51,
@@ -320,6 +334,8 @@ mod tests {
             source_sample_rate: 48_000,
             sample_rate: 16_000,
             resampled: true,
+            trim_leading_seconds: 0.12,
+            trim_trailing_seconds: 0.34,
             transcribe_seconds: 0.5,
             deterministic_seconds: 0.01,
             llm_seconds: 0.2,
@@ -331,6 +347,7 @@ mod tests {
         assert!(csv.starts_with("session_id,created_at,text,raw_text"));
         assert!(csv.contains("\"'=cmd\""));
         assert!(csv.contains("\"48000\",\"16000\",\"true\""));
+        assert!(csv.contains("\"0.120\",\"0.340\""));
         assert!(csv.contains("\"hello, \"\"world\"\"\""));
         assert!(csv.contains("\"line\nnext\""));
         assert!(csv.contains("\"1.235\""));

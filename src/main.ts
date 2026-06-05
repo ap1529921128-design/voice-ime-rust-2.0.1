@@ -27,6 +27,8 @@ type TranscriptRecord = {
   source_sample_rate: number;
   sample_rate: number;
   resampled: boolean;
+  trim_leading_seconds: number;
+  trim_trailing_seconds: number;
   transcribe_seconds: number;
   deterministic_seconds: number;
   llm_seconds: number;
@@ -992,7 +994,7 @@ function historyView(data: Snapshot) {
           return `
         <article class="history-item" data-history="${index}">
           <p>${escapeHtml(record.text)}</p>
-          <footer>${record.created_at} · 录音 ${record.duration_seconds.toFixed(1)}s · ${escapeHtml(historySampleRate(record))} · ASR ${record.transcribe_seconds.toFixed(1)}s · 总 ${totalSeconds.toFixed(1)}s · ${escapeHtml(record.backend)}</footer>
+          <footer>${record.created_at} · 录音 ${record.duration_seconds.toFixed(1)}s · ${escapeHtml(historyAudioMeta(record))} · ASR ${record.transcribe_seconds.toFixed(1)}s · 总 ${totalSeconds.toFixed(1)}s · ${escapeHtml(record.backend)}</footer>
           ${historyTrace(record)}
         </article>`;
         })
@@ -1018,11 +1020,14 @@ function filteredHistoryRows(records: TranscriptRecord[]) {
     });
 }
 
-function historySampleRate(record: TranscriptRecord) {
-  if (!record.source_sample_rate || !record.sample_rate) return "采样率未知";
-  return record.resampled
+function historyAudioMeta(record: TranscriptRecord) {
+  const sampleRate = !record.source_sample_rate || !record.sample_rate
+    ? "采样率未知"
+    : record.resampled
     ? `${record.source_sample_rate}Hz->${record.sample_rate}Hz`
     : `${record.sample_rate}Hz`;
+  const trimmed = Math.max(0, record.trim_leading_seconds || 0) + Math.max(0, record.trim_trailing_seconds || 0);
+  return trimmed >= 0.05 ? `${sampleRate} · 裁剪 ${trimmed.toFixed(1)}s` : sampleRate;
 }
 
 function historySearchText(record: TranscriptRecord) {

@@ -37,6 +37,8 @@ pub struct Recording {
     pub source_sample_rate: u32,
     pub sample_rate: u32,
     pub resampled: bool,
+    pub trim_leading_seconds: f32,
+    pub trim_trailing_seconds: f32,
     pub samples: Vec<f32>,
     pub peak: f32,
     pub rms: f32,
@@ -97,6 +99,7 @@ impl Recorder {
         } else {
             resample_linear(&mono, source_sample_rate, target_sample_rate)
         };
+        let (samples, trim) = trim_silence(&samples, target_sample_rate);
         let (peak, rms) = sample_stats(&samples);
         let wav_path = tempfile::Builder::new()
             .prefix("voice_ime_rust_")
@@ -111,6 +114,8 @@ impl Recorder {
             source_sample_rate,
             sample_rate: target_sample_rate,
             resampled: source_sample_rate != target_sample_rate,
+            trim_leading_seconds: trim.leading_seconds,
+            trim_trailing_seconds: trim.trailing_seconds,
             samples,
             peak,
             rms,
@@ -348,9 +353,47 @@ fn resample_linear(samples: &[f32], from_rate: u32, to_rate: u32) -> Vec<f32> {
     out
 }
 
+#[derive(Debug, Clone, Copy, Default)]
+struct TrimInfo {
+    leading_seconds: f32,
+    trailing_seconds: f32,
+}
+
+fn trim_silence(samples: &[f32], sample_rate: u32) -> (Vec<f32>, TrimInfo) {
+    if samples.is_empty() || sample_rate == 0 {
+        return (samples.to_vec(), TrimInfo::default());
+    }
+    let (peak, rms) = sample_stats(samples);
+    if peak < 0.0015 || rms < 0.0005 {
+        return (samples.to_vec(), TrimInfo::default());
+    }
+    let threshold = (peak * 0.035).max(0.003);
+    let Some(first) = samples.iter().position(|sample| sample.abs() >= threshold) else {
+        return (samples.to_vec(), TrimInfo::default());
+    };
+    let Some(last) = samples.iter().rposition(|sample| sample.abs() >= threshold) else {
+        return (samples.to_vec(), TrimInfo::default());
+    };
+    let pad = ((sample_rate as f32) * 0.08).round() as usize;
+    let start = first.saturating_sub(pad);
+    let end = (last + 1 + pad).min(samples.len());
+    if start == 0 && end == samples.len() {
+        return (samples.to_vec(), TrimInfo::default());
+    }
+    let leading_seconds = start as f32 / sample_rate as f32;
+    let trailing_seconds = (samples.len() - end) as f32 / sample_rate as f32;
+    (
+        samples[start..end].to_vec(),
+        TrimInfo {
+            leading_seconds,
+            trailing_seconds,
+        },
+    )
+}
+
 #[cfg(test)]
 mod tests {
-    use super::{normalized_device_name, resample_linear, sample_stats};
+    use super::{normalized_device_name, resample_linear, sample_stats, trim_silence};
 
     #[test]
     fn resample_changes_length() {
@@ -377,5 +420,29 @@ mod tests {
         let (peak, rms) = sample_stats(&[]);
         assert_eq!(peak, 0.0);
         assert_eq!(rms, 0.0);
+    }
+
+    #[test]
+    fn trims_leading_and_trailing_silence_conservatively() {
+        let sample_rate = 1_000;
+        let mut samples = vec![0.0; 500];
+        samples.extend([0.1; 200]);
+        samples.extend([0.0; 300]);
+
+        let (trimmed, info) = trim_silence(&samples, sample_rate);
+
+        assert_eq!(trimmed.len(), 360);
+        assert!((0.41..0.43).contains(&info.leading_seconds));
+        assert!((0.21..0.23).contains(&info.trailing_seconds));
+    }
+
+    #[test]
+    fn does_not_trim_silent_recordings() {
+        let samples = vec![0.0; 1_000];
+        let (trimmed, info) = trim_silence(&samples, 1_000);
+
+        assert_eq!(trimmed.len(), samples.len());
+        assert_eq!(info.leading_seconds, 0.0);
+        assert_eq!(info.trailing_seconds, 0.0);
     }
 }

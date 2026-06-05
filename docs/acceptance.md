@@ -33,7 +33,7 @@
 3. Pick a non-default microphone, save settings, and restart the app.
 4. The chosen microphone remains selected and recording uses that device.
 5. The meter reports peak/rms/sample-rate values without starting a full recording.
-6. After completing a recording, History and exported CSV include source sample rate, ASR sample rate, and whether resampling occurred.
+6. After completing a recording, History and exported CSV include source sample rate, ASR sample rate, whether resampling occurred, and any automatic leading/trailing silence trim.
 
 ## Smart Edit
 
@@ -78,7 +78,7 @@
 1. Complete at least one transcription so History has a row.
 2. Open History and click `导出 CSV`.
 3. A `history-export-YYYYMMDD-HHMMSS.csv` file appears under `.voice_ime/logs`.
-4. The CSV includes final text, raw ASR, deterministic stages, LLM text, backend, model, session id, timing columns, source sample rate, ASR sample rate, and resampling status.
+4. The CSV includes final text, raw ASR, deterministic stages, LLM text, backend, model, session id, timing columns, source sample rate, ASR sample rate, resampling status, and leading/trailing silence-trim seconds.
 5. Text that starts with spreadsheet formula trigger characters is exported safely for table tools.
 
 ## Diagnostics Panel

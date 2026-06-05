@@ -349,6 +349,8 @@ function qaHistory(sessionId: number, text: string) {
     source_sample_rate: 48000,
     sample_rate: 16000,
     resampled: true,
+    trim_leading_seconds: 0.12,
+    trim_trailing_seconds: 0.28,
     transcribe_seconds: 0.8,
     deterministic_seconds: 0.01,
     llm_seconds: 0.0,

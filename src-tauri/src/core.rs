@@ -829,6 +829,8 @@ impl WorkerState {
                 source_sample_rate: recording.source_sample_rate,
                 sample_rate: recording.sample_rate,
                 resampled: recording.resampled,
+                trim_leading_seconds: recording.trim_leading_seconds,
+                trim_trailing_seconds: recording.trim_trailing_seconds,
                 transcribe_seconds: started.elapsed().as_secs_f32(),
                 backend: config.asr.default_engine.clone(),
                 model: config.asr.profile.clone(),
@@ -892,6 +894,8 @@ impl WorkerState {
                 source_sample_rate: recording.source_sample_rate,
                 sample_rate: recording.sample_rate,
                 resampled: recording.resampled,
+                trim_leading_seconds: recording.trim_leading_seconds,
+                trim_trailing_seconds: recording.trim_trailing_seconds,
                 transcribe_seconds: outcome.elapsed_seconds,
                 backend: outcome.backend,
                 model: outcome.model,
@@ -1070,6 +1074,15 @@ impl AppState {
                 finished.sample_rate,
                 finished.resampled,
             );
+            let trim_meta = audio_trim_meta(
+                finished.trim_leading_seconds,
+                finished.trim_trailing_seconds,
+            );
+            let audio_meta = if trim_meta.is_empty() {
+                audio_meta
+            } else {
+                format!("{audio_meta} / {trim_meta}")
+            };
             if final_text.trim().is_empty() {
                 inner.state = SessionState::Idle;
                 inner.status = "未识别到有效语音".into();
@@ -1103,6 +1116,8 @@ impl AppState {
                     finished.source_sample_rate,
                     finished.sample_rate,
                     finished.resampled,
+                    finished.trim_leading_seconds,
+                    finished.trim_trailing_seconds,
                     finished.transcribe_seconds,
                     deterministic_seconds,
                     finished.transcribe_seconds + deterministic_seconds,
@@ -1172,6 +1187,8 @@ struct FinishedTranscript {
     source_sample_rate: u32,
     sample_rate: u32,
     resampled: bool,
+    trim_leading_seconds: f32,
+    trim_trailing_seconds: f32,
     transcribe_seconds: f32,
     backend: String,
     model: String,
@@ -1409,6 +1426,15 @@ fn audio_sample_rate_meta(source_sample_rate: u32, sample_rate: u32, resampled: 
     }
 }
 
+fn audio_trim_meta(leading_seconds: f32, trailing_seconds: f32) -> String {
+    let total = leading_seconds.max(0.0) + trailing_seconds.max(0.0);
+    if total < 0.05 {
+        String::new()
+    } else {
+        format!("裁剪 {:.1}s", total)
+    }
+}
+
 fn target_label(language: &str) -> &'static str {
     match language {
         "en" => "英语",
@@ -1565,6 +1591,8 @@ mod tests {
         );
         assert_eq!(audio_sample_rate_meta(16_000, 16_000, false), "16000Hz");
         assert_eq!(audio_sample_rate_meta(0, 16_000, true), "采样率未知");
+        assert_eq!(audio_trim_meta(0.12, 0.34), "裁剪 0.5s");
+        assert_eq!(audio_trim_meta(0.01, 0.01), "");
     }
 
     #[test]
