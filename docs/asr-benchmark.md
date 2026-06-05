@@ -10,6 +10,8 @@ app\VoiceIME.exe --write-asr-benchmark-template D:\voice-ime-benchmarks\asr
 
 The command writes `001.txt` through `010.txt` and does not overwrite existing files. Record matching `001.wav` through `010.wav` in the same folder before running benchmark commands.
 
+The same template can be created from the GUI: open Settings / Data, click `ASR 样本`, and choose the target sample folder.
+
 Example:
 
 ```text

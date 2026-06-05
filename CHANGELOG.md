@@ -54,6 +54,7 @@
 - Added per-profile ASR benchmark actions on Settings / Models so fast, balanced, and fallback can be timed without changing the saved default profile.
 - Added `VoiceIME.exe --benchmark-asr-profile <profile> <samples-dir>` and release-gate coverage for the packaged profile benchmark CLI.
 - Added `VoiceIME.exe --write-asr-benchmark-template <samples-dir>` to create the 10 Chinese reference transcripts and README for repeatable target-machine ASR tests without overwriting existing files.
+- Added a Settings / Data `ASR 样本` action that creates the same 10-sentence benchmark template from the GUI.
 - Added deterministic mock ASR and LLM backends for release gates and future CI-style UI/state tests without real model files or MiniCPM.
 - Added an experimental `accurate` ASR profile that calls a configured external command through JSON stdin/stdout for Qwen3/FunASR-style local backends, with packaged smoke coverage.
 - Added Settings / Smart local LLM service status and start controls, plus Doctor checks for the MiniCPM model, llama-server binary, and startup script.

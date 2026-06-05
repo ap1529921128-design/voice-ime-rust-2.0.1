@@ -563,6 +563,28 @@ fn run_asr_benchmark(
     snapshot
 }
 
+#[tauri::command]
+fn write_asr_benchmark_template(
+    app: AppHandle,
+    state: State<'_, AppState>,
+    samples_dir: String,
+) -> Result<UiSnapshot, String> {
+    let samples_dir = samples_dir.trim();
+    if samples_dir.is_empty() {
+        return Err("请选择 ASR 样本目录".into());
+    }
+    let samples_path = PathBuf::from(samples_dir);
+    let report = benchmark::write_sample_template(&samples_path).map_err(to_string)?;
+    Ok(state.set_runtime_notice(
+        &app,
+        "ASR 样本模板已生成",
+        format!(
+            "{} 句 / 写入 {} 个，跳过 {} 个；{}",
+            report.sample_count, report.files_written, report.files_skipped, report.output_dir
+        ),
+    ))
+}
+
 fn benchmark_config_for_profile(mut config: AppConfig, profile: Option<&str>) -> AppConfig {
     if let Some(profile) = normalized_benchmark_profile(profile) {
         config.asr.profile = profile;
@@ -729,6 +751,7 @@ pub fn run() {
             llm_service_status,
             start_llm_service,
             run_asr_benchmark,
+            write_asr_benchmark_template,
             run_translation_benchmark,
             open_hotwords_file,
             open_hot_rules_file,

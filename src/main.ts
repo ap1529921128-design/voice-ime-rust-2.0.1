@@ -990,6 +990,7 @@ function dataSettingsPanel(cfg: AppConfig) {
         <button class="tool-btn" data-action="repair-doctor">${icon("Wrench", "修复诊断")}<span>修复</span></button>
         <button class="tool-btn" data-action="export-diagnostics">${icon("Archive", "导出诊断")}<span>导出</span></button>
         <button class="tool-btn" data-action="export-history-csv">${icon("Download", "导出历史")}<span>历史 CSV</span></button>
+        <button class="tool-btn" data-action="write-asr-template">${icon("FilePlus2", "ASR 样本模板")}<span>ASR 样本</span></button>
         <button class="tool-btn" data-action="run-asr-benchmark">${icon("Gauge", "ASR 基准")}<span>ASR 基准</span></button>
         <button class="tool-btn" data-action="run-translation-benchmark">${icon("Languages", "翻译基准")}<span>翻译基准</span></button>
         <button class="tool-btn" data-action="refresh-dictionary-stats">${icon("RefreshCw", "刷新词表")}<span>刷新词表</span></button>
@@ -1399,6 +1400,7 @@ function wireCommon() {
       if (action === "repair-doctor") await repairDoctorReport();
       if (action === "export-diagnostics") await run("export_diagnostics");
       if (action === "export-history-csv") await run("export_history_csv");
+      if (action === "write-asr-template") await writeAsrBenchmarkTemplate();
       if (action === "run-asr-benchmark") await runAsrBenchmark();
       if (action === "run-asr-benchmark-profile") await runAsrBenchmark(button.dataset.profile || "");
       if (action === "run-translation-benchmark") await run("run_translation_benchmark", { samplesPath: "" });
@@ -1877,6 +1879,16 @@ async function runAsrBenchmark(profile = "") {
   });
   if (typeof selected !== "string") return;
   await run("run_asr_benchmark", { samplesDir: selected, profile });
+}
+
+async function writeAsrBenchmarkTemplate() {
+  const selected = await openDialog({
+    multiple: false,
+    directory: true,
+    title: "选择 ASR 样本模板目录",
+  });
+  if (typeof selected !== "string") return;
+  await run("write_asr_benchmark_template", { samplesDir: selected });
 }
 
 function isModelProfile(value: string): value is ModelProfile {

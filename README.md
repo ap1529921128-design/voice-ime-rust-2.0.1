@@ -153,6 +153,7 @@ app\VoiceIME.exe --write-asr-benchmark-template D:\voice-ime-benchmarks\asr
 ```
 
 这个命令会生成 `001.txt` 到 `010.txt` 和 README，不覆盖已有文件；你只需要在同一目录录制同名 `001.wav` 到 `010.wav`。
+也可以打开“设置 / 数据”，点击“ASR 样本”，选择目标目录后生成同一套模板。
 
 ```powershell
 app\VoiceIME.exe --benchmark-asr D:\voice-ime-benchmarks\asr

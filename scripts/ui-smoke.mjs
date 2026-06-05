@@ -93,6 +93,7 @@ try {
       actions: [
         ["click", "[data-view='settings']"],
         ["click", "[data-settings-tab='data']"],
+        ["click", "[data-action='write-asr-template']"],
         ["click", "[data-action='test-dictionary-text']"],
       ],
     });

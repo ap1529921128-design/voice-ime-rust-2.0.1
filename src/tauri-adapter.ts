@@ -38,7 +38,8 @@ export async function listen<T>(
 
 export async function openDialog(options: Parameters<typeof dialogOpen>[0]) {
   if (!qaMode) return dialogOpen(options);
-  void options;
+  const title = String((options as { title?: unknown } | undefined)?.title || "");
+  if (title.includes("ASR 样本模板")) return "D:/voice-ime-benchmarks/asr";
   return null;
 }
 
@@ -106,6 +107,13 @@ function qaInvoke(command: string, args?: Record<string, unknown>) {
       ...qaSnapshot,
       status: "ASR 基准中",
       meta: `${profile || "当前档位"} · ${String(args?.samplesDir || "QA samples")}`,
+    };
+  }
+  if (command === "write_asr_benchmark_template") {
+    return {
+      ...qaSnapshot,
+      status: "ASR 样本模板已生成",
+      meta: `10 句 / 写入 11 个，跳过 0 个；${String(args?.samplesDir || "QA samples")}`,
     };
   }
   if (command === "run_translation_benchmark") {

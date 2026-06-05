@@ -166,7 +166,7 @@
 ## ASR Benchmark
 
 1. Prepare a directory of `.wav` files and optional same-name `.txt` expected transcripts.
-2. Run `app\VoiceIME.exe --write-asr-benchmark-template <samples-dir>` to create the 10 reference `.txt` files and local README; existing files must not be overwritten.
+2. Run `app\VoiceIME.exe --write-asr-benchmark-template <samples-dir>`, or open Settings / Data and click `ASR 样本`, to create the 10 reference `.txt` files and local README; existing files must not be overwritten.
 3. Run `app\VoiceIME.exe --benchmark-asr <samples-dir>` from a portable package, or open Settings / Data and click `ASR 基准` to choose the same sample directory.
 4. An `asr-benchmark-YYYYMMDD-HHMMSS.csv` file appears under `.voice_ime/logs`.
 5. The CSV includes file, duration, profile, worker mode, backend, model, transcribe seconds, realtime factor, expected text, transcript text, expected character count, edit distance, CER, accuracy, and error.
@@ -174,6 +174,7 @@
 7. `app\VoiceIME.exe --benchmark-asr-profile <fast|balanced|fallback|accurate> <samples-dir>` writes the same CSV without changing the saved default profile.
 8. When `asr.profile=accurate`, `asr.accurate_external_command` receives a UTF-8 JSON payload with `wav_path`, `sample_rate`, `language`, `profile`, and `prompt`, and may return plain text or JSON `text`/`transcript`.
 9. Settings / Models / profile-row `基准` writes the same CSV, with the row `profile` set to the clicked profile even if Settings / Voice currently selects a different default profile.
+10. Settings / Data / `ASR 样本` writes the same 10 reference transcript files as the CLI template command and leaves existing files intact.
 
 ## Translation Benchmark
 
