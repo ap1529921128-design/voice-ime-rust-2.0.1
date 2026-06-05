@@ -36,6 +36,7 @@ type AppConfig = {
   asr: {
     default_engine: string;
     profile: string;
+    model_root: string;
     worker_mode: string;
     language: string;
     input_device_name: string;
@@ -792,6 +793,7 @@ function modelSettingsPanel(cfg: AppConfig) {
           )
           .join("")}
       </div>
+      ${modelRootField(cfg.asr.model_root)}
       ${modelPathField("fast 模型", "asr.models.zipformer_ctc_model", cfg.asr.models.zipformer_ctc_model)}
       ${modelPathField("fast tokens", "asr.models.zipformer_ctc_tokens", cfg.asr.models.zipformer_ctc_tokens)}
       ${modelPathField("balanced 模型", "asr.models.sense_voice_model", cfg.asr.models.sense_voice_model)}
@@ -805,6 +807,17 @@ function modelSettingsPanel(cfg: AppConfig) {
         <button class="tool-btn" data-action="prewarm-asr">${icon("Flame", "预热 ASR")}<span>预热</span></button>
       </div>
     </div>
+  `;
+}
+
+function modelRootField(value: string) {
+  return `
+    <label class="path-field"><span>模型根目录</span>
+      <div class="path-input">
+        <input value="${escapeAttr(value)}" data-config="asr.model_root" />
+        <button class="icon-btn tiny" data-action="pick-model-root" title="选择模型根目录">${icon("FolderSearch", "选择模型根目录")}</button>
+      </div>
+    </label>
   `;
 }
 
@@ -1065,6 +1078,7 @@ function wireCommon() {
       if (action === "reset-personal-prompt") await resetPersonalPrompt();
       if (action === "download-model") await downloadModel(button.dataset.profile || "");
       if (action === "pick-model-file") await pickModelFile(button.dataset.configPath || "");
+      if (action === "pick-model-root") await pickModelRootDirectory();
       if (action === "pick-model-dir") await pickModelDirectory(button.dataset.profile || "");
       if (action === "install-model-pack") await installModelPack();
       if (action === "prewarm-asr") await run("prewarm_asr");
@@ -1448,6 +1462,19 @@ async function pickModelDirectory(profile: string) {
   if (typeof selected !== "string") return;
   const next = collectConfigDraft();
   applyModelDirectory(next, profile, selected);
+  await saveConfigDraft(next);
+}
+
+async function pickModelRootDirectory() {
+  if (!snapshot) return;
+  const selected = await openDialog({
+    multiple: false,
+    directory: true,
+    title: "选择模型根目录",
+  });
+  if (typeof selected !== "string") return;
+  const next = collectConfigDraft();
+  next.asr.model_root = selected;
   await saveConfigDraft(next);
 }
 

@@ -60,7 +60,7 @@ pub fn run(paths: &Paths, config: &AppConfig) -> Result<DoctorReport> {
     paths.ensure()?;
     let started = Instant::now();
     let mut checks = Vec::new();
-    check_app_paths(paths, &mut checks);
+    check_app_paths(paths, config, &mut checks);
     check_audio(&mut checks);
     check_clipboard(&mut checks);
     check_models(paths, config, &mut checks);
@@ -192,7 +192,7 @@ fn repair_text_file<F>(
     }
 }
 
-fn check_app_paths(paths: &Paths, checks: &mut Vec<DoctorCheck>) {
+fn check_app_paths(paths: &Paths, config: &AppConfig, checks: &mut Vec<DoctorCheck>) {
     push_check(
         checks,
         "应用目录",
@@ -218,6 +218,18 @@ fn check_app_paths(paths: &Paths, checks: &mut Vec<DoctorCheck>) {
             DoctorStatus::Fail
         },
         paths.logs_dir.to_string_lossy(),
+    );
+
+    let model_root = crate::config::effective_model_root(config, paths);
+    push_check(
+        checks,
+        "模型根目录",
+        if model_root.exists() {
+            DoctorStatus::Pass
+        } else {
+            DoctorStatus::Warn
+        },
+        model_root.to_string_lossy(),
     );
 }
 
@@ -303,7 +315,7 @@ fn check_translation_backend(config: &AppConfig, checks: &mut Vec<DoctorCheck>) 
 }
 
 fn check_llm_artifacts(paths: &Paths, config: &AppConfig, checks: &mut Vec<DoctorCheck>) {
-    let status = llm::local_service_status(&config.smart.endpoint, paths);
+    let status = llm::local_service_status(&config.smart.endpoint, paths, config);
     if !status.is_local {
         push_check(
             checks,
@@ -473,6 +485,10 @@ fn write_report(
     ));
     lines.push(format!("Root: {}", paths.root_dir.to_string_lossy()));
     lines.push(format!("App: {}", paths.app_dir.to_string_lossy()));
+    lines.push(format!(
+        "Models: {}",
+        crate::config::effective_model_root(config, paths).to_string_lossy()
+    ));
     lines.push(format!(
         "ASR: profile={} worker={} threads={}",
         config.asr.profile, config.asr.worker_mode, config.asr.num_threads
@@ -684,6 +700,7 @@ mod tests {
         Paths {
             root_dir: root.to_path_buf(),
             app_dir: app_dir.clone(),
+            model_dir: root.join("models"),
             config_path: app_dir.join("config.json"),
             history_path: app_dir.join("history.json"),
             prompt_path: app_dir.join("personal_prompt.txt"),

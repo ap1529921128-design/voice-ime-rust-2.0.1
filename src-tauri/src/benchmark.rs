@@ -308,6 +308,7 @@ mod tests {
         let paths = Paths {
             root_dir: temp.path().join("root"),
             app_dir: temp.path().join(".voice_ime"),
+            model_dir: temp.path().join("root/models"),
             config_path: temp.path().join(".voice_ime/config.json"),
             history_path: temp.path().join(".voice_ime/history.json"),
             prompt_path: temp.path().join(".voice_ime/personal_prompt.txt"),

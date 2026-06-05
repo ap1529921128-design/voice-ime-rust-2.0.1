@@ -370,16 +370,20 @@ Write-BuildStamp -DestinationApp $AppRoot -PackageName "full"
 Install-ToolScripts -DestinationApp $AppRoot
 
 $toolsDir = Join-Path $AppRoot "tools"
-$miniCpmScript = Join-Path "D:\voice-ime-build-release\voice-ime-1.1.5-portable" "Start-MiniCPM-Translate.ps1"
+$repoMiniCpmScript = Join-Path $Root "packaging\tools\Start-MiniCPM-Translate.ps1"
+$legacyMiniCpmScript = Join-Path "D:\voice-ime-build-release\voice-ime-1.1.5-portable" "Start-MiniCPM-Translate.ps1"
+$miniCpmScript = if (Test-Path -LiteralPath $repoMiniCpmScript -PathType Leaf) { $repoMiniCpmScript } else { $legacyMiniCpmScript }
 if (Test-Path -LiteralPath $miniCpmScript) {
     New-Item -ItemType Directory -Path $toolsDir -Force | Out-Null
     $targetMiniCpmScript = Join-Path $toolsDir "Start-MiniCPM-Translate.ps1"
     Copy-Item -LiteralPath $miniCpmScript -Destination $targetMiniCpmScript
-    $scriptBody = Get-Content -LiteralPath $targetMiniCpmScript -Raw
-    $scriptBody = $scriptBody.Replace('$Root = $PSScriptRoot', '$Root = (Resolve-Path (Join-Path $PSScriptRoot "..")).Path')
-    $scriptBody = $scriptBody.Replace("-WindowStyle Minimized", "-WindowStyle Hidden")
-    $scriptBody = $scriptBody.Replace('NoteProperty translation_timeout 30', 'NoteProperty translation_timeout 8')
-    Set-Content -LiteralPath $targetMiniCpmScript -Value $scriptBody -Encoding UTF8
+    if ($miniCpmScript -eq $legacyMiniCpmScript) {
+        $scriptBody = Get-Content -LiteralPath $targetMiniCpmScript -Raw
+        $scriptBody = $scriptBody.Replace('$Root = $PSScriptRoot', '$Root = (Resolve-Path (Join-Path $PSScriptRoot "..")).Path')
+        $scriptBody = $scriptBody.Replace("-WindowStyle Minimized", "-WindowStyle Hidden")
+        $scriptBody = $scriptBody.Replace('NoteProperty translation_timeout 30', 'NoteProperty translation_timeout 8')
+        Set-Content -LiteralPath $targetMiniCpmScript -Value $scriptBody -Encoding UTF8
+    }
 }
 
 foreach ($runtimeData in @(

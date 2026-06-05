@@ -115,6 +115,7 @@ function createQaSnapshot() {
       asr: {
         default_engine: "sherpa-onnx",
         profile: "balanced",
+        model_root: "E:/voice-ime-model-packs",
         worker_mode: "persistent",
         language: "zh",
         input_device_name: "",

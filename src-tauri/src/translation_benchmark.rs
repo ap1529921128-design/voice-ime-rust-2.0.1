@@ -341,6 +341,7 @@ mod tests {
         Paths {
             root_dir: temp.path().join("root"),
             app_dir: app_dir.clone(),
+            model_dir: temp.path().join("root/models"),
             config_path: app_dir.join("config.json"),
             history_path: app_dir.join("history.json"),
             prompt_path: app_dir.join("personal_prompt.txt"),

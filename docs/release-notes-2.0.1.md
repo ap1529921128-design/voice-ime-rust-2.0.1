@@ -17,6 +17,7 @@ Voice IME Rust 2.0.1 is the first hardened portable release after the Rust/Tauri
 1. Extract the zip.
 2. Double-click `启动语音输入.bat`.
 3. If ASR models are missing, open Settings / Models and choose one of:
+   - `模型根目录`: point the app to a shared model repository, for example on a removable drive.
    - `导入包`: import a downloaded `voice-ime-model-pack-*.zip`.
    - `下载`: download the files for that profile.
    - `选择`: point the profile to a model folder on another drive.
@@ -45,3 +46,5 @@ The release gate passed on the build machine for:
 - core package model-pack import acceptance with SHA-256 verification
 
 Real target-machine checks are still needed for WeChat/Feishu, Word/document editors, IDEs, multiple microphones, and long recordings.
+
+Model/app separation now supports `VOICE_IME_MODEL_DIR` and Settings / Models / `模型根目录`. Relative `models/...` paths are resolved under that effective model root, so a core app body can be moved between machines while ASR and MiniCPM model packs stay in one external repository.

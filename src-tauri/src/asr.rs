@@ -1,4 +1,4 @@
-use crate::config::{AppConfig, Paths};
+use crate::config::{self, AppConfig, Paths};
 use crate::text;
 use anyhow::{anyhow, Context, Result};
 use once_cell::sync::Lazy;
@@ -171,6 +171,7 @@ pub fn run_worker_cli_if_requested() -> bool {
         let paths = Paths {
             root_dir: request.root_dir.clone(),
             app_dir: request.app_dir.clone(),
+            model_dir: request.model_dir.clone(),
             config_path: request.app_dir.join("config.json"),
             history_path: request.app_dir.join("history.json"),
             prompt_path: request.app_dir.join("personal_prompt.txt"),
@@ -212,6 +213,7 @@ struct AsrWorkerRequest {
     output_path: PathBuf,
     root_dir: PathBuf,
     app_dir: PathBuf,
+    model_dir: PathBuf,
     config: AppConfig,
     profile: String,
     language: String,
@@ -425,6 +427,7 @@ fn paths_from_worker_request(request: &AsrWorkerRequest) -> Paths {
     Paths {
         root_dir: request.root_dir.clone(),
         app_dir: request.app_dir.clone(),
+        model_dir: request.model_dir.clone(),
         config_path: request.app_dir.join("config.json"),
         history_path: request.app_dir.join("history.json"),
         prompt_path: request.app_dir.join("personal_prompt.txt"),
@@ -468,6 +471,7 @@ fn transcribe_profile_in_worker(
             output_path: output_file.clone(),
             root_dir: paths.root_dir.clone(),
             app_dir: paths.app_dir.clone(),
+            model_dir: config::effective_model_root(config, paths),
             config: config.clone(),
             profile: profile.into(),
             language: input.language.clone(),
@@ -534,6 +538,7 @@ fn transcribe_profile_in_daemon(
             output_path: output_file.clone(),
             root_dir: paths.root_dir.clone(),
             app_dir: paths.app_dir.clone(),
+            model_dir: config::effective_model_root(config, paths),
             config: config.clone(),
             profile: profile.into(),
             language: input.language.clone(),
@@ -727,8 +732,8 @@ fn recognizer_spec(
 
     let (backend, model_label, cache_key) = match profile {
         "fast" => {
-            let model = resolve_existing(paths, &config.asr.models.zipformer_ctc_model)?;
-            let tokens = resolve_existing(paths, &config.asr.models.zipformer_ctc_tokens)?;
+            let model = resolve_existing(config, paths, &config.asr.models.zipformer_ctc_model)?;
+            let tokens = resolve_existing(config, paths, &config.asr.models.zipformer_ctc_tokens)?;
             recognizer_config.model_config.zipformer_ctc = OfflineZipformerCtcModelConfig {
                 model: Some(model.to_string_lossy().to_string()),
             };
@@ -748,8 +753,8 @@ fn recognizer_spec(
             )
         }
         "balanced" => {
-            let model = resolve_existing(paths, &config.asr.models.sense_voice_model)?;
-            let tokens = resolve_existing(paths, &config.asr.models.sense_voice_tokens)?;
+            let model = resolve_existing(config, paths, &config.asr.models.sense_voice_model)?;
+            let tokens = resolve_existing(config, paths, &config.asr.models.sense_voice_tokens)?;
             let language = sense_voice_language(&input.language);
             recognizer_config.model_config.sense_voice = OfflineSenseVoiceModelConfig {
                 model: Some(model.to_string_lossy().to_string()),
@@ -770,9 +775,9 @@ fn recognizer_spec(
             )
         }
         "fallback" => {
-            let encoder = resolve_existing(paths, &config.asr.models.whisper_encoder)?;
-            let decoder = resolve_existing(paths, &config.asr.models.whisper_decoder)?;
-            let tokens = resolve_existing(paths, &config.asr.models.whisper_tokens)?;
+            let encoder = resolve_existing(config, paths, &config.asr.models.whisper_encoder)?;
+            let decoder = resolve_existing(config, paths, &config.asr.models.whisper_decoder)?;
+            let tokens = resolve_existing(config, paths, &config.asr.models.whisper_tokens)?;
             let language = whisper_language(&input.language);
             recognizer_config.model_config.whisper = OfflineWhisperModelConfig {
                 encoder: Some(encoder.to_string_lossy().to_string()),
@@ -862,7 +867,11 @@ fn required_files_for_profile(config: &AppConfig, paths: &Paths, profile: &str) 
     };
     candidates
         .into_iter()
-        .map(|item| resolve_path(paths, item).to_string_lossy().to_string())
+        .map(|item| {
+            config::resolve_model_path(config, paths, item)
+                .to_string_lossy()
+                .to_string()
+        })
         .collect()
 }
 
@@ -873,7 +882,9 @@ fn model_target_dir(config: &AppConfig, paths: &Paths, profile: &str) -> Option<
         "fallback" => &config.asr.models.whisper_encoder,
         _ => return None,
     };
-    resolve_path(paths, first).parent().map(Path::to_path_buf)
+    config::resolve_model_path(config, paths, first)
+        .parent()
+        .map(Path::to_path_buf)
 }
 
 pub fn download_url_for_profile(profile: &str) -> &'static str {
@@ -894,21 +905,12 @@ pub fn mirror_url_for_profile(profile: &str) -> &'static str {
     }
 }
 
-fn resolve_existing(paths: &Paths, configured: &str) -> Result<PathBuf> {
-    let path = resolve_path(paths, configured);
+fn resolve_existing(config: &AppConfig, paths: &Paths, configured: &str) -> Result<PathBuf> {
+    let path = config::resolve_model_path(config, paths, configured);
     if path.exists() {
         Ok(path)
     } else {
         Err(anyhow!("缺少 ASR 模型文件：{}", path.display()))
-    }
-}
-
-fn resolve_path(paths: &Paths, configured: &str) -> PathBuf {
-    let path = PathBuf::from(configured);
-    if path.is_absolute() {
-        path
-    } else {
-        paths.root_dir.join(path)
     }
 }
 
@@ -1009,6 +1011,7 @@ mod tests {
         Paths {
             root_dir: root.to_path_buf(),
             app_dir: root.join(".voice_ime"),
+            model_dir: root.join("models"),
             config_path: root.join(".voice_ime/config.json"),
             history_path: root.join(".voice_ime/history.json"),
             prompt_path: root.join(".voice_ime/personal_prompt.txt"),
@@ -1054,6 +1057,37 @@ mod tests {
         assert_eq!(
             fallback.target_dir,
             temp.path().join("models/sherpa-onnx-whisper-tiny")
+        );
+    }
+
+    #[test]
+    fn model_status_uses_configured_model_root() {
+        let temp = tempfile::tempdir().unwrap();
+        let paths = test_paths(temp.path());
+        let external = temp.path().join("external-models");
+        let mut config = AppConfig::default();
+        config.asr.model_root = external.to_string_lossy().to_string();
+        for relative in [
+            "sherpa-onnx-sense-voice-zh-en-ja-ko-yue-int8-2024-07-17/model.int8.onnx",
+            "sherpa-onnx-sense-voice-zh-en-ja-ko-yue-int8-2024-07-17/tokens.txt",
+        ] {
+            let path = external.join(relative);
+            fs::create_dir_all(path.parent().unwrap()).unwrap();
+            fs::write(path, "placeholder").unwrap();
+        }
+
+        let balanced = model_status(&config, &paths)
+            .into_iter()
+            .find(|status| status.profile == "balanced")
+            .unwrap();
+
+        assert!(balanced.ready);
+        assert_eq!(
+            balanced.target_dir,
+            external
+                .join("sherpa-onnx-sense-voice-zh-en-ja-ko-yue-int8-2024-07-17")
+                .to_string_lossy()
+                .to_string()
         );
     }
 

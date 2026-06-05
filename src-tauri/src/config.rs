@@ -28,6 +28,8 @@ pub struct AsrConfig {
     pub default_engine: String,
     #[serde(default = "default_asr_profile")]
     pub profile: String,
+    #[serde(default = "default_model_root")]
+    pub model_root: String,
     #[serde(default = "default_worker_mode")]
     pub worker_mode: String,
     #[serde(default = "default_language")]
@@ -162,6 +164,7 @@ pub struct UiConfig {
 pub struct Paths {
     pub root_dir: PathBuf,
     pub app_dir: PathBuf,
+    pub model_dir: PathBuf,
     pub config_path: PathBuf,
     pub history_path: PathBuf,
     pub prompt_path: PathBuf,
@@ -190,6 +193,7 @@ impl Default for AsrConfig {
         Self {
             default_engine: default_asr_engine(),
             profile: default_asr_profile(),
+            model_root: default_model_root(),
             worker_mode: default_worker_mode(),
             language: default_language(),
             input_device_name: default_input_device_name(),
@@ -277,6 +281,7 @@ impl Default for UiConfig {
 impl Paths {
     pub fn discover() -> Result<Self> {
         let root_dir = discover_root_dir();
+        let model_dir = discover_model_dir(&root_dir);
         let app_dir = std::env::var_os("VOICE_IME_APP_DIR")
             .map(PathBuf::from)
             .unwrap_or_else(|| root_dir.join(".voice_ime"));
@@ -289,6 +294,7 @@ impl Paths {
             hot_rules_path: app_dir.join("hot-rule.txt"),
             recordings_dir: app_dir.join("recordings"),
             logs_dir: app_dir.join("logs"),
+            model_dir,
             root_dir,
             app_dir,
         })
@@ -428,6 +434,7 @@ fn migrate_legacy_config(value: Value) -> AppConfig {
 }
 
 fn normalize_config(config: &mut AppConfig) {
+    config.asr.model_root = normalize_model_root(&config.asr.model_root);
     config.asr.num_threads = config.asr.num_threads.clamp(1, 4);
     if !matches!(config.asr.worker_mode.as_str(), "persistent" | "isolated") {
         config.asr.worker_mode = default_worker_mode();
@@ -485,6 +492,21 @@ fn normalize_translation_engine(value: &str) -> String {
     match value.trim().to_ascii_lowercase().as_str() {
         "llm" | "external" | "nllb" | "bergamot" => value.trim().to_ascii_lowercase(),
         _ => default_translation_engine(),
+    }
+}
+
+fn normalize_model_root(value: &str) -> String {
+    let value = value.trim();
+    if value.is_empty()
+        || matches!(
+            value.to_ascii_lowercase().as_str(),
+            "default" | "system-default" | "auto" | "app/models" | "app\\models"
+        )
+        || matches!(value, "默认" | "自动")
+    {
+        default_model_root()
+    } else {
+        value.to_string()
     }
 }
 
@@ -615,6 +637,47 @@ fn discover_root_dir() -> PathBuf {
         .to_path_buf()
 }
 
+fn discover_model_dir(root_dir: &Path) -> PathBuf {
+    std::env::var_os("VOICE_IME_MODEL_DIR")
+        .map(PathBuf::from)
+        .map(|path| absolutize(root_dir, path))
+        .unwrap_or_else(|| root_dir.join("models"))
+}
+
+pub fn effective_model_root(config: &AppConfig, paths: &Paths) -> PathBuf {
+    if let Some(env_root) = std::env::var_os("VOICE_IME_MODEL_DIR") {
+        return absolutize(&paths.root_dir, PathBuf::from(env_root));
+    }
+    let configured = config.asr.model_root.trim();
+    if configured.is_empty() || configured == "models" {
+        return paths.model_dir.clone();
+    }
+    absolutize(&paths.root_dir, PathBuf::from(configured))
+}
+
+pub fn resolve_model_path(config: &AppConfig, paths: &Paths, configured: &str) -> PathBuf {
+    let configured = configured.trim();
+    let path = PathBuf::from(configured);
+    if path.is_absolute() {
+        return path;
+    }
+    let normalized = configured.replace('\\', "/");
+    let relative = normalized.strip_prefix("models/").unwrap_or(&normalized);
+    if relative.is_empty() {
+        effective_model_root(config, paths)
+    } else {
+        effective_model_root(config, paths).join(relative)
+    }
+}
+
+fn absolutize(root_dir: &Path, path: PathBuf) -> PathBuf {
+    if path.is_absolute() {
+        path
+    } else {
+        root_dir.join(path)
+    }
+}
+
 pub(crate) const DEFAULT_PERSONAL_PROMPT: &str = "请优先识别为简体中文，保留常见英文工具名和技术名词。\n常用词：Codex, Claude Code, ChatGPT, OpenAI, GitHub, Python, PowerShell, Windows, macOS, ASR, GUI, MVP, PRD, faster-whisper, FunASR, SenseVoice, sherpa-onnx, whisper.cpp, llama-server, MiniCPM, Rust, Tauri。\n常用表达：不要自动发送，放到输入框等我确认；帮我整理需求；帮我判断有没有搞头；问问老金；先做最小验证；移动硬盘环境；最小化到托盘。\n";
 pub(crate) const DEFAULT_HOTWORDS: &str = "# hot.txt\n# One entry per line. Use the first item as output and aliases after |.\n# Example:\n# Voice IME | voice ime | 语音输入法\n# GitHub | git hub | 机特哈布\n";
 pub(crate) const DEFAULT_HOT_RULES: &str = "# hot-rule.txt\n# One rule per line: regex = replacement\n# Example:\n# 毫安时 = mAh\n# 艾特\\s*(\\w+)\\s*点\\s*(\\w+) = @\\1.\\2\n";
@@ -624,6 +687,9 @@ fn default_asr_engine() -> String {
 }
 fn default_asr_profile() -> String {
     "balanced".into()
+}
+fn default_model_root() -> String {
+    "models".into()
 }
 fn default_worker_mode() -> String {
     "persistent".into()
@@ -790,6 +856,7 @@ mod tests {
         Paths {
             root_dir: root.to_path_buf(),
             app_dir: app_dir.clone(),
+            model_dir: root.join("models"),
             config_path: app_dir.join("config.json"),
             history_path: app_dir.join("history.json"),
             prompt_path: app_dir.join("personal_prompt.txt"),
@@ -847,6 +914,30 @@ mod tests {
         cfg.asr.worker_mode = "isolated".into();
         normalize_config(&mut cfg);
         assert_eq!(cfg.asr.worker_mode, "isolated");
+    }
+
+    #[test]
+    fn resolves_relative_model_paths_against_model_root() {
+        let temp = tempfile::tempdir().unwrap();
+        let paths = temp_paths(temp.path());
+        let mut cfg = AppConfig::default();
+
+        assert_eq!(
+            resolve_model_path(&cfg, &paths, "models/foo/bar.onnx"),
+            temp.path().join("models/foo/bar.onnx")
+        );
+
+        cfg.asr.model_root = "E:/voice-ime-models".into();
+        normalize_config(&mut cfg);
+
+        assert_eq!(
+            resolve_model_path(&cfg, &paths, "models/foo/bar.onnx"),
+            PathBuf::from("E:/voice-ime-models/foo/bar.onnx")
+        );
+        assert_eq!(
+            resolve_model_path(&cfg, &paths, "foo/bar.onnx"),
+            PathBuf::from("E:/voice-ime-models/foo/bar.onnx")
+        );
     }
 
     #[test]

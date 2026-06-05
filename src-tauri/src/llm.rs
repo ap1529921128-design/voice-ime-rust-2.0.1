@@ -1,4 +1,4 @@
-use crate::{cancel::CancellationToken, config::AppConfig, config::Paths, text};
+use crate::{cancel::CancellationToken, config, config::AppConfig, config::Paths, text};
 use anyhow::{anyhow, Result};
 use reqwest::blocking::Client;
 use serde::Serialize;
@@ -32,7 +32,11 @@ pub struct LocalServiceStatus {
     pub server_exists: bool,
 }
 
-pub fn local_service_status(endpoint: &str, paths: &Paths) -> LocalServiceStatus {
+pub fn local_service_status(
+    endpoint: &str,
+    paths: &Paths,
+    config: &AppConfig,
+) -> LocalServiceStatus {
     let endpoint = endpoint.trim();
     let is_local = is_local_endpoint(endpoint);
     let models_url = if endpoint.is_empty() {
@@ -41,7 +45,7 @@ pub fn local_service_status(endpoint: &str, paths: &Paths) -> LocalServiceStatus
         models_endpoint(endpoint)
     };
     let script = local_service_script(paths).unwrap_or_else(|| default_local_service_script(paths));
-    let model = local_model_path(paths);
+    let model = local_model_path(paths, config);
     let server = local_server_path(paths);
     let process = llama_server_process_status();
     LocalServiceStatus {
@@ -61,12 +65,16 @@ pub fn local_service_status(endpoint: &str, paths: &Paths) -> LocalServiceStatus
     }
 }
 
-pub fn start_local_service(endpoint: &str, paths: &Paths) -> Result<LocalServiceStatus> {
+pub fn start_local_service(
+    endpoint: &str,
+    paths: &Paths,
+    config: &AppConfig,
+) -> Result<LocalServiceStatus> {
     if !is_local_endpoint(endpoint) {
         return Err(anyhow!("当前端点不是本地 llama-server"));
     }
-    ensure_local_service(endpoint, paths)?;
-    Ok(local_service_status(endpoint, paths))
+    ensure_local_service(endpoint, paths, config)?;
+    Ok(local_service_status(endpoint, paths, config))
 }
 
 pub fn smart_correct(
@@ -187,7 +195,7 @@ pub fn translate_with_llm(
     }
     if is_local_endpoint(&config.translation.endpoint) {
         ensure_not_cancelled(cancellation)?;
-        ensure_local_service(&config.translation.endpoint, paths)?;
+        ensure_local_service(&config.translation.endpoint, paths, config)?;
     }
     ensure_not_cancelled(cancellation)?;
     let language_name = match target_language {
@@ -272,11 +280,11 @@ fn ensure_not_cancelled(cancellation: &CancellationToken) -> Result<()> {
     }
 }
 
-fn ensure_local_service(endpoint: &str, paths: &Paths) -> Result<()> {
+fn ensure_local_service(endpoint: &str, paths: &Paths, config: &AppConfig) -> Result<()> {
     if http_ok(&models_endpoint(endpoint)) {
         return Ok(());
     }
-    spawn_local_service_once(paths)?;
+    spawn_local_service_once(paths, config)?;
     for _ in 0..8 {
         std::thread::sleep(Duration::from_millis(400));
         if http_ok(&models_endpoint(endpoint)) {
@@ -288,7 +296,7 @@ fn ensure_local_service(endpoint: &str, paths: &Paths) -> Result<()> {
     ))
 }
 
-fn spawn_local_service_once(paths: &Paths) -> Result<()> {
+fn spawn_local_service_once(paths: &Paths, config: &AppConfig) -> Result<()> {
     let guard = LAST_SERVICE_START.get_or_init(|| Mutex::new(None));
     let mut last_start = guard.lock().map_err(|_| anyhow!("翻译服务启动锁异常"))?;
     if last_start
@@ -308,6 +316,12 @@ fn spawn_local_service_once(paths: &Paths) -> Result<()> {
         .arg("-File")
         .arg(&script)
         .current_dir(&paths.root_dir)
+        .env("VOICE_IME_ROOT", &paths.root_dir)
+        .env("VOICE_IME_APP_DIR", &paths.app_dir)
+        .env(
+            "VOICE_IME_MODEL_DIR",
+            config::effective_model_root(config, paths),
+        )
         .stdin(Stdio::null())
         .stdout(Stdio::null())
         .stderr(Stdio::null());
@@ -339,8 +353,8 @@ fn default_local_service_script(paths: &Paths) -> PathBuf {
         .join("Start-MiniCPM-Translate.ps1")
 }
 
-fn local_model_path(paths: &Paths) -> PathBuf {
-    paths.root_dir.join("models").join("minicpm5-1b-q4.gguf")
+fn local_model_path(paths: &Paths, config: &AppConfig) -> PathBuf {
+    config::resolve_model_path(config, paths, "models/minicpm5-1b-q4.gguf")
 }
 
 fn local_server_path(paths: &Paths) -> PathBuf {
@@ -490,6 +504,7 @@ mod tests {
         Paths {
             root_dir: temp.path().join("app"),
             app_dir: app_dir.clone(),
+            model_dir: temp.path().join("app/models"),
             config_path: app_dir.join("config.json"),
             history_path: app_dir.join("history.json"),
             prompt_path: app_dir.join("personal_prompt.txt"),
@@ -515,13 +530,38 @@ mod tests {
         std::fs::write(&model, "").unwrap();
         std::fs::write(&server, "").unwrap();
 
-        let status = local_service_status("http://127.0.0.1:18080/v1/chat/completions", &paths);
+        let status = local_service_status(
+            "http://127.0.0.1:18080/v1/chat/completions",
+            &paths,
+            &AppConfig::default(),
+        );
 
         assert!(status.is_local);
         assert!(status.script_exists);
         assert!(status.model_exists);
         assert!(status.server_exists);
         assert!(status.models_url.ends_with("/v1/models"));
+    }
+
+    #[test]
+    fn local_service_status_uses_configured_model_root() {
+        let temp = tempfile::tempdir().unwrap();
+        let paths = temp_paths(&temp);
+        let external = temp.path().join("external-models");
+        let model = external.join("minicpm5-1b-q4.gguf");
+        std::fs::create_dir_all(&external).unwrap();
+        std::fs::write(&model, "").unwrap();
+        let mut config = AppConfig::default();
+        config.asr.model_root = external.to_string_lossy().to_string();
+
+        let status = local_service_status(
+            "http://127.0.0.1:18080/v1/chat/completions",
+            &paths,
+            &config,
+        );
+
+        assert!(status.model_exists);
+        assert_eq!(status.model_path, model.to_string_lossy().to_string());
     }
 
     #[test]

@@ -1,4 +1,4 @@
-use crate::config::{AppConfig, Paths};
+use crate::config::{self, AppConfig, Paths};
 use anyhow::{Context, Result};
 use std::{
     fs::{self, File},
@@ -47,15 +47,16 @@ pub fn export(paths: &Paths, config: &AppConfig) -> Result<PathBuf> {
         "data/hot-rule.txt",
         options,
     )?;
+    let model_root = config::effective_model_root(config, paths);
     add_optional_file(
         &mut zip,
-        &paths.root_dir.join("models").join("MODELS.json"),
+        &model_root.join("MODELS.json"),
         "models/MODELS.json",
         options,
     )?;
     add_optional_file(
         &mut zip,
-        &paths.root_dir.join("models").join("MODELS.md"),
+        &model_root.join("MODELS.md"),
         "models/MODELS.md",
         options,
     )?;
@@ -73,6 +74,10 @@ fn support_summary(paths: &Paths, config: &AppConfig) -> String {
         ),
         format!("Root: {}", paths.root_dir.to_string_lossy()),
         format!("App: {}", paths.app_dir.to_string_lossy()),
+        format!(
+            "Models: {}",
+            config::effective_model_root(config, paths).to_string_lossy()
+        ),
         format!(
             "ASR: profile={} worker={} threads={}",
             config.asr.profile, config.asr.worker_mode, config.asr.num_threads
@@ -159,6 +164,7 @@ mod tests {
         Paths {
             root_dir: root.to_path_buf(),
             app_dir: app_dir.clone(),
+            model_dir: root.join("models"),
             config_path: app_dir.join("config.json"),
             history_path: app_dir.join("history.json"),
             prompt_path: app_dir.join("personal_prompt.txt"),

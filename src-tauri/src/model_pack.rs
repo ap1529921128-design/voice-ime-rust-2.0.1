@@ -1,4 +1,4 @@
-use crate::config::Paths;
+use crate::config::{self, AppConfig, Paths};
 use anyhow::{anyhow, Context, Result};
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
@@ -32,18 +32,23 @@ struct ModelPackFile {
     sha256: String,
 }
 
-pub fn install(zip_path: &Path, paths: &Paths) -> Result<ModelPackInstallReport> {
+pub fn install(
+    zip_path: &Path,
+    paths: &Paths,
+    config: &AppConfig,
+) -> Result<ModelPackInstallReport> {
     if !zip_path.exists() {
         return Err(anyhow!("模型包不存在：{}", zip_path.to_string_lossy()));
     }
-    fs::create_dir_all(paths.root_dir.join("models"))?;
+    let output_dir = config::effective_model_root(config, paths);
+    fs::create_dir_all(&output_dir)?;
 
     let file = File::open(zip_path)
         .with_context(|| format!("打开模型包失败：{}", zip_path.to_string_lossy()))?;
     let mut archive = ZipArchive::new(file).context("读取模型包失败")?;
     let checksum_verified = validate_metadata(&mut archive)?;
     let mut report = ModelPackInstallReport {
-        output_dir: paths.root_dir.join("models").to_string_lossy().to_string(),
+        output_dir: output_dir.to_string_lossy().to_string(),
         files_written: 0,
         files_replaced: 0,
         files_ignored: 0,
@@ -60,7 +65,7 @@ pub fn install(zip_path: &Path, paths: &Paths) -> Result<ModelPackInstallReport>
             report.files_ignored += 1;
             continue;
         };
-        let destination = paths.root_dir.join("models").join(relative);
+        let destination = output_dir.join(relative);
         if destination.exists() {
             report.files_replaced += 1;
         }
@@ -195,6 +200,7 @@ mod tests {
         Paths {
             root_dir: temp.path().join("app"),
             app_dir: app_dir.clone(),
+            model_dir: temp.path().join("app/models"),
             config_path: app_dir.join("config.json"),
             history_path: app_dir.join("history.json"),
             prompt_path: app_dir.join("personal_prompt.txt"),
@@ -233,7 +239,7 @@ mod tests {
             ],
         );
 
-        let report = install(&zip_path, &paths).unwrap();
+        let report = install(&zip_path, &paths, &AppConfig::default()).unwrap();
 
         assert_eq!(report.files_written, 4);
         assert_eq!(report.files_ignored, 1);
@@ -253,6 +259,23 @@ mod tests {
             fs::read(paths.root_dir.join("models/MODEL_PACK.json")).unwrap(),
             b"{}"
         );
+    }
+
+    #[test]
+    fn installs_into_configured_model_root() {
+        let temp = tempfile::tempdir().unwrap();
+        let paths = temp_paths(&temp);
+        let external = temp.path().join("external-models");
+        let mut config = AppConfig::default();
+        config.asr.model_root = external.to_string_lossy().to_string();
+        let zip_path = temp.path().join("pack.zip");
+        write_zip(&zip_path, &[("app/models/foo/model.onnx", b"model")]);
+
+        let report = install(&zip_path, &paths, &config).unwrap();
+
+        assert_eq!(report.output_dir, external.to_string_lossy().to_string());
+        assert_eq!(fs::read(external.join("foo/model.onnx")).unwrap(), b"model");
+        assert!(!paths.root_dir.join("models/foo/model.onnx").exists());
     }
 
     #[test]
@@ -285,7 +308,7 @@ mod tests {
             ],
         );
 
-        let report = install(&zip_path, &paths).unwrap();
+        let report = install(&zip_path, &paths, &AppConfig::default()).unwrap();
 
         assert_eq!(report.checksum_verified, 1);
         assert_eq!(
@@ -317,7 +340,7 @@ mod tests {
             ],
         );
 
-        let report = install(&zip_path, &paths).unwrap();
+        let report = install(&zip_path, &paths, &AppConfig::default()).unwrap();
 
         assert_eq!(report.checksum_verified, 1);
         assert_eq!(
@@ -351,7 +374,7 @@ mod tests {
             ],
         );
 
-        let report = install(&zip_path, &paths).unwrap();
+        let report = install(&zip_path, &paths, &AppConfig::default()).unwrap();
 
         assert_eq!(report.checksum_verified, 1);
     }
@@ -379,7 +402,7 @@ mod tests {
             ],
         );
 
-        let err = install(&zip_path, &paths).unwrap_err();
+        let err = install(&zip_path, &paths, &AppConfig::default()).unwrap_err();
 
         assert!(err.to_string().contains("模型包校验失败"));
         assert!(!paths.root_dir.join("models/foo/model.onnx").exists());

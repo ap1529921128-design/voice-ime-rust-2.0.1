@@ -1576,6 +1576,7 @@ mod tests {
             recordings_dir: app_dir.join("recordings"),
             logs_dir: app_dir.join("logs"),
             root_dir: PathBuf::from(root),
+            model_dir: root.join("models"),
             app_dir,
         }
     }

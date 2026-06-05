@@ -101,10 +101,12 @@
 ## Model Path Picker
 
 1. Open Settings / Models.
-2. Each ASR profile row has `下载`, `选择`, `镜像`, and `官网` actions.
-3. Clicking `选择` opens a native directory picker and fills the matching default filenames for that profile.
-4. Each individual model path has a file-picker icon that updates only that config field.
-5. After selecting a directory or file, the config is saved and the ready/missing rows refresh.
+2. The page shows a `模型根目录` field with a native directory picker.
+3. Each ASR profile row has `下载`, `选择`, `镜像`, and `官网` actions.
+4. Clicking `模型根目录` opens a native directory picker, saves `asr.model_root`, and refreshes ready/missing rows against that root.
+5. Clicking `选择` opens a native directory picker and fills the matching default filenames for that profile.
+6. Each individual model path has a file-picker icon that updates only that config field.
+7. After selecting a directory or file, the config is saved and the ready/missing rows refresh.
 
 ## Hotkey Status
 
@@ -182,8 +184,9 @@
 2. Select a `voice-ime-model-pack-*.zip`.
 3. If root `MODEL_PACK.json` is present, every listed file is checked for size and SHA-256 before extraction.
 4. Only zip entries under `app/models/`, `models/`, or root `MODEL_PACK.txt` / `MODEL_PACK.json` are extracted.
-5. Entries with absolute paths, drive prefixes, or `..` are rejected and cannot write outside `app/models`.
+5. Entries with absolute paths, drive prefixes, or `..` are rejected and cannot write outside the effective model root.
 6. Model status refreshes after import, and the status line reports written, replaced, ignored, and verified files.
+7. If `VOICE_IME_MODEL_DIR` or Settings / Models / `模型根目录` is set, imported files are written there instead of the package's default `app/models`.
 
 ## Model Pack Import Acceptance
 
@@ -191,7 +194,7 @@
 2. From the full package root, run `powershell -NoProfile -ExecutionPolicy Bypass -File .\app\tools\Model-Pack-Import-Acceptance.ps1`.
 3. The script copies `voice-ime-2.0.1-rust-portable-core` to a temporary folder, leaving the real core package untouched.
 4. It runs copied `app\VoiceIME.exe --install-model-pack <zip>` so the Rust model-pack importer performs extraction and metadata validation.
-5. It then verifies every installable `MODEL_PACK.json` entry exists in copied `app\models` with matching byte size and SHA-256.
+5. It then verifies every installable `MODEL_PACK.json` entry exists in the copied package's effective model root with matching byte size and SHA-256.
 6. The temporary copy is deleted unless `-KeepWorkDir` is passed.
 
 ## UI Smoke

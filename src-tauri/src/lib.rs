@@ -224,7 +224,9 @@ fn install_model_pack(
     state: State<'_, AppState>,
     pack_path: String,
 ) -> Result<UiSnapshot, String> {
-    let report = model_pack::install(&PathBuf::from(pack_path), &state.paths).map_err(to_string)?;
+    let snapshot = state.snapshot();
+    let report = model_pack::install(&PathBuf::from(pack_path), &state.paths, &snapshot.config)
+        .map_err(to_string)?;
     Ok(state.set_runtime_notice(
         &app,
         "模型包已导入",
@@ -288,7 +290,8 @@ fn open_model_mirror_page(app: AppHandle, profile: String) -> Result<(), String>
 
 #[tauri::command]
 fn open_models_dir(app: AppHandle, state: State<'_, AppState>) -> Result<(), String> {
-    let models_dir = state.paths.root_dir.join("models");
+    let snapshot = state.snapshot();
+    let models_dir = config::effective_model_root(&snapshot.config, &state.paths);
     fs::create_dir_all(&models_dir).map_err(to_string)?;
     app.opener()
         .open_path(models_dir.to_string_lossy().to_string(), None::<&str>)
@@ -399,7 +402,11 @@ fn export_history_csv(app: AppHandle, state: State<'_, AppState>) -> Result<UiSn
 #[tauri::command]
 fn llm_service_status(state: State<'_, AppState>) -> llm::LocalServiceStatus {
     let snapshot = state.snapshot();
-    llm::local_service_status(&snapshot.config.smart.endpoint, &state.paths)
+    llm::local_service_status(
+        &snapshot.config.smart.endpoint,
+        &state.paths,
+        &snapshot.config,
+    )
 }
 
 #[tauri::command]
@@ -409,7 +416,11 @@ fn start_llm_service(
 ) -> Result<llm::LocalServiceStatus, String> {
     state.set_runtime_notice(&app, "LLM 服务启动中", "正在检查本地 llama-server");
     let snapshot = state.snapshot();
-    match llm::start_local_service(&snapshot.config.smart.endpoint, &state.paths) {
+    match llm::start_local_service(
+        &snapshot.config.smart.endpoint,
+        &state.paths,
+        &snapshot.config,
+    ) {
         Ok(status) => {
             state.set_runtime_notice(
                 &app,
@@ -677,7 +688,8 @@ pub fn run_cli_worker_if_requested() -> bool {
         };
         let result = (|| -> anyhow::Result<()> {
             let paths = Paths::discover()?;
-            let report = model_pack::install(&pack_path, &paths)?;
+            let config = config::load_or_create(&paths)?;
+            let report = model_pack::install(&pack_path, &paths, &config)?;
             println!("{}", serde_json::to_string_pretty(&report)?);
             Ok(())
         })();
