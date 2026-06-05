@@ -277,6 +277,7 @@
 - Cursor positioning now logs `uia-caret` when UI Automation exposes text-range caret rectangles, then falls back to `uia-element`, guarded `uia-focused`, `gui-thread`, or `fallback`; real overlay placement still needs visual target-machine coverage.
 - Clipboard failure can now fall back to direct Unicode typing for short single-line text; broad app coverage still needs manual acceptance.
 - Task-style background workers now catch unwind panics in release builds, update the UI with a worker error, and write JSON rows to `worker-error-YYYYMMDD.log`; low-level OS hook loop panic coverage is still future work.
+- Tray quit and Tauri exit events now run graceful shutdown: active recording is cancelled, stale worker sessions are invalidated, overlay state is hidden, history is flushed, and `shutdown-YYYYMMDD.log` is written. `Test-PortableRelease.ps1` also runs `VoiceIME.exe --shutdown-smoke` against a temporary app dir.
 - `npm run ui:smoke` now covers main/settings/history/overlay layout with QA mock data across 100%, 125%, 150%, and 200% device scale; true OS DPI and WebView screenshots still need manual release checks.
 - Packaged builds now include `app/tools/启动语音输入-诊断.bat`; portable root layout still visibly exposes only the main launcher.
 - Packaged builds now include `app/tools/Notepad-Input-Acceptance.ps1`; Notepad has an automated paste-path smoke, while other real apps still need manual coverage.
@@ -284,4 +285,4 @@
 - Packaged builds now include `app/tools/Foreground-Input-Acceptance.ps1`; WeChat/Feishu, Word/document editors, and IDEs can be checked with the same foreground paste path and target-log validation.
 - Packaged builds now include `app/tools/Translation-Acceptance.ps1` and `Mock-External-Translate.ps1`; the external translation JSON path has an offline acceptance smoke.
 - Packaged builds now include `app/tools\Model-Pack-Import-Acceptance.ps1`; the Rust `--install-model-pack` importer is checked against a copied core package and a real model pack zip.
-- Repo packaging now includes `packaging/Test-PortableRelease.ps1`, which runs the full/core package layout gate, startup smoke, doctor report check, and automated Notepad/Browser/Translation/model-pack import acceptance in one pass.
+- Repo packaging now includes `packaging/Test-PortableRelease.ps1`, which runs the full/core package layout gate, startup smoke, doctor report check, shutdown smoke, and automated Notepad/Browser/Translation/model-pack import acceptance in one pass.

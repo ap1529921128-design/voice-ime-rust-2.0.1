@@ -127,6 +127,42 @@ function Invoke-DoctorSmoke {
     Write-Host "Doctor smoke passed: $($report.FullName)"
 }
 
+function Invoke-ShutdownSmoke {
+    param([Parameter(Mandatory = $true)][string]$Root)
+
+    $app = Join-Path $Root "app"
+    $exe = Join-Path $app "VoiceIME.exe"
+    $appDir = Join-Path ([System.IO.Path]::GetTempPath()) ("voice-ime-shutdown-" + [guid]::NewGuid().ToString("N"))
+    $previousAppDir = [Environment]::GetEnvironmentVariable("VOICE_IME_APP_DIR", "Process")
+    try {
+        $env:VOICE_IME_APP_DIR = $appDir
+        $process = Start-Process -FilePath $exe -ArgumentList "--shutdown-smoke" -WorkingDirectory $app -WindowStyle Hidden -Wait -PassThru
+        if ($process.ExitCode -ne 0) {
+            throw "Shutdown smoke exited with code $($process.ExitCode)"
+        }
+    }
+    finally {
+        if ([string]::IsNullOrEmpty($previousAppDir)) {
+            Remove-Item Env:\VOICE_IME_APP_DIR -ErrorAction SilentlyContinue
+        }
+        else {
+            $env:VOICE_IME_APP_DIR = $previousAppDir
+        }
+    }
+    $logs = @(Get-ChildItem -LiteralPath (Join-Path $appDir "logs") -Filter "shutdown-*.log" -File -ErrorAction SilentlyContinue)
+    if ($logs.Count -eq 0) {
+        throw "Shutdown smoke did not write a shutdown log under $appDir"
+    }
+    $entry = Get-Content -LiteralPath (($logs | Sort-Object LastWriteTime -Descending | Select-Object -First 1).FullName) |
+        Where-Object { $_ -and $_.Trim().Length -gt 0 } |
+        Select-Object -Last 1 |
+        ConvertFrom-Json
+    if (($entry.reason -ne "cli-shutdown-smoke") -or (-not [bool]$entry.history_flushed)) {
+        throw "Shutdown smoke log did not report a clean flush"
+    }
+    Write-Host "Shutdown smoke passed: $appDir"
+}
+
 function Invoke-AcceptanceScript {
     param(
         [Parameter(Mandatory = $true)][string]$Root,
@@ -202,6 +238,7 @@ Assert-BuildStamp -Root $CoreReleaseRoot
 Invoke-StartupSmoke -Root $ReleaseRoot -Name "full"
 Invoke-StartupSmoke -Root $CoreReleaseRoot -Name "core"
 Invoke-DoctorSmoke -Root $ReleaseRoot
+Invoke-ShutdownSmoke -Root $ReleaseRoot
 if (-not $SkipNotepad) {
     Invoke-AcceptanceScript -Root $ReleaseRoot -ScriptName "Notepad-Input-Acceptance.ps1"
 }

@@ -29,6 +29,8 @@ The app never sends Enter automatically. Confirmed text is pasted into the targe
 
 Task-style background workers now run with unwind panic guards in release builds. Recording/ASR, translation, model download, overlay cleanup, cancellation cleanup, prewarm, and benchmark panics report a UI error and append JSON rows to `worker-error-YYYYMMDD.log` instead of silently killing the task.
 
+Exit paths now run a graceful shutdown. Tray quit and Tauri exit events cancel active recording, invalidate stale sessions, hide overlay state, flush history, and append `shutdown-YYYYMMDD.log`; the portable release gate checks the same core path with `VoiceIME.exe --shutdown-smoke`.
+
 ## Verification
 
 The release gate passed on the build machine for:

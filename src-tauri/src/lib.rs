@@ -521,7 +521,7 @@ fn hide_overlay(app: AppHandle) {
 
 pub fn run() {
     let app_state = AppState::load().expect("load Voice IME state");
-    tauri::Builder::default()
+    let app = tauri::Builder::default()
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_global_shortcut::Builder::new().build())
@@ -586,8 +586,21 @@ pub fn run() {
             open_hot_rules_file,
             hide_overlay,
         ])
-        .run(tauri::generate_context!())
-        .expect("run Voice IME");
+        .build(tauri::generate_context!())
+        .expect("build Voice IME");
+    app.run(|app, event| match event {
+        tauri::RunEvent::ExitRequested { .. } => {
+            if let Some(state) = app.try_state::<AppState>() {
+                state.graceful_shutdown(app, "exit-requested");
+            }
+        }
+        tauri::RunEvent::Exit => {
+            if let Some(state) = app.try_state::<AppState>() {
+                state.graceful_shutdown(app, "exit");
+            }
+        }
+        _ => {}
+    });
 }
 
 pub fn run_cli_worker_if_requested() -> bool {
@@ -630,6 +643,25 @@ pub fn run_cli_worker_if_requested() -> bool {
             let paths = Paths::discover()?;
             let report = model_pack::install(&pack_path, &paths)?;
             println!("{}", serde_json::to_string_pretty(&report)?);
+            Ok(())
+        })();
+        if let Err(err) = result {
+            eprintln!("{err:?}");
+            std::process::exit(2);
+        }
+        return true;
+    }
+    if first == std::ffi::OsStr::new("--shutdown-smoke") {
+        let result = (|| -> anyhow::Result<()> {
+            let state = AppState::load()?;
+            let report = state.shutdown_for_cli("cli-shutdown-smoke");
+            println!("{}", serde_json::to_string_pretty(&report)?);
+            if !report.history_flushed {
+                anyhow::bail!(
+                    "shutdown history flush failed: {}",
+                    report.history_flush_error.unwrap_or_default()
+                );
+            }
             Ok(())
         })();
         if let Err(err) = result {

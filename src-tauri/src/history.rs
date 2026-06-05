@@ -214,6 +214,10 @@ impl HistoryStore {
         self.save(path)
     }
 
+    pub fn flush(&self, path: &Path) -> Result<()> {
+        self.save(path)
+    }
+
     fn save(&self, path: &Path) -> Result<()> {
         if let Some(parent) = path.parent() {
             fs::create_dir_all(parent)?;

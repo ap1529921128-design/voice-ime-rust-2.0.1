@@ -15,7 +15,7 @@ use std::{
     ops::Deref,
     panic::{self, AssertUnwindSafe},
     path::PathBuf,
-    sync::atomic::{AtomicU64, Ordering},
+    sync::atomic::{AtomicBool, AtomicU64, Ordering},
     sync::Arc,
     time::{Duration, Instant},
 };
@@ -45,6 +45,19 @@ pub struct UiSnapshot {
     pub history: Vec<TranscriptRecord>,
 }
 
+#[derive(Debug, Clone, Serialize)]
+pub struct ShutdownReport {
+    pub created_at: String,
+    pub reason: &'static str,
+    pub already_started: bool,
+    pub previous_state: SessionState,
+    pub was_recording: bool,
+    pub session_id: u64,
+    pub history_records: usize,
+    pub history_flushed: bool,
+    pub history_flush_error: Option<String>,
+}
+
 #[derive(Clone)]
 pub struct AppState {
     runtime: Arc<AppRuntime>,
@@ -55,6 +68,7 @@ pub struct AppRuntime {
     pub recorder: Recorder,
     pub inner: parking_lot::Mutex<InnerState>,
     session_counter: AtomicU64,
+    shutdown_started: AtomicBool,
 }
 
 pub struct InnerState {
@@ -94,6 +108,7 @@ impl AppState {
                     overlay_rect: None,
                 }),
                 session_counter: AtomicU64::new(1),
+                shutdown_started: AtomicBool::new(false),
             }),
         }
     }
@@ -241,6 +256,63 @@ impl AppState {
             finish_cancelling_async(app.clone(), self.clone_for_worker(), cancel_session_id);
         }
         self.snapshot()
+    }
+
+    pub(crate) fn graceful_shutdown(
+        &self,
+        app: &AppHandle,
+        reason: &'static str,
+    ) -> ShutdownReport {
+        let report = self.prepare_shutdown(reason);
+        if !report.already_started {
+            hide_overlay(app);
+            let _ = self.write_shutdown_log(&report);
+            emit_snapshot(app, self);
+        }
+        report
+    }
+
+    pub(crate) fn shutdown_for_cli(&self, reason: &'static str) -> ShutdownReport {
+        let report = self.prepare_shutdown(reason);
+        if !report.already_started {
+            let _ = self.write_shutdown_log(&report);
+        }
+        report
+    }
+
+    fn prepare_shutdown(&self, reason: &'static str) -> ShutdownReport {
+        let already_started = self.shutdown_started.swap(true, Ordering::SeqCst);
+        let was_recording = self.recorder.is_recording();
+        if !already_started {
+            self.recorder.cancel();
+        }
+        let mut inner = self.inner.lock();
+        let previous_state = inner.state.clone();
+        let history_records = inner.history.records().len();
+        let session_id = if already_started {
+            inner.session_id
+        } else {
+            let session_id = self.next_session_id();
+            inner.session_id = session_id;
+            inner.state = SessionState::Idle;
+            inner.status = "正在退出".into();
+            inner.meta = "录音已停止，浮窗已隐藏，历史已保存".into();
+            inner.target = None;
+            inner.overlay_rect = None;
+            session_id
+        };
+        let history_result = inner.history.flush(&self.paths.history_path);
+        ShutdownReport {
+            created_at: chrono::Local::now().format("%Y-%m-%d %H:%M:%S").to_string(),
+            reason,
+            already_started,
+            previous_state,
+            was_recording,
+            session_id,
+            history_records,
+            history_flushed: history_result.is_ok(),
+            history_flush_error: history_result.err().map(|err| err.to_string()),
+        }
     }
 
     pub fn set_text(&self, app: &AppHandle, text: String) -> UiSnapshot {
@@ -491,6 +563,17 @@ impl AppState {
         };
         let mut file = OpenOptions::new().create(true).append(true).open(path)?;
         writeln!(file, "{}", serde_json::to_string(&entry)?)?;
+        Ok(())
+    }
+
+    fn write_shutdown_log(&self, report: &ShutdownReport) -> Result<()> {
+        fs::create_dir_all(&self.paths.logs_dir)?;
+        let path = self.paths.logs_dir.join(format!(
+            "shutdown-{}.log",
+            chrono::Local::now().format("%Y%m%d")
+        ));
+        let mut file = OpenOptions::new().create(true).append(true).open(path)?;
+        writeln!(file, "{}", serde_json::to_string(report)?)?;
         Ok(())
     }
 
@@ -1174,6 +1257,42 @@ mod tests {
             panic_payload_message(unknown.as_ref()),
             "unknown panic payload"
         );
+    }
+
+    #[test]
+    fn shutdown_invalidates_busy_session_and_flushes_history_once() {
+        let temp = tempfile::tempdir().unwrap();
+        let paths = test_paths(temp.path());
+        let state = AppState::from_parts(
+            paths.clone(),
+            AppConfig::default(),
+            HistoryStore::load(&paths.history_path, 10),
+        );
+        {
+            let mut inner = state.inner.lock();
+            inner.session_id = 42;
+            inner.state = SessionState::Transcribing;
+            inner.status = "忙碌".into();
+            inner.text = "保留确认栏文本".into();
+        }
+
+        let first = state.prepare_shutdown("test-shutdown");
+        assert!(!first.already_started);
+        assert_eq!(first.previous_state, SessionState::Transcribing);
+        assert_ne!(first.session_id, 42);
+        assert!(first.history_flushed);
+        assert_eq!(first.history_records, 0);
+        assert_eq!(fs::read_to_string(&paths.history_path).unwrap(), "[]");
+
+        let snapshot = state.snapshot();
+        assert_eq!(snapshot.state, SessionState::Idle);
+        assert_eq!(snapshot.status, "正在退出");
+        assert_eq!(snapshot.meta, "录音已停止，浮窗已隐藏，历史已保存");
+        assert_eq!(snapshot.text, "保留确认栏文本");
+
+        let second = state.prepare_shutdown("test-shutdown-second");
+        assert!(second.already_started);
+        assert_eq!(second.session_id, first.session_id);
     }
 
     fn test_paths(root: &Path) -> Paths {

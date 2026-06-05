@@ -72,9 +72,16 @@ fn handle_menu_event(app: &AppHandle, event: tauri::menu::MenuEvent) {
         ID_DOCTOR => run_doctor(app),
         ID_HOTWORDS => open_hotwords_file(app),
         ID_RULES => open_hot_rules_file(app),
-        ID_QUIT => app.exit(0),
+        ID_QUIT => quit_app(app),
         _ => {}
     }
+}
+
+fn quit_app(app: &AppHandle) {
+    if let Some(state) = app.try_state::<AppState>() {
+        state.graceful_shutdown(app, "tray-quit");
+    }
+    app.exit(0);
 }
 
 fn show_main_window(app: &AppHandle) {
