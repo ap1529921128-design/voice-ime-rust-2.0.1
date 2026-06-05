@@ -131,8 +131,9 @@ fn read_metadata(archive: &mut ZipArchive<File>) -> Result<Option<ModelPackMetad
         Ok(mut entry) => {
             let mut text = String::new();
             entry.read_to_string(&mut text)?;
+            let text = text.trim_start_matches('\u{feff}');
             Ok(Some(
-                serde_json::from_str(&text).context("解析 MODEL_PACK.json 失败")?,
+                serde_json::from_str(text).context("解析 MODEL_PACK.json 失败")?,
             ))
         }
         Err(zip::result::ZipError::FileNotFound) => Ok(None),
@@ -323,6 +324,36 @@ mod tests {
             fs::read(paths.root_dir.join("models/foo/model.onnx")).unwrap(),
             b"foo"
         );
+    }
+
+    #[test]
+    fn accepts_metadata_with_utf8_bom() {
+        let temp = tempfile::tempdir().unwrap();
+        let paths = temp_paths(&temp);
+        let zip_path = temp.path().join("pack.zip");
+        let metadata = r#"{
+          "schema_version": 1,
+          "files": [
+            {
+              "path": "app/models/foo/model.onnx",
+              "bytes": 3,
+              "sha256": "2c26b46b68ffc68ff99b453c1d30413413422d706483bfa0f98a5e886266e7ae"
+            }
+          ]
+        }"#;
+        let mut bom_metadata = vec![0xef, 0xbb, 0xbf];
+        bom_metadata.extend_from_slice(metadata.as_bytes());
+        write_zip(
+            &zip_path,
+            &[
+                ("app/models/foo/model.onnx", b"foo"),
+                ("MODEL_PACK.json", bom_metadata.as_slice()),
+            ],
+        );
+
+        let report = install(&zip_path, &paths).unwrap();
+
+        assert_eq!(report.checksum_verified, 1);
     }
 
     #[test]

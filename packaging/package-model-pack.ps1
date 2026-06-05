@@ -99,7 +99,12 @@ try {
         created_at        = (Get-Date).ToString("o")
         files             = $metadataFiles
     }
-    $metadata | ConvertTo-Json -Depth 8 | Set-Content -LiteralPath (Join-Path $staging "MODEL_PACK.json") -Encoding UTF8
+    $metadataJson = $metadata | ConvertTo-Json -Depth 8
+    [System.IO.File]::WriteAllText(
+        (Join-Path $staging "MODEL_PACK.json"),
+        $metadataJson,
+        [System.Text.UTF8Encoding]::new($false)
+    )
 
     if (-not (Test-Path -LiteralPath $OutputRoot -PathType Container)) {
         New-Item -ItemType Directory -Path $OutputRoot -Force | Out-Null
