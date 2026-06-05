@@ -127,6 +127,58 @@ function Invoke-DoctorSmoke {
     Write-Host "Doctor smoke passed: $($report.FullName)"
 }
 
+function Invoke-ModelRootFileSmoke {
+    param([Parameter(Mandatory = $true)][string]$CoreRoot)
+
+    $tempBase = [System.IO.Path]::GetTempPath()
+    $workRoot = Join-Path $tempBase ("voice-ime-model-root-file-" + [guid]::NewGuid().ToString("N"))
+    $modelRoot = Join-Path $tempBase ("voice-ime-shared-models-" + [guid]::NewGuid().ToString("N"))
+    $appDir = Join-Path $tempBase ("voice-ime-model-root-app-" + [guid]::NewGuid().ToString("N"))
+    $previousAppDir = [Environment]::GetEnvironmentVariable("VOICE_IME_APP_DIR", "Process")
+    $previousModelDir = [Environment]::GetEnvironmentVariable("VOICE_IME_MODEL_DIR", "Process")
+    try {
+        Copy-Item -LiteralPath $CoreRoot -Destination $workRoot -Recurse -Force
+        New-Item -ItemType Directory -Path $modelRoot -Force | Out-Null
+        Set-Content -LiteralPath (Join-Path $workRoot "app\MODEL_ROOT.txt") -Value "# shared model repository`n$modelRoot" -Encoding UTF8
+        $env:VOICE_IME_APP_DIR = $appDir
+        Remove-Item Env:\VOICE_IME_MODEL_DIR -ErrorAction SilentlyContinue
+        $exe = Join-Path $workRoot "app\VoiceIME.exe"
+        $process = Start-Process -FilePath $exe -ArgumentList "--doctor" -WorkingDirectory (Join-Path $workRoot "app") -WindowStyle Hidden -Wait -PassThru
+        if ($process.ExitCode -ne 0) {
+            throw "MODEL_ROOT.txt doctor smoke exited with code $($process.ExitCode)"
+        }
+        $reports = @(Get-ChildItem -LiteralPath (Join-Path $appDir "logs") -Filter "doctor-*.txt" -File -ErrorAction SilentlyContinue)
+        if ($reports.Count -eq 0) {
+            throw "MODEL_ROOT.txt doctor smoke did not write a report under $appDir"
+        }
+        $report = $reports | Sort-Object LastWriteTime -Descending | Select-Object -First 1
+        $body = Get-Content -LiteralPath $report.FullName -Raw
+        if (-not $body.Contains($modelRoot)) {
+            throw "Doctor report did not use MODEL_ROOT.txt model root: $modelRoot"
+        }
+    }
+    finally {
+        if ([string]::IsNullOrEmpty($previousAppDir)) {
+            Remove-Item Env:\VOICE_IME_APP_DIR -ErrorAction SilentlyContinue
+        }
+        else {
+            $env:VOICE_IME_APP_DIR = $previousAppDir
+        }
+        if ([string]::IsNullOrEmpty($previousModelDir)) {
+            Remove-Item Env:\VOICE_IME_MODEL_DIR -ErrorAction SilentlyContinue
+        }
+        else {
+            $env:VOICE_IME_MODEL_DIR = $previousModelDir
+        }
+        foreach ($path in @($workRoot, $modelRoot, $appDir)) {
+            if ((Test-Path -LiteralPath $path) -and $path.StartsWith($tempBase, [StringComparison]::OrdinalIgnoreCase)) {
+                Remove-Item -LiteralPath $path -Recurse -Force -ErrorAction SilentlyContinue
+            }
+        }
+    }
+    Write-Host "MODEL_ROOT.txt smoke passed"
+}
+
 function Invoke-ShutdownSmoke {
     param([Parameter(Mandatory = $true)][string]$Root)
 
@@ -271,6 +323,7 @@ Assert-BuildStamp -Root $CoreReleaseRoot
 Invoke-StartupSmoke -Root $ReleaseRoot -Name "full"
 Invoke-StartupSmoke -Root $CoreReleaseRoot -Name "core"
 Invoke-DoctorSmoke -Root $ReleaseRoot
+Invoke-ModelRootFileSmoke -CoreRoot $CoreReleaseRoot
 Invoke-ShutdownSmoke -Root $ReleaseRoot
 Invoke-PanicSmoke -Root $ReleaseRoot
 if (-not $SkipNotepad) {

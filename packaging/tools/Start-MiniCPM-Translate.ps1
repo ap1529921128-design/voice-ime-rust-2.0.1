@@ -37,6 +37,16 @@ function Resolve-ModelRoot {
     if ($env:VOICE_IME_MODEL_DIR) {
         return Resolve-RootRelativePath -Path $env:VOICE_IME_MODEL_DIR
     }
+    $modelRootFile = Join-Path $Root "MODEL_ROOT.txt"
+    if (Test-Path -LiteralPath $modelRootFile -PathType Leaf) {
+        $fileRoot = Get-Content -LiteralPath $modelRootFile -Encoding UTF8 |
+            ForEach-Object { ([string]$_).Trim().TrimStart([char]0xfeff) } |
+            Where-Object { $_ -and -not $_.StartsWith("#") } |
+            Select-Object -First 1
+        if ($fileRoot) {
+            return Resolve-RootRelativePath -Path $fileRoot
+        }
+    }
     $config = Read-VoiceImeConfig
     $configured = $null
     if ($config.asr -and $config.asr.model_root) {

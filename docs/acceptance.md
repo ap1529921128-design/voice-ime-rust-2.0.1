@@ -109,7 +109,7 @@
 5. Clicking `选择` opens a native directory picker and fills the matching default filenames for that profile.
 6. Each individual model path has a file-picker icon that updates only that config field.
 7. After selecting a directory or file, the config is saved and the ready/missing rows refresh.
-8. Optional portable override: create `app\MODEL_ROOT.txt` with an absolute model repository path, launch from `启动语音输入.bat`, and confirm Settings / Models, Doctor, and tray `模型目录` use that effective root when `VOICE_IME_MODEL_DIR` is not already set.
+8. Optional portable override: create `app\MODEL_ROOT.txt` with an absolute model repository path, launch from `启动语音输入.bat`, and confirm Settings / Models, Doctor, MiniCPM startup, and tray `模型目录` use that effective root when `VOICE_IME_MODEL_DIR` is not already set.
 
 ## Hotkey Status
 
@@ -298,4 +298,4 @@
 - Packaged builds now include `app/tools/Foreground-Input-Acceptance.ps1`; WeChat/Feishu, Word/document editors, and IDEs can be checked with the same foreground paste path and target-log validation.
 - Packaged builds now include `app/tools/Translation-Acceptance.ps1` and `Mock-External-Translate.ps1`; the external translation JSON path has an offline acceptance smoke.
 - Packaged builds now include `app/tools\Model-Pack-Import-Acceptance.ps1`; the Rust `--install-model-pack` importer is checked against a copied core package and a real model pack zip.
-- Repo packaging now includes `packaging/Test-PortableRelease.ps1`, which runs the full/core package layout gate, startup smoke, doctor report check, shutdown smoke, panic-log smoke, and automated Notepad/Browser/Translation/model-pack import acceptance in one pass.
+- Repo packaging now includes `packaging/Test-PortableRelease.ps1`, which runs the full/core package layout gate, startup smoke, doctor report check, `MODEL_ROOT.txt` model-root smoke, shutdown smoke, panic-log smoke, and automated Notepad/Browser/Translation/model-pack import acceptance in one pass.

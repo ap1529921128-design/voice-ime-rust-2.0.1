@@ -638,15 +638,18 @@ fn discover_root_dir() -> PathBuf {
 }
 
 fn discover_model_dir(root_dir: &Path) -> PathBuf {
-    std::env::var_os("VOICE_IME_MODEL_DIR")
-        .map(PathBuf::from)
-        .map(|path| absolutize(root_dir, path))
-        .unwrap_or_else(|| root_dir.join("models"))
+    if let Some(env_root) = std::env::var_os("VOICE_IME_MODEL_DIR") {
+        return absolutize(root_dir, PathBuf::from(env_root));
+    }
+    model_root_file(root_dir).unwrap_or_else(|| root_dir.join("models"))
 }
 
 pub fn effective_model_root(config: &AppConfig, paths: &Paths) -> PathBuf {
     if let Some(env_root) = std::env::var_os("VOICE_IME_MODEL_DIR") {
         return absolutize(&paths.root_dir, PathBuf::from(env_root));
+    }
+    if let Some(file_root) = model_root_file(&paths.root_dir) {
+        return file_root;
     }
     let configured = config.asr.model_root.trim();
     if configured.is_empty() || configured == "models" {
@@ -676,6 +679,14 @@ fn absolutize(root_dir: &Path, path: PathBuf) -> PathBuf {
     } else {
         root_dir.join(path)
     }
+}
+
+fn model_root_file(root_dir: &Path) -> Option<PathBuf> {
+    let text = fs::read_to_string(root_dir.join("MODEL_ROOT.txt")).ok()?;
+    text.lines()
+        .map(|line| line.trim().trim_start_matches('\u{feff}').trim())
+        .find(|line| !line.is_empty() && !line.starts_with('#'))
+        .map(|line| absolutize(root_dir, PathBuf::from(line)))
 }
 
 pub(crate) const DEFAULT_PERSONAL_PROMPT: &str = "请优先识别为简体中文，保留常见英文工具名和技术名词。\n常用词：Codex, Claude Code, ChatGPT, OpenAI, GitHub, Python, PowerShell, Windows, macOS, ASR, GUI, MVP, PRD, faster-whisper, FunASR, SenseVoice, sherpa-onnx, whisper.cpp, llama-server, MiniCPM, Rust, Tauri。\n常用表达：不要自动发送，放到输入框等我确认；帮我整理需求；帮我判断有没有搞头；问问老金；先做最小验证；移动硬盘环境；最小化到托盘。\n";
@@ -937,6 +948,27 @@ mod tests {
         assert_eq!(
             resolve_model_path(&cfg, &paths, "foo/bar.onnx"),
             PathBuf::from("E:/voice-ime-models/foo/bar.onnx")
+        );
+    }
+
+    #[test]
+    fn model_root_file_overrides_saved_config_for_portable_model_repo() {
+        let temp = tempfile::tempdir().unwrap();
+        let paths = temp_paths(temp.path());
+        let shared = temp.path().join("shared-models");
+        std::fs::write(
+            temp.path().join("MODEL_ROOT.txt"),
+            format!("# shared repo\n{}\n", shared.display()),
+        )
+        .unwrap();
+        let mut cfg = AppConfig::default();
+        cfg.asr.model_root = "E:/old-models".into();
+        normalize_config(&mut cfg);
+
+        assert_eq!(effective_model_root(&cfg, &paths), shared.clone());
+        assert_eq!(
+            resolve_model_path(&cfg, &paths, "models/foo/bar.onnx"),
+            shared.join("foo/bar.onnx")
         );
     }
 

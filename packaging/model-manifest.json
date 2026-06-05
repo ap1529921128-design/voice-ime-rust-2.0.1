@@ -2,7 +2,7 @@
   "schema_version": 1,
   "app_version": "2.0.1",
   "layout": {
-    "root": "app/models by default, or VOICE_IME_MODEL_DIR / asr.model_root when configured",
+    "root": "app/models by default, or VOICE_IME_MODEL_DIR / app/MODEL_ROOT.txt / asr.model_root when configured",
     "rule": "Model packs are copied into the effective model root without changing VoiceIME.exe.",
     "core_package": "No model binaries are required in the core package."
   },
