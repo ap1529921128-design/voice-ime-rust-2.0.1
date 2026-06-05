@@ -1,5 +1,6 @@
 use once_cell::sync::Lazy;
 use regex::Regex;
+use serde::Serialize;
 use serde_json::Value;
 use std::{collections::BTreeMap, fs, path::Path};
 
@@ -237,6 +238,109 @@ pub fn apply_hot_rules(text: &str, path: &Path) -> String {
         }
     }
     text
+}
+
+#[derive(Debug, Clone, Serialize, PartialEq, Eq)]
+pub struct UserDictionaryStats {
+    pub hotwords_path: String,
+    pub hot_rules_path: String,
+    pub hotword_entries: usize,
+    pub hotword_aliases: usize,
+    pub hotword_entries_without_alias: usize,
+    pub hot_rule_count: usize,
+    pub hot_rule_invalid: usize,
+    pub hot_rule_invalid_examples: Vec<String>,
+}
+
+pub fn user_dictionary_stats(hotwords_path: &Path, hot_rules_path: &Path) -> UserDictionaryStats {
+    let (hotword_entries, hotword_aliases, hotword_entries_without_alias) =
+        hotword_stats(hotwords_path);
+    let (hot_rule_count, hot_rule_invalid, hot_rule_invalid_examples) =
+        hot_rule_stats(hot_rules_path);
+    UserDictionaryStats {
+        hotwords_path: hotwords_path.to_string_lossy().to_string(),
+        hot_rules_path: hot_rules_path.to_string_lossy().to_string(),
+        hotword_entries,
+        hotword_aliases,
+        hotword_entries_without_alias,
+        hot_rule_count,
+        hot_rule_invalid,
+        hot_rule_invalid_examples,
+    }
+}
+
+fn hotword_stats(path: &Path) -> (usize, usize, usize) {
+    let Ok(body) = fs::read_to_string(path) else {
+        return (0, 0, 0);
+    };
+    let mut entries = 0;
+    let mut aliases = 0;
+    let mut without_alias = 0;
+    for line in body.lines() {
+        let line = strip_inline_comment(line).trim();
+        if line.is_empty() {
+            continue;
+        }
+        let parts = line
+            .split('|')
+            .map(str::trim)
+            .filter(|item| !item.is_empty())
+            .collect::<Vec<_>>();
+        if parts.is_empty() {
+            continue;
+        }
+        entries += 1;
+        let alias_count = parts.len().saturating_sub(1);
+        aliases += alias_count;
+        if alias_count == 0 {
+            without_alias += 1;
+        }
+    }
+    (entries, aliases, without_alias)
+}
+
+fn hot_rule_stats(path: &Path) -> (usize, usize, Vec<String>) {
+    let Ok(body) = fs::read_to_string(path) else {
+        return (0, 0, Vec::new());
+    };
+    let mut valid = 0;
+    let mut invalid = 0;
+    let mut examples = Vec::new();
+    for (index, raw_line) in body.lines().enumerate() {
+        let line = strip_inline_comment(raw_line).trim();
+        if line.is_empty() {
+            continue;
+        }
+        let Some((pattern, _replacement)) = line.split_once('=') else {
+            invalid += 1;
+            push_invalid_rule_example(&mut examples, index + 1, "缺少 =");
+            continue;
+        };
+        let pattern = pattern.trim();
+        if pattern.is_empty() {
+            invalid += 1;
+            push_invalid_rule_example(&mut examples, index + 1, "正则为空");
+            continue;
+        }
+        match Regex::new(pattern) {
+            Ok(_) => valid += 1,
+            Err(err) => {
+                invalid += 1;
+                push_invalid_rule_example(
+                    &mut examples,
+                    index + 1,
+                    &err.to_string().chars().take(80).collect::<String>(),
+                );
+            }
+        }
+    }
+    (valid, invalid, examples)
+}
+
+fn push_invalid_rule_example(examples: &mut Vec<String>, line: usize, detail: &str) {
+    if examples.len() < 3 {
+        examples.push(format!("line {line}: {detail}"));
+    }
 }
 
 fn strip_inline_comment(line: &str) -> &str {
@@ -669,6 +773,28 @@ mod tests {
         assert_eq!(trace.hotword_text, "minicpm 非洲之星 一千毫安时");
         assert_eq!(trace.rule_text, "minicpm 非洲之星 一千mAh");
         assert_eq!(trace.final_text, "minicpm 非洲之星 1000mAh");
+    }
+
+    #[test]
+    fn reports_hotword_and_rule_stats() {
+        let temp = tempfile::tempdir().unwrap();
+        let hotwords = temp.path().join("hot.txt");
+        let rules = temp.path().join("hot-rule.txt");
+        fs::write(
+            &hotwords,
+            "Voice IME | voice ime | 语音 IME\n孤立目标词\n非洲之星 | 非州之星\n",
+        )
+        .unwrap();
+        fs::write(&rules, "毫安时 = mAh\n( = bad\nbad line\n").unwrap();
+
+        let stats = user_dictionary_stats(&hotwords, &rules);
+
+        assert_eq!(stats.hotword_entries, 3);
+        assert_eq!(stats.hotword_aliases, 3);
+        assert_eq!(stats.hotword_entries_without_alias, 1);
+        assert_eq!(stats.hot_rule_count, 1);
+        assert_eq!(stats.hot_rule_invalid, 2);
+        assert_eq!(stats.hot_rule_invalid_examples.len(), 2);
     }
 
     #[test]

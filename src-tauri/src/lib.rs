@@ -415,6 +415,11 @@ fn hotkey_status() -> Vec<HotkeyCheck> {
 }
 
 #[tauri::command]
+fn dictionary_stats(state: State<'_, AppState>) -> text::UserDictionaryStats {
+    text::user_dictionary_stats(&state.paths.hotwords_path, &state.paths.hot_rules_path)
+}
+
+#[tauri::command]
 fn export_diagnostics(app: AppHandle, state: State<'_, AppState>) -> Result<UiSnapshot, String> {
     let snapshot = state.snapshot();
     let _ = doctor::run(&state.paths, &snapshot.config).map_err(to_string)?;
@@ -682,6 +687,7 @@ pub fn run() {
             doctor_report,
             repair_doctor,
             hotkey_status,
+            dictionary_stats,
             export_diagnostics,
             export_history_csv,
             llm_service_status,

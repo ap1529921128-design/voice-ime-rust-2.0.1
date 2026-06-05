@@ -68,6 +68,7 @@ pub fn run(paths: &Paths, config: &AppConfig) -> Result<DoctorReport> {
     check_llm_artifacts(paths, config, &mut checks);
     check_translation_backend(config, &mut checks);
     check_translation_logs(paths, &mut checks);
+    check_user_dictionary_stats(paths, &mut checks);
     check_user_text_files(paths, &mut checks);
     check_runtime_logs(paths, &mut checks);
 
@@ -542,6 +543,37 @@ fn check_user_text_files(paths: &Paths, checks: &mut Vec<DoctorCheck>) {
     }
 }
 
+fn check_user_dictionary_stats(paths: &Paths, checks: &mut Vec<DoctorCheck>) {
+    let stats = crate::text::user_dictionary_stats(&paths.hotwords_path, &paths.hot_rules_path);
+    let mut detail = format!(
+        "热词 {} 条，别名 {} 个，规则 {} 条",
+        stats.hotword_entries, stats.hotword_aliases, stats.hot_rule_count
+    );
+    if stats.hotword_entries_without_alias > 0 {
+        detail.push_str(&format!(
+            "；{} 条热词没有别名",
+            stats.hotword_entries_without_alias
+        ));
+    }
+    if stats.hot_rule_invalid > 0 {
+        detail.push_str(&format!(
+            "；{} 条规则无效：{}",
+            stats.hot_rule_invalid,
+            stats.hot_rule_invalid_examples.join("; ")
+        ));
+    }
+    push_check(
+        checks,
+        "热词规则统计",
+        if stats.hot_rule_invalid > 0 {
+            DoctorStatus::Warn
+        } else {
+            DoctorStatus::Pass
+        },
+        detail,
+    );
+}
+
 fn check_runtime_logs(paths: &Paths, checks: &mut Vec<DoctorCheck>) {
     let panic_logs = latest_log(paths, "panic-*.log");
     let worker_logs = latest_log(paths, "worker-error-*.log");
@@ -895,6 +927,24 @@ mod tests {
         assert_eq!(checks.len(), 1);
         assert_eq!(checks[0].status, DoctorStatus::Pass);
         assert!(checks[0].detail.contains("暂无"));
+    }
+
+    #[test]
+    fn dictionary_stats_warn_on_invalid_rules() {
+        let temp = tempfile::tempdir().unwrap();
+        let paths = test_paths(temp.path());
+        fs::create_dir_all(&paths.app_dir).unwrap();
+        fs::write(&paths.hotwords_path, "非洲之星 | 非州之星\n").unwrap();
+        fs::write(&paths.hot_rules_path, "毫安时 = mAh\n( = bad\n").unwrap();
+        let mut checks = Vec::new();
+
+        check_user_dictionary_stats(&paths, &mut checks);
+
+        assert_eq!(checks.len(), 1);
+        assert_eq!(checks[0].name, "热词规则统计");
+        assert_eq!(checks[0].status, DoctorStatus::Warn);
+        assert!(checks[0].detail.contains("热词 1 条"));
+        assert!(checks[0].detail.contains("1 条规则无效"));
     }
 
     fn test_paths(root: &std::path::Path) -> Paths {

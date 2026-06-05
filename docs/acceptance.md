@@ -87,7 +87,7 @@
 
 1. Open Settings / Data and click `诊断`.
 2. A diagnostics panel appears in the page with pass, warning, or failure rows.
-3. The rows cover app/log paths, microphone, clipboard, ASR models, smart-correction endpoint, local LLM files, translation backend, recent translation logs, prompt, correction table, hotwords, and hot rules.
+3. The rows cover app/log paths, microphone, clipboard, ASR models, smart-correction endpoint, local LLM files, translation backend, recent translation logs, hotword/rule stats, prompt, correction table, hotwords, and hot rules.
 4. A `doctor-YYYYMMDD-HHMMSS.txt` report path is shown in the panel and the file exists under `.voice_ime/logs`.
 5. Clicking `导出` still creates the support zip and includes the latest doctor output without including recordings or model binaries.
 6. If the effective external model root has no `MODELS.json/md`, the support zip falls back to the packaged model manifest and records the model root source and manifest source paths in `summary.txt`.
@@ -102,6 +102,15 @@
 5. Existing user files and model manifests are reported as skipped and are not overwritten.
 6. The diagnostics panel refreshes after repair and writes a fresh `doctor-YYYYMMDD-HHMMSS.txt` report.
 7. Repair does not download models, copy model binaries, change hotkeys, alter existing config values, upload data, or send input to other apps.
+
+## Hotwords And Rules
+
+1. Open Settings / Data.
+2. Click `热词` and edit `hot.txt`, using `目标词 | 别名` lines.
+3. Click `规则` and edit `hot-rule.txt`, using `regex = replacement` lines.
+4. Click `刷新词表`; the panel shows hotword entries, aliases, valid rules, and invalid rule examples.
+5. Running Settings / Data / `诊断` includes a `热词规则统计` row and warns when any regex rule is invalid.
+6. Changes apply on the next transcription without restarting the app.
 
 ## Model Path Picker
 

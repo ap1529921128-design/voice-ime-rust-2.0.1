@@ -128,7 +128,7 @@ app/tools/Start-MiniCPM-Translate.ps1
 
 ## 热词和规则
 
-设置页提供“热词”和“规则”按钮，可直接打开 `app/.voice_ime/hot.txt` 与 `app/.voice_ime/hot-rule.txt`。`hot.txt` 用 `目标词 | 别名` 做专名替换，`hot-rule.txt` 用正则做格式替换。详细格式见 [docs/hotwords.md](docs/hotwords.md)。
+设置页提供“热词”和“规则”按钮，可直接打开 `app/.voice_ime/hot.txt` 与 `app/.voice_ime/hot-rule.txt`。`hot.txt` 用 `目标词 | 别名` 做专名替换，`hot-rule.txt` 用正则做格式替换；“数据 / 刷新词表”和 Doctor 会显示热词条数、别名数、规则数和无效规则行。详细格式见 [docs/hotwords.md](docs/hotwords.md)。
 
 ## 数字和格式
 
@@ -171,7 +171,7 @@ app\VoiceIME.exe --benchmark-translation
 
 ## 本地诊断
 
-设置页的“数据 / 诊断”会在页面内显示通过、提醒、失败的检查行，同时生成 `app/.voice_ime/logs/doctor-YYYYMMDD-HHMMSS.txt`。它会检查应用目录、日志写入、麦克风、剪贴板、ASR 模型、全局热键、本地 LLM 端点、翻译后端、最近翻译耗时/错误和用户词表文件。“数据 / 修复”只会补齐缺失的运行目录、个人提示词、纠错表、热词、规则文件和模型清单，不覆盖已有文件、不下载模型、不复制模型二进制、不改热键或配置。也可以运行：
+设置页的“数据 / 诊断”会在页面内显示通过、提醒、失败的检查行，同时生成 `app/.voice_ime/logs/doctor-YYYYMMDD-HHMMSS.txt`。它会检查应用目录、日志写入、麦克风、剪贴板、ASR 模型、全局热键、本地 LLM 端点、翻译后端、最近翻译耗时/错误、热词/规则统计和用户词表文件。“数据 / 修复”只会补齐缺失的运行目录、个人提示词、纠错表、热词、规则文件和模型清单，不覆盖已有文件、不下载模型、不复制模型二进制、不改热键或配置。也可以运行：
 
 ```powershell
 app\VoiceIME.exe --doctor

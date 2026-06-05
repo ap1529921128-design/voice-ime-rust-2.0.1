@@ -168,6 +168,17 @@ type DoctorReport = {
   checks: DoctorCheck[];
 };
 
+type UserDictionaryStats = {
+  hotwords_path: string;
+  hot_rules_path: string;
+  hotword_entries: number;
+  hotword_aliases: number;
+  hotword_entries_without_alias: number;
+  hot_rule_count: number;
+  hot_rule_invalid: number;
+  hot_rule_invalid_examples: string[];
+};
+
 type RepairAction = {
   name: string;
   status: "repaired" | "skipped" | "failed";
@@ -236,6 +247,7 @@ let historyBackend = "all";
 let historyModel = "all";
 let historyDate = "";
 let pendingTextSync: number | undefined;
+let dictionaryStats: UserDictionaryStats | null = null;
 
 type IconName = keyof typeof icons;
 
@@ -929,12 +941,53 @@ function dataSettingsPanel(cfg: AppConfig) {
         <button class="tool-btn" data-action="export-history-csv">${icon("Download", "导出历史")}<span>历史 CSV</span></button>
         <button class="tool-btn" data-action="run-asr-benchmark">${icon("Gauge", "ASR 基准")}<span>ASR 基准</span></button>
         <button class="tool-btn" data-action="run-translation-benchmark">${icon("Languages", "翻译基准")}<span>翻译基准</span></button>
+        <button class="tool-btn" data-action="refresh-dictionary-stats">${icon("RefreshCw", "刷新词表")}<span>刷新词表</span></button>
         <button class="tool-btn danger" data-action="clear-recordings">${icon("Trash2", "清理录音")}<span>清理录音</span></button>
         <button class="tool-btn" data-action="open-hotwords">${icon("BookOpen", "打开热词")}<span>热词</span></button>
         <button class="tool-btn" data-action="open-hot-rules">${icon("ListChecks", "打开规则")}<span>规则</span></button>
         <button class="tool-btn danger" data-action="clear-history">${icon("Eraser", "清空历史")}<span>清空历史</span></button>
       </div>
+      ${dictionaryStatsPanel()}
       ${doctorPanel()}
+    </div>
+  `;
+}
+
+function dictionaryStatsPanel() {
+  if (!dictionaryStats) {
+    return `
+      <div class="doctor-panel empty-diagnostics">
+        <div class="doctor-head">
+          <strong>热词规则</strong>
+          <span>等待刷新</span>
+        </div>
+      </div>
+    `;
+  }
+  const rows: DoctorCheck[] = [
+    {
+      name: "热词",
+      status: dictionaryStats.hotword_entries > 0 ? "pass" : "warn",
+      detail: `${dictionaryStats.hotword_entries} 条 / ${dictionaryStats.hotword_aliases} 个别名`,
+    },
+    {
+      name: "规则",
+      status: dictionaryStats.hot_rule_invalid > 0 ? "warn" : "pass",
+      detail:
+        dictionaryStats.hot_rule_invalid > 0
+          ? `${dictionaryStats.hot_rule_count} 条可用 / ${dictionaryStats.hot_rule_invalid} 条无效：${dictionaryStats.hot_rule_invalid_examples.join("; ")}`
+          : `${dictionaryStats.hot_rule_count} 条可用`,
+    },
+  ];
+  return `
+    <div class="doctor-panel">
+      <div class="doctor-head">
+        <strong>热词规则</strong>
+        <span title="${escapeAttr(dictionaryStats.hotwords_path)}">${escapeHtml(fileNameFromPath(dictionaryStats.hotwords_path))} / ${escapeHtml(fileNameFromPath(dictionaryStats.hot_rules_path))}</span>
+      </div>
+      <div class="doctor-list">
+        ${rows.map((row) => doctorRow(row)).join("")}
+      </div>
     </div>
   `;
 }
@@ -1176,8 +1229,15 @@ function wireCommon() {
       if (action === "export-history-csv") await run("export_history_csv");
       if (action === "run-asr-benchmark") await runAsrBenchmark();
       if (action === "run-translation-benchmark") await run("run_translation_benchmark", { samplesPath: "" });
-      if (action === "open-hotwords") await invoke("open_hotwords_file");
-      if (action === "open-hot-rules") await invoke("open_hot_rules_file");
+      if (action === "refresh-dictionary-stats") await refreshDictionaryStats(true);
+      if (action === "open-hotwords") {
+        await invoke("open_hotwords_file");
+        await refreshDictionaryStats(true);
+      }
+      if (action === "open-hot-rules") {
+        await invoke("open_hot_rules_file");
+        await refreshDictionaryStats(true);
+      }
     });
   });
 }
@@ -1231,6 +1291,7 @@ function wireMain() {
           await refreshPersonalPrompt(false);
         }
         await refreshHotkeyStatus();
+        if (activeSettingsTab === "data") await refreshDictionaryStats(false);
       }
       render();
     });
@@ -1248,6 +1309,7 @@ function wireMain() {
         await refreshPersonalPrompt(false);
       }
       if (activeSettingsTab === "shortcuts") await refreshHotkeyStatus();
+      if (activeSettingsTab === "data") await refreshDictionaryStats(false);
       render();
     });
   });
@@ -1478,6 +1540,11 @@ async function refreshModelRootOverrideStatus() {
 
 async function refreshHotkeyStatus() {
   hotkeyRows = await invoke<HotkeyCheck[]>("hotkey_status");
+}
+
+async function refreshDictionaryStats(shouldRender = false) {
+  dictionaryStats = await invoke<UserDictionaryStats>("dictionary_stats");
+  if (shouldRender) render();
 }
 
 async function refreshLlmServiceStatus(shouldRender = false) {

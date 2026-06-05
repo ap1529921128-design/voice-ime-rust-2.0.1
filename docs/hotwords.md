@@ -9,7 +9,7 @@ app/.voice_ime/hot.txt
 app/.voice_ime/hot-rule.txt
 ```
 
-Open them from Settings with the `热词` and `规则` buttons. Changes apply on the next transcription.
+Open them from Settings with the `热词` and `规则` buttons. Changes apply on the next transcription. Settings / Data / `刷新词表` and Doctor show the current hotword entry count, alias count, valid rule count, and invalid regex examples.
 
 ## hot.txt
 
@@ -40,7 +40,7 @@ Examples:
 艾特\s*(\w+)\s*点\s*(\w+) = @\1.\2
 ```
 
-The replacement side supports `\1`, `\2`, and other capture references. Invalid regex rules are skipped.
+The replacement side supports `\1`, `\2`, and other capture references. Invalid regex rules are skipped and surfaced in Settings / Data / `刷新词表` and Doctor.
 
 ## Boundary
 

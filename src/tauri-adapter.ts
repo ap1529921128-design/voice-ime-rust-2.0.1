@@ -49,6 +49,7 @@ function qaInvoke(command: string, args?: Record<string, unknown>) {
   if (command === "audio_devices") return qaAudioDevices();
   if (command === "audio_level") return qaAudioLevel();
   if (command === "hotkey_status") return qaHotkeys();
+  if (command === "dictionary_stats") return qaDictionaryStats();
   if (command === "doctor_report") return qaDoctorReport();
   if (command === "repair_doctor") return qaRepairReport();
   if (command === "llm_service_status") return qaLlmServiceStatus();
@@ -240,6 +241,19 @@ function createQaSnapshot() {
       qaHistory(2, "明天上午九点提醒我检查模型目录"),
       qaHistory(3, "Voice IME 的 fast 模型应该优先保证响应速度"),
     ],
+  };
+}
+
+function qaDictionaryStats() {
+  return {
+    hotwords_path: "D:/voice-ime/app/.voice_ime/hot.txt",
+    hot_rules_path: "D:/voice-ime/app/.voice_ime/hot-rule.txt",
+    hotword_entries: 5,
+    hotword_aliases: 14,
+    hotword_entries_without_alias: 1,
+    hot_rule_count: 4,
+    hot_rule_invalid: 1,
+    hot_rule_invalid_examples: ["line 8: regex parse error"],
   };
 }
 

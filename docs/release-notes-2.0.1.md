@@ -36,6 +36,8 @@ Startup and uncaught thread panics now leave `panic-YYYYMMDD.log` entries with p
 
 GUI translation clicks now append `translation-YYYYMMDD.log` rows with engine, model, timeout, elapsed seconds, character counts, status, and errors. Doctor surfaces recent translation failures or slow requests, so local LLM stalls and prompt-like translation chatter are easier to diagnose.
 
+Settings / Data now shows hotword and hot-rule stats, including hotword entries, aliases, valid regex rules, and invalid rule examples. Doctor includes the same check so broken `hot-rule.txt` lines are visible before the next dictation.
+
 ## Verification
 
 The release gate passed on the build machine for:
