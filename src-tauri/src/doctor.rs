@@ -68,6 +68,7 @@ pub fn run(paths: &Paths, config: &AppConfig) -> Result<DoctorReport> {
     check_llm_artifacts(paths, config, &mut checks);
     check_translation_backend(config, &mut checks);
     check_user_text_files(paths, &mut checks);
+    check_runtime_logs(paths, &mut checks);
 
     let output_path = write_report(paths, config, &checks, started.elapsed())?;
     Ok(DoctorReport {
@@ -390,6 +391,59 @@ fn check_user_text_files(paths: &Paths, checks: &mut Vec<DoctorCheck>) {
     }
 }
 
+fn check_runtime_logs(paths: &Paths, checks: &mut Vec<DoctorCheck>) {
+    let panic_logs = latest_log(paths, "panic-*.log");
+    let worker_logs = latest_log(paths, "worker-error-*.log");
+    let shutdown_logs = latest_log(paths, "shutdown-*.log");
+    let mut details = Vec::new();
+    if let Some(path) = panic_logs.as_ref() {
+        details.push(format!("panic={}", path.to_string_lossy()));
+    }
+    if let Some(path) = worker_logs.as_ref() {
+        details.push(format!("worker={}", path.to_string_lossy()));
+    }
+    if let Some(path) = shutdown_logs.as_ref() {
+        details.push(format!("shutdown={}", path.to_string_lossy()));
+    }
+    let has_crash_log = panic_logs.is_some() || worker_logs.is_some();
+    push_check(
+        checks,
+        "异常日志",
+        if has_crash_log {
+            DoctorStatus::Warn
+        } else {
+            DoctorStatus::Pass
+        },
+        if details.is_empty() {
+            "未发现 panic/worker/shutdown 日志".to_string()
+        } else {
+            details.join("; ")
+        },
+    );
+}
+
+fn latest_log(paths: &Paths, pattern: &str) -> Option<PathBuf> {
+    let prefix = pattern.strip_suffix("*.log")?;
+    fs::read_dir(&paths.logs_dir)
+        .ok()?
+        .filter_map(Result::ok)
+        .filter_map(|entry| {
+            let path = entry.path();
+            let name = path.file_name()?.to_string_lossy();
+            (name.starts_with(prefix) && name.ends_with(".log"))
+                .then(|| {
+                    entry
+                        .metadata()
+                        .ok()
+                        .and_then(|meta| meta.modified().ok())
+                        .map(|modified| (modified, path))
+                })
+                .flatten()
+        })
+        .max_by_key(|(modified, _)| *modified)
+        .map(|(_, path)| path)
+}
+
 fn write_report(
     paths: &Paths,
     config: &AppConfig,
@@ -563,22 +617,10 @@ mod tests {
     #[test]
     fn repair_creates_missing_text_files_without_overwriting_existing_files() {
         let temp = tempfile::tempdir().unwrap();
-        let app_dir = temp.path().join(".voice_ime");
-        fs::create_dir_all(&app_dir).unwrap();
-        let hotwords_path = app_dir.join("hot.txt");
+        let paths = test_paths(temp.path());
+        fs::create_dir_all(&paths.app_dir).unwrap();
+        let hotwords_path = paths.hotwords_path.clone();
         fs::write(&hotwords_path, "custom hotwords").unwrap();
-        let paths = Paths {
-            root_dir: temp.path().to_path_buf(),
-            app_dir: app_dir.clone(),
-            config_path: app_dir.join("config.json"),
-            history_path: app_dir.join("history.json"),
-            prompt_path: app_dir.join("personal_prompt.txt"),
-            corrections_path: app_dir.join("corrections.json"),
-            hotwords_path: hotwords_path.clone(),
-            hot_rules_path: app_dir.join("hot-rule.txt"),
-            recordings_dir: app_dir.join("recordings"),
-            logs_dir: app_dir.join("logs"),
-        };
 
         let report = repair(&paths, &AppConfig::default()).unwrap();
 
@@ -596,5 +638,50 @@ mod tests {
         assert!(report.actions.iter().any(|action| {
             action.name == "个人提示词" && action.status == RepairStatus::Repaired
         }));
+    }
+
+    #[test]
+    fn runtime_logs_warn_when_panic_log_exists() {
+        let temp = tempfile::tempdir().unwrap();
+        let paths = test_paths(temp.path());
+        fs::create_dir_all(&paths.logs_dir).unwrap();
+        fs::write(paths.logs_dir.join("panic-20260605.log"), "panic").unwrap();
+        let mut checks = Vec::new();
+
+        check_runtime_logs(&paths, &mut checks);
+
+        assert_eq!(checks.len(), 1);
+        assert_eq!(checks[0].name, "异常日志");
+        assert_eq!(checks[0].status, DoctorStatus::Warn);
+        assert!(checks[0].detail.contains("panic-20260605.log"));
+    }
+
+    #[test]
+    fn runtime_logs_pass_when_no_error_logs_exist() {
+        let temp = tempfile::tempdir().unwrap();
+        let paths = test_paths(temp.path());
+        fs::create_dir_all(&paths.logs_dir).unwrap();
+        let mut checks = Vec::new();
+
+        check_runtime_logs(&paths, &mut checks);
+
+        assert_eq!(checks.len(), 1);
+        assert_eq!(checks[0].status, DoctorStatus::Pass);
+    }
+
+    fn test_paths(root: &std::path::Path) -> Paths {
+        let app_dir = root.join(".voice_ime");
+        Paths {
+            root_dir: root.to_path_buf(),
+            app_dir: app_dir.clone(),
+            config_path: app_dir.join("config.json"),
+            history_path: app_dir.join("history.json"),
+            prompt_path: app_dir.join("personal_prompt.txt"),
+            corrections_path: app_dir.join("corrections.json"),
+            hotwords_path: app_dir.join("hot.txt"),
+            hot_rules_path: app_dir.join("hot-rule.txt"),
+            recordings_dir: app_dir.join("recordings"),
+            logs_dir: app_dir.join("logs"),
+        }
     }
 }

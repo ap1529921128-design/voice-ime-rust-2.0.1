@@ -163,6 +163,39 @@ function Invoke-ShutdownSmoke {
     Write-Host "Shutdown smoke passed: $appDir"
 }
 
+function Invoke-PanicSmoke {
+    param([Parameter(Mandatory = $true)][string]$Root)
+
+    $app = Join-Path $Root "app"
+    $exe = Join-Path $app "VoiceIME.exe"
+    $appDir = Join-Path ([System.IO.Path]::GetTempPath()) ("voice-ime-panic-" + [guid]::NewGuid().ToString("N"))
+    $previousAppDir = [Environment]::GetEnvironmentVariable("VOICE_IME_APP_DIR", "Process")
+    try {
+        $env:VOICE_IME_APP_DIR = $appDir
+        $process = Start-Process -FilePath $exe -ArgumentList "--panic-smoke" -WorkingDirectory $app -WindowStyle Hidden -Wait -PassThru
+        if ($process.ExitCode -eq 0) {
+            throw "Panic smoke unexpectedly exited with code 0"
+        }
+    }
+    finally {
+        if ([string]::IsNullOrEmpty($previousAppDir)) {
+            Remove-Item Env:\VOICE_IME_APP_DIR -ErrorAction SilentlyContinue
+        }
+        else {
+            $env:VOICE_IME_APP_DIR = $previousAppDir
+        }
+    }
+    $logs = @(Get-ChildItem -LiteralPath (Join-Path $appDir "logs") -Filter "panic-*.log" -File -ErrorAction SilentlyContinue)
+    if ($logs.Count -eq 0) {
+        throw "Panic smoke did not write a panic log under $appDir"
+    }
+    $body = Get-Content -LiteralPath (($logs | Sort-Object LastWriteTime -Descending | Select-Object -First 1).FullName) -Raw
+    if (-not $body.Contains("cli-panic-smoke")) {
+        throw "Panic smoke log did not include the panic payload"
+    }
+    Write-Host "Panic smoke passed: $appDir"
+}
+
 function Invoke-AcceptanceScript {
     param(
         [Parameter(Mandatory = $true)][string]$Root,
@@ -239,6 +272,7 @@ Invoke-StartupSmoke -Root $ReleaseRoot -Name "full"
 Invoke-StartupSmoke -Root $CoreReleaseRoot -Name "core"
 Invoke-DoctorSmoke -Root $ReleaseRoot
 Invoke-ShutdownSmoke -Root $ReleaseRoot
+Invoke-PanicSmoke -Root $ReleaseRoot
 if (-not $SkipNotepad) {
     Invoke-AcceptanceScript -Root $ReleaseRoot -ScriptName "Notepad-Input-Acceptance.ps1"
 }

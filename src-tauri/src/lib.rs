@@ -9,6 +9,7 @@ mod input_smoke;
 mod itn;
 mod llm;
 mod model_pack;
+mod panic_log;
 mod ptt;
 mod retention;
 mod support_bundle;
@@ -520,6 +521,7 @@ fn hide_overlay(app: AppHandle) {
 }
 
 pub fn run() {
+    panic_log::install();
     let app_state = AppState::load().expect("load Voice IME state");
     let app = tauri::Builder::default()
         .plugin(tauri_plugin_opener::init())
@@ -604,6 +606,7 @@ pub fn run() {
 }
 
 pub fn run_cli_worker_if_requested() -> bool {
+    panic_log::install();
     let mut args = std::env::args_os().skip(1);
     let Some(first) = args.next() else {
         return asr::run_worker_cli_if_requested();
@@ -669,6 +672,9 @@ pub fn run_cli_worker_if_requested() -> bool {
             std::process::exit(2);
         }
         return true;
+    }
+    if first == std::ffi::OsStr::new("--panic-smoke") {
+        panic!("cli-panic-smoke");
     }
     if first == std::ffi::OsStr::new("--paste-foreground") {
         let text = args

@@ -31,6 +31,8 @@ Task-style background workers now run with unwind panic guards in release builds
 
 Exit paths now run a graceful shutdown. Tray quit and Tauri exit events cancel active recording, invalidate stale sessions, hide overlay state, flush history, and append `shutdown-YYYYMMDD.log`; the portable release gate checks the same core path with `VoiceIME.exe --shutdown-smoke`.
 
+Startup and uncaught thread panics now leave `panic-YYYYMMDD.log` entries with payload, source location, thread name, and backtrace. Doctor surfaces recent panic/worker/shutdown logs, and the portable release gate checks the packaged path with `VoiceIME.exe --panic-smoke`.
+
 ## Verification
 
 The release gate passed on the build machine for:
