@@ -102,8 +102,18 @@ pub fn run_translation(
                     || text::looks_like_translation_chatter(&output);
                 let language_match = language_matches(&sample.target_language, &output);
                 let hint_match = expected_hint_matches(&sample.expected_hint, &output);
-                if chatter || !hint_match.unwrap_or(true) {
+                if chatter || !language_match || !hint_match.unwrap_or(true) {
                     error_count += 1;
+                }
+                let mut errors = Vec::new();
+                if chatter {
+                    errors.push("translation chatter");
+                }
+                if !language_match {
+                    errors.push("target language mismatch");
+                }
+                if !hint_match.unwrap_or(true) {
+                    errors.push("expected hint mismatch");
                 }
                 rows.push(csv_row(&[
                     &(index + 1).to_string(),
@@ -118,7 +128,7 @@ pub fn run_translation(
                     hint_match.map(bool_cell).unwrap_or(""),
                     &sample.source,
                     &output,
-                    if chatter { "translation chatter" } else { "" },
+                    &errors.join("; "),
                 ]));
             }
             Err(err) => {
@@ -358,6 +368,15 @@ mod tests {
         assert!(samples.iter().any(|sample| sample.target_language == "zh"));
         assert!(samples.iter().any(|sample| sample.target_language == "en"));
         assert!(samples.iter().any(|sample| sample.target_language == "ja"));
+    }
+
+    #[test]
+    fn detects_target_language_mismatch() {
+        assert!(!language_matches("ja", "本地优先，不默认上传云端"));
+        assert!(language_matches(
+            "ja",
+            "本地優先で、クラウドには既定でアップロードしません。"
+        ));
     }
 
     #[test]
