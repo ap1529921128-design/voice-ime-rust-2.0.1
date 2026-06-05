@@ -57,6 +57,20 @@ function Quote-ProcessArgument {
     return $quoted
 }
 
+function Join-Codepoints {
+    param([int[]]$Codepoints)
+    return (($Codepoints | ForEach-Object { [char]$_ }) -join "")
+}
+
+function Write-Utf8NoBom {
+    param(
+        [Parameter(Mandatory = $true)][string]$Path,
+        [Parameter(Mandatory = $true)][string]$Value
+    )
+    $encoding = [System.Text.UTF8Encoding]::new($false)
+    [System.IO.File]::WriteAllText($Path, $Value, $encoding)
+}
+
 $acceptanceRoot = Join-Path ([System.IO.Path]::GetTempPath()) ("voice-ime-translation-acceptance-" + [guid]::NewGuid().ToString("N"))
 $logsDir = Join-Path $acceptanceRoot "logs"
 $samplePath = Join-Path $acceptanceRoot "translation-samples.tsv"
@@ -70,19 +84,22 @@ try {
 {
   "asr": {},
   "input": {},
-  "translation": {
+    "translation": {
     "engine": "external",
     "external_command": $(Quote-JsonString $externalCommand),
     "timeout_seconds": 3
   }
 }
 "@
-    Set-Content -LiteralPath (Join-Path $acceptanceRoot "config.json") -Value $config -Encoding UTF8
-    @(
+    Write-Utf8NoBom -Path (Join-Path $acceptanceRoot "config.json") -Value $config
+    $zhSource = Join-Codepoints @(0x7ffb, 0x8bd1, 0x7ed3, 0x679c, 0xff1a, 0x975e, 0x6d32, 0x4e4b, 0x661f, 0x548c, 0x6d77, 0x6d0b, 0x4e4b, 0x6cea)
+    $zhHint = Join-Codepoints @(0x975e, 0x6d32, 0x4e4b, 0x661f)
+    $samples = @(
         "en`tsettings page local service`tLocal",
         "ja`tlocal first, no default cloud upload`t",
-        "zh`t翻译结果：非洲之星和海洋之泪`t非洲之星"
-    ) | Set-Content -LiteralPath $samplePath -Encoding UTF8
+        "zh`t$zhSource`t$zhHint"
+    ) -join [Environment]::NewLine
+    Write-Utf8NoBom -Path $samplePath -Value $samples
 
     $env:VOICE_IME_APP_DIR = $acceptanceRoot
     $process = Start-Process -FilePath $Exe `
