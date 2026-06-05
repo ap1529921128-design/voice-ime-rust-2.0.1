@@ -48,6 +48,7 @@
 - Added a packaged `app/tools/Foreground-Input-Acceptance.ps1` helper for manually validating WeChat/Feishu, Word, IDE, and other foreground targets with input-target log checks.
 - Added a Settings / Data ASR benchmark action that runs the same CSV timing and CER harness as `VoiceIME.exe --benchmark-asr`.
 - Added Settings / Smart local LLM service status and start controls, plus Doctor checks for the MiniCPM model, llama-server binary, and startup script.
+- Added `packaging/Test-PortableRelease.ps1` for one-command full/core portable layout, startup, Doctor, Notepad, and Browser verification, and expanded UI smoke coverage to 200% device scale.
 
 ## 2.0.1 - 2026-05-31
 

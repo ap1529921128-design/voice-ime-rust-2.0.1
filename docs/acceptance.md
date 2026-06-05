@@ -144,9 +144,19 @@
 
 1. Run `npm run ui:smoke`.
 2. The command starts a local Vite QA page with mocked Tauri data.
-3. Main compose, Settings / Models, Settings / Shortcuts, History, and Overlay render at multiple viewport/device-scale combinations.
+3. Main compose, Settings / Models, Settings / Shortcuts, Settings / Smart, History, and Overlay render at 100%, 125%, 150%, and 200% device-scale combinations.
 4. The command fails on outer page scroll, shell viewport overflow, or overflowing button/control text.
 5. Screenshots are written under `work/ui-smoke/`.
+
+## Portable Release Gate
+
+1. Build and package the release.
+2. From the repo root, run `powershell -NoProfile -ExecutionPolicy Bypass -File .\packaging\Test-PortableRelease.ps1`.
+3. The script checks the full and core root layouts, hidden `app` directory, required app files, `BUILD.txt`, and core model cleanliness.
+4. It starts the full and core apps with temporary `VOICE_IME_APP_DIR` values and requires each GUI process to stay alive for 5 seconds.
+5. It runs packaged `VoiceIME.exe --doctor` with a temporary app data directory and requires a doctor report containing the local LLM file check.
+6. Unless skipped, it runs the packaged Notepad and Browser input acceptance scripts.
+7. At the end it removes any `.voice_ime` runtime data created under the portable package.
 
 ## Notepad Input Acceptance
 
@@ -202,8 +212,9 @@
 - Confirm paste now restores previous text clipboard where feasible and logs restore status; manual image/file clipboard preservation is still future work.
 - Cursor positioning now logs `uia-caret` when UI Automation exposes text-range caret rectangles, then falls back to `uia-element`, guarded `uia-focused`, `gui-thread`, or `fallback`; real overlay placement still needs visual target-machine coverage.
 - Clipboard failure can now fall back to direct Unicode typing for short single-line text; broad app coverage still needs manual acceptance.
-- `npm run ui:smoke` now covers main/settings/history/overlay layout with QA mock data; true OS DPI and WebView screenshots still need manual release checks.
+- `npm run ui:smoke` now covers main/settings/history/overlay layout with QA mock data across 100%, 125%, 150%, and 200% device scale; true OS DPI and WebView screenshots still need manual release checks.
 - Packaged builds now include `app/tools/启动语音输入-诊断.bat`; portable root layout still visibly exposes only the main launcher.
 - Packaged builds now include `app/tools/Notepad-Input-Acceptance.ps1`; Notepad has an automated paste-path smoke, while other real apps still need manual coverage.
 - Packaged builds now include `app/tools/Browser-Input-Acceptance.ps1`; Edge/Chrome textarea paste has an automated smoke with an isolated temporary browser profile.
 - Packaged builds now include `app/tools/Foreground-Input-Acceptance.ps1`; WeChat/Feishu, Word/document editors, and IDEs can be checked with the same foreground paste path and target-log validation.
+- Repo packaging now includes `packaging/Test-PortableRelease.ps1`, which runs the full/core package layout gate, startup smoke, doctor report check, and automated Notepad/Browser acceptance in one pass.

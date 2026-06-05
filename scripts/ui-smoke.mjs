@@ -88,6 +88,13 @@ try {
       deviceScaleFactor: 1.5,
       selector: ".overlay-shell",
     });
+    await runScenario(browser, {
+      name: "overlay-result-200",
+      path: "/?qa=main&window=overlay&state=Previewing&text=%E9%9D%9E%E6%B4%B2%E4%B9%8B%E6%98%9F%EF%BC%8C%E6%B5%B7%E6%B4%8B%E4%B9%8B%E6%B3%AA",
+      viewport: { width: 520, height: 280 },
+      deviceScaleFactor: 2,
+      selector: ".overlay-shell",
+    });
   } finally {
     await browser.close();
   }

@@ -218,7 +218,7 @@ UI 烟测：
 npm run ui:smoke
 ```
 
-该命令会用 QA mock 数据打开主窗口、设置页、历史页和光标浮窗，检查外层滚动、按钮文字溢出和窗口越界，并把截图写到 `work/ui-smoke/`。
+该命令会用 QA mock 数据打开主窗口、设置页、历史页和光标浮窗，检查 100%、125%、150% 和 200% DPI 场景下的外层滚动、按钮文字溢出和窗口越界，并把截图写到 `work/ui-smoke/`。
 
 打便携包：
 
@@ -228,6 +228,14 @@ powershell -ExecutionPolicy Bypass -File .\packaging\package-portable.ps1
 
 不要直接拿 `cargo build --release` 生成的 exe 打包；它可能仍然指向开发地址 `127.0.0.1:1420`。
 打包脚本会生成 `app/BUILD.txt`，记录版本、构建时间、Git commit、Rust/Node/Tauri 版本，并在出包时检查根目录只暴露 `启动语音输入.bat`、隐藏 `app`、不包含 `.voice_ime`/`recordings`/备份目录。
+
+打包后的一键验收：
+
+```powershell
+powershell -NoProfile -ExecutionPolicy Bypass -File .\packaging\Test-PortableRelease.ps1
+```
+
+它会检查 full/core 包结构、`BUILD.txt`、启动 5 秒存活、`--doctor` 写报告、Notepad 输入和浏览器输入，并在结束时清理包内测试产生的 `.voice_ime`。
 
 ## 当前边界
 
