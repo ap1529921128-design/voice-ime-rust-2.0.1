@@ -338,8 +338,8 @@ function renderOverlay(data: Snapshot) {
       <header class="overlay-head" data-tauri-drag-region>
         <div class="pulse"></div>
         <div>
-          <div class="overlay-status">${data.status}</div>
-          <div class="overlay-meta">${data.meta || languageLabel(data.language)}</div>
+          <div class="overlay-status">${escapeHtml(data.status)}</div>
+          <div class="overlay-meta">${escapeHtml(data.meta || languageLabel(data.language))}</div>
         </div>
         <button class="icon-btn ghost tiny" data-action="hide">${icon("X", "关闭")}</button>
       </header>

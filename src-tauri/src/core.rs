@@ -148,6 +148,7 @@ impl AppState {
         let session_id = self.next_session_id();
         self.begin_task(session_id);
         let target = InputTarget::capture();
+        let target_meta = target_debug_meta(target.info());
         let overlay_rect = win_bridge::overlay_position_from_rect(target.rect());
         {
             let mut inner = self.inner.lock();
@@ -156,7 +157,7 @@ impl AppState {
             inner.overlay_rect = Some(overlay_rect);
             inner.state = SessionState::Recording;
             inner.status = "录音中".into();
-            inner.meta = "正在听写".into();
+            inner.meta = format!("正在听写 / {target_meta}");
         }
         position_overlay(app, overlay_rect);
         emit_snapshot(app, self);
@@ -172,7 +173,9 @@ impl AppState {
             }
             inner.state = SessionState::Previewing;
             inner.status = "转写中".into();
-            inner.meta = "正在生成文本".into();
+            inner.meta = current_target_debug_meta(&inner)
+                .map(|meta| format!("正在生成文本 / {meta}"))
+                .unwrap_or_else(|| "正在生成文本".into());
             (inner.session_id, inner.config.clone(), inner.text.clone())
         };
         emit_snapshot(app, self);
@@ -474,10 +477,11 @@ impl AppState {
         };
         {
             let mut inner = self.inner.lock();
+            let target_meta = target_debug_meta(&target_info);
             inner.status = "已粘贴".into();
             inner.meta = profile_name
-                .map(|name| format!("没有自动发送 / {name}"))
-                .unwrap_or_else(|| "没有自动发送".into());
+                .map(|name| format!("没有自动发送 / {name} / {target_meta}"))
+                .unwrap_or_else(|| format!("没有自动发送 / {target_meta}"));
         }
         emit_snapshot(app, self);
         hide_overlay_after(
@@ -1000,7 +1004,9 @@ impl AppState {
             }
             inner.state = SessionState::LongTranscribing;
             inner.status = status;
-            inner.meta = "长文会分片处理".into();
+            inner.meta = current_target_debug_meta(&inner)
+                .map(|meta| format!("长文会分片处理 / {meta}"))
+                .unwrap_or_else(|| "长文会分片处理".into());
         }
         emit_snapshot(app, self);
     }
@@ -1025,7 +1031,9 @@ impl AppState {
             }
             inner.state = SessionState::Idle;
             inner.status = status;
-            inner.meta = "ASR 原文已显示，可直接确认".into();
+            inner.meta = current_target_debug_meta(&inner)
+                .map(|meta| format!("ASR 原文已显示，可直接确认 / {meta}"))
+                .unwrap_or_else(|| "ASR 原文已显示，可直接确认".into());
         }
         emit_snapshot(app, self);
     }
@@ -1049,11 +1057,15 @@ impl AppState {
             } else {
                 inner.state = SessionState::Idle;
                 inner.status = "等待确认".into();
+                let target_meta = current_target_debug_meta(&inner)
+                    .map(|meta| format!(" / {meta}"))
+                    .unwrap_or_default();
                 inner.meta = format!(
-                    "录音 {:.1}s / 转写 {:.1}s / {} 字",
+                    "录音 {:.1}s / 转写 {:.1}s / {} 字{}",
                     finished.duration_seconds,
                     finished.transcribe_seconds,
-                    final_text.chars().count()
+                    final_text.chars().count(),
+                    target_meta
                 );
                 inner.text = final_text.clone();
                 let record = TranscriptRecord::new(
@@ -1099,14 +1111,18 @@ impl AppState {
             }
             let text =
                 text::apply_punctuation_policy(&text, current_punctuation_policy(&inner).as_str());
+            let target_meta = current_target_debug_meta(&inner)
+                .map(|meta| format!(" / {meta}"))
+                .unwrap_or_default();
             inner.state = SessionState::Idle;
             inner.status = "等待确认".into();
             inner.meta = format!(
-                "录音 {:.1}s / 总耗时 {:.1}s / LLM {:.1}s / {} 字",
+                "录音 {:.1}s / 总耗时 {:.1}s / LLM {:.1}s / {} 字{}",
                 duration_seconds,
                 total_seconds,
                 llm_seconds,
-                text.chars().count()
+                text.chars().count(),
+                target_meta
             );
             inner.text = text;
             let history_path = self.paths.history_path.clone();
@@ -1315,6 +1331,37 @@ fn current_punctuation_policy(inner: &InnerState) -> String {
     .unwrap_or_else(|| "default".into())
 }
 
+fn current_target_debug_meta(inner: &InnerState) -> Option<String> {
+    inner
+        .target
+        .as_ref()
+        .map(|target| target_debug_meta(target.info()))
+}
+
+fn target_debug_meta(target: &InputTargetInfo) -> String {
+    let process = if target.process_name.trim().is_empty() {
+        "未知应用"
+    } else {
+        target.process_name.trim()
+    };
+    format!(
+        "{} / {}",
+        process,
+        caret_source_label(target.caret_source.as_str())
+    )
+}
+
+fn caret_source_label(source: &str) -> &'static str {
+    match source {
+        "uia-caret" => "UIA caret",
+        "uia-element" => "UIA element",
+        "uia-focused" => "UIA focused",
+        "gui-thread" => "GUI thread",
+        "fallback" => "fallback",
+        _ => "caret unknown",
+    }
+}
+
 fn configured_input_device(config: &AppConfig) -> Option<&str> {
     let device = config.asr.input_device_name.trim();
     if device.is_empty() {
@@ -1427,6 +1474,31 @@ mod tests {
 
         assert!(token.is_cancelled());
         assert!(state.current_task_token(9).is_none());
+    }
+
+    #[test]
+    fn target_debug_meta_uses_process_and_caret_source() {
+        let info = InputTargetInfo {
+            hwnd: 1,
+            thread_id: 2,
+            process_id: 3,
+            rect: None,
+            process_name: "Notepad.exe".into(),
+            process_path: String::new(),
+            class_name: "Edit".into(),
+            title: "Untitled".into(),
+            caret_source: "uia-caret".into(),
+        };
+
+        assert_eq!(target_debug_meta(&info), "Notepad.exe / UIA caret");
+
+        let unknown = InputTargetInfo {
+            process_name: String::new(),
+            caret_source: "fallback".into(),
+            ..info
+        };
+
+        assert_eq!(target_debug_meta(&unknown), "未知应用 / fallback");
     }
 
     #[test]
