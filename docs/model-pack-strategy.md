@@ -95,3 +95,15 @@ voice-ime-model-packs-2.0.1.md
 ```
 
 批量脚本会重新打开每个 zip，逐项验证 `MODEL_PACK.json` 里的文件大小和 SHA-256，然后在批量清单里记录每个 zip 的大小、SHA-256、源目录、目标目录和 metadata 文件数。需要严格发布时加 `-FailOnMissing`，这样任何请求的模型包缺文件都会让命令失败。
+
+## 验证模型包导入
+
+便携包带一个自动验收脚本，会复制一份 core 包到临时目录，并用 Rust CLI importer 导入模型包：
+
+```powershell
+powershell -NoProfile -ExecutionPolicy Bypass -File .\app\tools\Model-Pack-Import-Acceptance.ps1 `
+  -CoreReleaseRoot D:\voice-ime-build-release\voice-ime-2.0.1-rust-portable-core `
+  -ModelPackZip D:\voice-ime-build-release\voice-ime-model-pack-asr-fallback-whisper-tiny-int8.zip
+```
+
+该脚本会调用 `VoiceIME.exe --install-model-pack <zip>`，然后按 `MODEL_PACK.json` 校验导入后的文件大小和 SHA-256。默认使用 fallback 小模型包，避免每次 release gate 都复制几百 MB 到 1GB 的大包。

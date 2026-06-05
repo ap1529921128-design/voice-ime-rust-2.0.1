@@ -52,6 +52,7 @@
 - Added `packaging/package-available-model-packs.ps1` to batch-create all currently available non-planned model packs and write a zip checksum release manifest.
 - Added CLI and Settings / Data translation benchmark CSV output for built-in or custom zh/en/ja samples, including latency, backend errors, hint matches, and prompt-like chatter detection.
 - Added packaged external translation acceptance helpers and included them in the portable release gate, using a mock JSON translator to verify the `external` backend without real MT models.
+- Added `VoiceIME.exe --install-model-pack` plus packaged model-pack import acceptance, verifying Rust importer checksum behavior against a copied core package.
 
 ## 2.0.1 - 2026-05-31
 

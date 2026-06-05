@@ -597,6 +597,23 @@ pub fn run_cli_worker_if_requested() -> bool {
         }
         return true;
     }
+    if first == std::ffi::OsStr::new("--install-model-pack") {
+        let Some(pack_path) = args.next().map(std::path::PathBuf::from) else {
+            eprintln!("missing model pack zip path");
+            std::process::exit(2);
+        };
+        let result = (|| -> anyhow::Result<()> {
+            let paths = Paths::discover()?;
+            let report = model_pack::install(&pack_path, &paths)?;
+            println!("{}", serde_json::to_string_pretty(&report)?);
+            Ok(())
+        })();
+        if let Err(err) = result {
+            eprintln!("{err:?}");
+            std::process::exit(2);
+        }
+        return true;
+    }
     if first == std::ffi::OsStr::new("--paste-foreground") {
         let text = args
             .next()

@@ -1,9 +1,11 @@
 param(
     [string]$ReleaseRoot = "D:\voice-ime-build-release\voice-ime-2.0.1-rust-portable",
     [string]$CoreReleaseRoot = "D:\voice-ime-build-release\voice-ime-2.0.1-rust-portable-core",
+    [string]$ModelPackZip = "D:\voice-ime-build-release\voice-ime-model-pack-asr-fallback-whisper-tiny-int8.zip",
     [switch]$SkipNotepad,
     [switch]$SkipBrowser,
     [switch]$SkipTranslation,
+    [switch]$SkipModelPackImport,
     [switch]$KeepRuntimeData
 )
 
@@ -153,6 +155,25 @@ function Invoke-AcceptanceScript {
     }
 }
 
+function Invoke-ModelPackImportAcceptance {
+    param(
+        [Parameter(Mandatory = $true)][string]$Root,
+        [Parameter(Mandatory = $true)][string]$CoreRoot,
+        [Parameter(Mandatory = $true)][string]$PackZip
+    )
+
+    $script = Join-Path $Root "app\tools\Model-Pack-Import-Acceptance.ps1"
+    if (-not (Test-Path -LiteralPath $script -PathType Leaf)) {
+        throw "Acceptance script missing: $script"
+    }
+    & powershell -NoProfile -ExecutionPolicy Bypass -File $script `
+        -CoreReleaseRoot $CoreRoot `
+        -ModelPackZip $PackZip
+    if ($LASTEXITCODE -ne 0) {
+        throw "Model-Pack-Import-Acceptance.ps1 failed with exit code $LASTEXITCODE"
+    }
+}
+
 function Remove-PackageRuntimeData {
     param([Parameter(Mandatory = $true)][string]$Root)
 
@@ -189,6 +210,9 @@ if (-not $SkipBrowser) {
 }
 if (-not $SkipTranslation) {
     Invoke-AcceptanceScript -Root $ReleaseRoot -ScriptName "Translation-Acceptance.ps1"
+}
+if (-not $SkipModelPackImport) {
+    Invoke-ModelPackImportAcceptance -Root $ReleaseRoot -CoreRoot $CoreReleaseRoot -PackZip $ModelPackZip
 }
 if (-not $KeepRuntimeData) {
     Remove-PackageRuntimeData -Root $ReleaseRoot

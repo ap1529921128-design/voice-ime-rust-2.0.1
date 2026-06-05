@@ -168,6 +168,15 @@
 5. Entries with absolute paths, drive prefixes, or `..` are rejected and cannot write outside `app/models`.
 6. Model status refreshes after import, and the status line reports written, replaced, ignored, and verified files.
 
+## Model Pack Import Acceptance
+
+1. Generate model packs, or place `voice-ime-model-pack-asr-fallback-whisper-tiny-int8.zip` under `D:\voice-ime-build-release`.
+2. From the full package root, run `powershell -NoProfile -ExecutionPolicy Bypass -File .\app\tools\Model-Pack-Import-Acceptance.ps1`.
+3. The script copies `voice-ime-2.0.1-rust-portable-core` to a temporary folder, leaving the real core package untouched.
+4. It runs copied `app\VoiceIME.exe --install-model-pack <zip>` so the Rust model-pack importer performs extraction and metadata validation.
+5. It then verifies every installable `MODEL_PACK.json` entry exists in copied `app\models` with matching byte size and SHA-256.
+6. The temporary copy is deleted unless `-KeepWorkDir` is passed.
+
 ## UI Smoke
 
 1. Run `npm run ui:smoke`.
@@ -183,7 +192,7 @@
 3. The script checks the full and core root layouts, hidden `app` directory, required app files, `BUILD.txt`, and core model cleanliness.
 4. It starts the full and core apps with temporary `VOICE_IME_APP_DIR` values and requires each GUI process to stay alive for 5 seconds.
 5. It runs packaged `VoiceIME.exe --doctor` with a temporary app data directory and requires a doctor report containing the local LLM file check.
-6. Unless skipped, it runs the packaged Notepad, Browser, and Translation acceptance scripts.
+6. Unless skipped, it runs the packaged Notepad, Browser, Translation, and model-pack import acceptance scripts.
 7. At the end it removes any `.voice_ime` runtime data created under the portable package.
 
 ## Notepad Input Acceptance
@@ -247,4 +256,5 @@
 - Packaged builds now include `app/tools/Browser-Input-Acceptance.ps1`; Edge/Chrome textarea paste has an automated smoke with an isolated temporary browser profile.
 - Packaged builds now include `app/tools/Foreground-Input-Acceptance.ps1`; WeChat/Feishu, Word/document editors, and IDEs can be checked with the same foreground paste path and target-log validation.
 - Packaged builds now include `app/tools/Translation-Acceptance.ps1` and `Mock-External-Translate.ps1`; the external translation JSON path has an offline acceptance smoke.
-- Repo packaging now includes `packaging/Test-PortableRelease.ps1`, which runs the full/core package layout gate, startup smoke, doctor report check, and automated Notepad/Browser/Translation acceptance in one pass.
+- Packaged builds now include `app/tools\Model-Pack-Import-Acceptance.ps1`; the Rust `--install-model-pack` importer is checked against a copied core package and a real model pack zip.
+- Repo packaging now includes `packaging/Test-PortableRelease.ps1`, which runs the full/core package layout gate, startup smoke, doctor report check, and automated Notepad/Browser/Translation/model-pack import acceptance in one pass.
