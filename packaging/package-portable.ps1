@@ -234,6 +234,7 @@ function Copy-PortableBody {
         "acceptance.md",
         "2.0.1-roadmap.md",
         "model-pack-strategy.md",
+        "release-notes-2.0.1.md",
         "translation-benchmark.md",
         "hotwords.md"
     )) {
@@ -326,6 +327,7 @@ Copy-Item -LiteralPath (Join-Path $Root "README.md") -Destination $AppRoot
 Copy-Item -LiteralPath (Join-Path $Root "docs\acceptance.md") -Destination $AppRoot
 Copy-Item -LiteralPath (Join-Path $Root "docs\2.0.1-roadmap.md") -Destination $AppRoot
 Copy-Item -LiteralPath (Join-Path $Root "docs\model-pack-strategy.md") -Destination $AppRoot
+Copy-Item -LiteralPath (Join-Path $Root "docs\release-notes-2.0.1.md") -Destination $AppRoot
 Copy-Item -LiteralPath (Join-Path $Root "docs\translation-benchmark.md") -Destination $AppRoot
 Copy-Item -LiteralPath (Join-Path $Root "docs\hotwords.md") -Destination $AppRoot
 if (Test-Path -LiteralPath (Join-Path $Root "CHANGELOG.md")) {
@@ -336,6 +338,7 @@ $launcherText = @'
 setlocal
 cd /d "%~dp0app"
 set "VOICE_IME_ROOT=%~dp0app"
+attrib +h "%~dp0app" >nul 2>nul
 if not exist "%~dp0app\VoiceIME.exe" (
   echo VoiceIME.exe not found.
   pause

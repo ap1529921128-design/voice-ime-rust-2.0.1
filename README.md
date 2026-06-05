@@ -16,6 +16,13 @@ Voice IME 是一个 Windows 优先的本地语音输入工具，使用 Rust + Ta
 
 ## 下载与运行
 
+GitHub Release 推荐提供这些资产：
+
+- `voice-ime-2.0.1-rust-portable.zip`：完整测试包，包含当前本机模型缓存。
+- `voice-ime-2.0.1-rust-portable-core.zip`：轻主体包，不含大模型，适合拷到单位或移动硬盘测试。
+- `voice-ime-model-pack-*.zip`：单独模型包，可在“设置 / 模型 / 导入包”里导入。
+- `voice-ime-release-assets-2.0.1.json`：发布资产 SHA-256 清单。
+
 便携版解压后，双击根目录里的：
 
 ```text
@@ -238,6 +245,8 @@ npm run ui:smoke
 
 ```powershell
 powershell -ExecutionPolicy Bypass -File .\packaging\package-portable.ps1
+powershell -ExecutionPolicy Bypass -File .\packaging\package-available-model-packs.ps1
+powershell -ExecutionPolicy Bypass -File .\packaging\package-release-assets.ps1
 ```
 
 不要直接拿 `cargo build --release` 生成的 exe 打包；它可能仍然指向开发地址 `127.0.0.1:1420`。
@@ -250,6 +259,12 @@ powershell -NoProfile -ExecutionPolicy Bypass -File .\packaging\Test-PortableRel
 ```
 
 它会检查 full/core 包结构、`BUILD.txt`、启动 5 秒存活、`--doctor` 写报告、Notepad 输入、浏览器输入、external 翻译验收和 core 模型包导入验收，并在结束时清理包内测试产生的 `.voice_ime`。
+
+需要发布 GitHub Release 时，先生成 release assets，再在有 `gh` 或 `GH_TOKEN/GITHUB_TOKEN` 的环境运行：
+
+```powershell
+powershell -NoProfile -ExecutionPolicy Bypass -File .\packaging\publish-github-release.ps1
+```
 
 ## 当前边界
 

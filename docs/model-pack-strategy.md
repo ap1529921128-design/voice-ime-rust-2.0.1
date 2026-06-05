@@ -107,3 +107,28 @@ powershell -NoProfile -ExecutionPolicy Bypass -File .\app\tools\Model-Pack-Impor
 ```
 
 该脚本会调用 `VoiceIME.exe --install-model-pack <zip>`，然后按 `MODEL_PACK.json` 校验导入后的文件大小和 SHA-256。默认使用 fallback 小模型包，避免每次 release gate 都复制几百 MB 到 1GB 的大包。
+
+## 生成 GitHub Release 资产
+
+full/core 目录通过验收后，运行：
+
+```powershell
+powershell -NoProfile -ExecutionPolicy Bypass -File .\packaging\package-release-assets.ps1
+```
+
+它会生成：
+
+```text
+voice-ime-2.0.1-rust-portable.zip
+voice-ime-2.0.1-rust-portable-core.zip
+voice-ime-release-assets-2.0.1.json
+voice-ime-release-assets-2.0.1.md
+```
+
+同时会把已有 `voice-ime-model-pack-*.zip` 和 `voice-ime-model-packs-2.0.1.json/.md` 写入发布资产清单，记录每个文件的大小和 SHA-256。需要自动上传 GitHub Release 时，在已安装 `gh` 或已配置 `GH_TOKEN/GITHUB_TOKEN` 的环境运行：
+
+```powershell
+powershell -NoProfile -ExecutionPolicy Bypass -File .\packaging\publish-github-release.ps1
+```
+
+当前机器如果只有 SSH push 权限、没有 GitHub API token，则只能推代码，不能创建带附件的 GitHub Release；这时可用生成出的资产手动上传。

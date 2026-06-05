@@ -195,6 +195,15 @@
 6. Unless skipped, it runs the packaged Notepad, Browser, Translation, and model-pack import acceptance scripts.
 7. At the end it removes any `.voice_ime` runtime data created under the portable package.
 
+## Release Asset Packaging
+
+1. Run `powershell -NoProfile -ExecutionPolicy Bypass -File .\packaging\package-release-assets.ps1`.
+2. The script creates `voice-ime-2.0.1-rust-portable.zip` from the full package and `voice-ime-2.0.1-rust-portable-core.zip` from the core package.
+3. It opens each zip and verifies required root entries, `app/VoiceIME.exe`, docs, `BUILD.txt`, model manifests, and forbidden runtime-data paths.
+4. For the core zip, it also verifies `app/models` contains only `MODELS.json` and `MODELS.md`.
+5. It writes `voice-ime-release-assets-2.0.1.json/.md` with every portable zip, model pack, model-pack manifest, byte size, and SHA-256.
+6. If `gh` or a GitHub API token is available, `packaging\publish-github-release.ps1` can publish those assets to `v2.0.1`.
+
 ## Notepad Input Acceptance
 
 1. Build or unpack a portable package.
