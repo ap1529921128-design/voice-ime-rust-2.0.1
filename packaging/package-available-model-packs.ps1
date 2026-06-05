@@ -74,6 +74,32 @@ function Get-ZipMetadataSummary {
         finally {
             $reader.Dispose()
         }
+        foreach ($file in $metadata.files) {
+            $path = ([string]$file.path) -replace '\\', '/'
+            $entry = $zip.Entries |
+                Where-Object { ($_.FullName -replace '\\', '/') -eq $path } |
+                Select-Object -First 1
+            if (-not $entry) {
+                throw "Metadata entry missing from zip: $path in $ZipPath"
+            }
+            $expectedBytes = [int64]$file.bytes
+            if ($entry.Length -ne $expectedBytes) {
+                throw "Metadata byte mismatch for $path in $ZipPath; expected $expectedBytes actual $($entry.Length)"
+            }
+            $sha = [System.Security.Cryptography.SHA256]::Create()
+            $stream = $entry.Open()
+            try {
+                $actualHash = ([System.BitConverter]::ToString($sha.ComputeHash($stream))).Replace("-", "").ToLowerInvariant()
+            }
+            finally {
+                $stream.Dispose()
+                $sha.Dispose()
+            }
+            $expectedHash = ([string]$file.sha256).ToLowerInvariant()
+            if ($actualHash -ne $expectedHash) {
+                throw "Metadata SHA-256 mismatch for $path in $ZipPath"
+            }
+        }
         return [ordered]@{
             metadata_id         = [string]$metadata.id
             metadata_profile    = [string]$metadata.profile

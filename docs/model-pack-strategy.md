@@ -94,4 +94,4 @@ voice-ime-model-packs-2.0.1.json
 voice-ime-model-packs-2.0.1.md
 ```
 
-批量清单记录每个 zip 的大小、SHA-256、源目录、目标目录和 `MODEL_PACK.json` 文件数。需要严格发布时加 `-FailOnMissing`，这样任何请求的模型包缺文件都会让命令失败。
+批量脚本会重新打开每个 zip，逐项验证 `MODEL_PACK.json` 里的文件大小和 SHA-256，然后在批量清单里记录每个 zip 的大小、SHA-256、源目录、目标目录和 metadata 文件数。需要严格发布时加 `-FailOnMissing`，这样任何请求的模型包缺文件都会让命令失败。

@@ -136,9 +136,10 @@
 1. Prepare a full portable package or another models directory containing available model files.
 2. Run `powershell -NoProfile -ExecutionPolicy Bypass -File .\packaging\package-available-model-packs.ps1`.
 3. The script generates every non-`planned` pack whose required files exist, and skips missing packs with explicit missing-file paths.
-4. Each generated zip is reopened to verify root `MODEL_PACK.json`; the batch manifest records zip bytes, zip SHA-256, target dir, source dir, and metadata file count.
-5. `voice-ime-model-packs-<version>.json` and `.md` are written to the output root.
-6. Passing `-FailOnMissing` makes any missing requested pack fail the batch after writing the manifest.
+4. Each generated zip is reopened to verify root `MODEL_PACK.json`, and every metadata file entry is checked against its zip-internal byte size and SHA-256.
+5. The batch manifest records zip bytes, zip SHA-256, target dir, source dir, and metadata file count.
+6. `voice-ime-model-packs-<version>.json` and `.md` are written to the output root.
+7. Passing `-FailOnMissing` makes any missing requested pack fail the batch after writing the manifest.
 
 ## Model Pack Import
 
