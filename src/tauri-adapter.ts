@@ -227,10 +227,16 @@ function createQaSnapshot() {
       },
       translation: {
         engine: "external",
+        profile: "balanced",
         endpoint: "http://127.0.0.1:18080/v1/chat/completions",
         model: "minicpm5-1b-q4",
         timeout_seconds: 8,
         external_command: "E:/voice-ime-tools/translate.exe --stdin-json",
+        models: {
+          fast_command: "E:/voice-ime-tools/mt-fast.exe --stdin-json",
+          balanced_command: "E:/voice-ime-tools/mt-balanced.exe --stdin-json",
+          accurate_command: "",
+        },
       },
       ui: {
         theme: "indigo-porcelain-glass",

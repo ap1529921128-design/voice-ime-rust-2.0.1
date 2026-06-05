@@ -113,8 +113,10 @@ fn support_summary(
             config.input.ptt_hold_threshold_ms
         ),
         format!(
-            "Translation: engine={} timeout={}s",
-            config.translation.engine, config.translation.timeout_seconds
+            "Translation: engine={} profile={} timeout={}s",
+            config.translation.engine,
+            config.translation.profile,
+            config.translation.timeout_seconds
         ),
         "Included: config, history, text dictionaries, logs, model manifest.".to_string(),
         "Excluded: recordings and model binary files.".to_string(),

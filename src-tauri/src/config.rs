@@ -142,6 +142,8 @@ pub struct SmartConfig {
 pub struct TranslationConfig {
     #[serde(default = "default_translation_engine")]
     pub engine: String,
+    #[serde(default = "default_translation_profile")]
+    pub profile: String,
     #[serde(default = "default_llm_endpoint")]
     pub endpoint: String,
     #[serde(default = "default_llm_model")]
@@ -150,6 +152,18 @@ pub struct TranslationConfig {
     pub timeout_seconds: u64,
     #[serde(default = "default_external_translation_command")]
     pub external_command: String,
+    #[serde(default)]
+    pub models: TranslationModels,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct TranslationModels {
+    #[serde(default = "default_external_translation_command")]
+    pub fast_command: String,
+    #[serde(default = "default_external_translation_command")]
+    pub balanced_command: String,
+    #[serde(default = "default_external_translation_command")]
+    pub accurate_command: String,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -263,10 +277,22 @@ impl Default for TranslationConfig {
     fn default() -> Self {
         Self {
             engine: default_translation_engine(),
+            profile: default_translation_profile(),
             endpoint: default_llm_endpoint(),
             model: default_llm_model(),
             timeout_seconds: default_translation_timeout(),
             external_command: default_external_translation_command(),
+            models: TranslationModels::default(),
+        }
+    }
+}
+
+impl Default for TranslationModels {
+    fn default() -> Self {
+        Self {
+            fast_command: default_external_translation_command(),
+            balanced_command: default_external_translation_command(),
+            accurate_command: default_external_translation_command(),
         }
     }
 }
@@ -318,7 +344,7 @@ pub fn load_or_create(paths: &Paths) -> Result<AppConfig> {
     if paths.config_path.exists() {
         let raw = fs::read_to_string(&paths.config_path).context("read config.json")?;
         let value: Value = serde_json::from_str(&raw).context("parse config.json")?;
-        if value.get("asr").is_some() || value.get("input").is_some() {
+        if is_structured_2x_config(&value) {
             config = serde_json::from_value(value).context("load 2.0 config")?;
         } else {
             config = migrate_legacy_config(value);
@@ -423,6 +449,9 @@ fn migrate_legacy_config(value: Value) -> AppConfig {
     if let Some(engine) = get_str("translation_engine") {
         config.translation.engine = engine;
     }
+    if let Some(profile) = get_str("translation_profile") {
+        config.translation.profile = profile;
+    }
     if let Some(model) = get_str("translation_model") {
         config.translation.model = model;
     }
@@ -434,6 +463,12 @@ fn migrate_legacy_config(value: Value) -> AppConfig {
     }
 
     config
+}
+
+fn is_structured_2x_config(value: &Value) -> bool {
+    ["asr", "input", "smart", "translation", "ui"]
+        .iter()
+        .any(|key| value.get(key).is_some())
 }
 
 fn normalize_config(config: &mut AppConfig) {
@@ -448,8 +483,23 @@ fn normalize_config(config: &mut AppConfig) {
     config.asr.accurate_external_command = config.asr.accurate_external_command.trim().to_string();
     config.asr.input_device_name = normalize_input_device_name(&config.asr.input_device_name);
     config.translation.engine = normalize_translation_engine(&config.translation.engine);
+    config.translation.profile = normalize_translation_profile(&config.translation.profile);
     config.translation.timeout_seconds = config.translation.timeout_seconds.clamp(3, 8);
     config.translation.external_command = config.translation.external_command.trim().to_string();
+    config.translation.models.fast_command =
+        config.translation.models.fast_command.trim().to_string();
+    config.translation.models.balanced_command = config
+        .translation
+        .models
+        .balanced_command
+        .trim()
+        .to_string();
+    config.translation.models.accurate_command = config
+        .translation
+        .models
+        .accurate_command
+        .trim()
+        .to_string();
     config.input.paste_delay_ms = config.input.paste_delay_ms.min(500);
     config.input.confirm_hide_delay_ms = config.input.confirm_hide_delay_ms.min(5_000);
     config.input.hotkey_record = normalize_hotkey(&config.input.hotkey_record);
@@ -499,6 +549,14 @@ fn normalize_translation_engine(value: &str) -> String {
     match value.trim().to_ascii_lowercase().as_str() {
         "llm" | "external" | "nllb" | "bergamot" => value.trim().to_ascii_lowercase(),
         _ => default_translation_engine(),
+    }
+}
+
+fn normalize_translation_profile(value: &str) -> String {
+    match value.trim().to_ascii_lowercase().as_str() {
+        "fast" | "balanced" | "accurate" | "custom" => value.trim().to_ascii_lowercase(),
+        "external" | "" => default_translation_profile(),
+        _ => default_translation_profile(),
     }
 }
 
@@ -897,6 +955,9 @@ fn default_translation_timeout() -> u64 {
 fn default_translation_engine() -> String {
     "llm".into()
 }
+fn default_translation_profile() -> String {
+    "balanced".into()
+}
 fn default_external_translation_command() -> String {
     String::new()
 }
@@ -957,6 +1018,7 @@ mod tests {
             "max_record_seconds": 60,
             "smart_correction_enabled": false,
             "translation_engine": "external",
+            "translation_profile": "fast",
             "translation_external_command": "translator.exe --compact",
             "translation_model": "local",
             "save_long_recordings": false
@@ -966,10 +1028,34 @@ mod tests {
         assert_eq!(cfg.asr.max_record_seconds, 60);
         assert!(!cfg.smart.enabled);
         assert_eq!(cfg.translation.engine, "external");
+        assert_eq!(cfg.translation.profile, "fast");
         assert_eq!(cfg.translation.external_command, "translator.exe --compact");
         assert_eq!(cfg.translation.model, "local");
         assert!(!cfg.asr.save_long_recordings);
         assert_eq!(cfg.input.mode, "floating-overlay");
+    }
+
+    #[test]
+    fn recognizes_translation_only_structured_config() {
+        let value = serde_json::json!({
+            "translation": {
+                "engine": "external",
+                "profile": "fast",
+                "timeout_seconds": 3,
+                "models": {
+                    "fast_command": "translator.exe --json"
+                }
+            }
+        });
+
+        assert!(is_structured_2x_config(&value));
+        let mut cfg: AppConfig = serde_json::from_value(value).unwrap();
+        normalize_config(&mut cfg);
+
+        assert_eq!(cfg.translation.engine, "external");
+        assert_eq!(cfg.translation.profile, "fast");
+        assert_eq!(cfg.translation.timeout_seconds, 3);
+        assert_eq!(cfg.translation.models.fast_command, "translator.exe --json");
     }
 
     #[test]
@@ -1291,15 +1377,32 @@ mod tests {
     fn normalizes_translation_engine() {
         let mut cfg = AppConfig::default();
         assert_eq!(cfg.translation.engine, "llm");
+        assert_eq!(cfg.translation.profile, "balanced");
 
         cfg.translation.engine = "EXTERNAL".into();
+        cfg.translation.profile = "ACCURATE".into();
         cfg.translation.external_command = "  translator.exe --json  ".into();
+        cfg.translation.models.fast_command = "  fast.exe --json  ".into();
+        cfg.translation.models.balanced_command = "  balanced.exe --json  ".into();
+        cfg.translation.models.accurate_command = "  accurate.exe --json  ".into();
         normalize_config(&mut cfg);
         assert_eq!(cfg.translation.engine, "external");
+        assert_eq!(cfg.translation.profile, "accurate");
         assert_eq!(cfg.translation.external_command, "translator.exe --json");
+        assert_eq!(cfg.translation.models.fast_command, "fast.exe --json");
+        assert_eq!(
+            cfg.translation.models.balanced_command,
+            "balanced.exe --json"
+        );
+        assert_eq!(
+            cfg.translation.models.accurate_command,
+            "accurate.exe --json"
+        );
 
         cfg.translation.engine = "bad".into();
+        cfg.translation.profile = "bad".into();
         normalize_config(&mut cfg);
         assert_eq!(cfg.translation.engine, "llm");
+        assert_eq!(cfg.translation.profile, "balanced");
     }
 }

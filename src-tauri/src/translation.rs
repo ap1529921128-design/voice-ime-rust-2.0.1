@@ -1,6 +1,6 @@
 use crate::{
     cancel::CancellationToken,
-    config::{AppConfig, Paths},
+    config::{self, AppConfig, Paths},
     llm, text,
 };
 use anyhow::{anyhow, Context, Result};
@@ -60,16 +60,23 @@ fn translate_with_external(
         return Ok(source.text);
     }
     ensure_not_cancelled(cancellation)?;
-    let command_line = config.translation.external_command.trim();
+    let profile = effective_external_profile(config);
+    let command_line = external_command_for_profile(config).trim();
     if command_line.is_empty() {
-        return Err(anyhow!("未配置外部翻译命令"));
+        return Err(anyhow!("未配置外部翻译命令：{}", profile));
     }
     let args = split_command_line(command_line)?;
     let executable = args.first().ok_or_else(|| anyhow!("外部翻译命令为空"))?;
+    let model_root = config::effective_model_root(config, paths)
+        .to_string_lossy()
+        .to_string();
     let payload = json!({
         "source": source.text,
         "target_language": target_language,
         "target_name": target_label(target_language),
+        "profile": profile,
+        "model": effective_model_label(config),
+        "model_root": model_root,
     });
     let mut command = Command::new(executable);
     command
@@ -121,6 +128,57 @@ fn translate_with_external(
     }
     let raw = parse_external_output(&stdout)?;
     validate_output(&raw)
+}
+
+pub fn effective_model_label(config: &AppConfig) -> String {
+    match config
+        .translation
+        .engine
+        .trim()
+        .to_ascii_lowercase()
+        .as_str()
+    {
+        "" | "llm" => {
+            let model = config.translation.model.trim();
+            if model.is_empty() {
+                "llm".into()
+            } else {
+                model.to_string()
+            }
+        }
+        "external" => format!("mt/{}", effective_external_profile(config)),
+        other => other.to_string(),
+    }
+}
+
+pub fn external_command_for_profile(config: &AppConfig) -> &str {
+    let profile_command = match effective_external_profile(config).as_str() {
+        "fast" => config.translation.models.fast_command.trim(),
+        "balanced" => config.translation.models.balanced_command.trim(),
+        "accurate" => config.translation.models.accurate_command.trim(),
+        "custom" => "",
+        _ => "",
+    };
+    if profile_command.is_empty() {
+        config.translation.external_command.trim()
+    } else {
+        profile_command
+    }
+}
+
+fn effective_external_profile(config: &AppConfig) -> String {
+    match config
+        .translation
+        .profile
+        .trim()
+        .to_ascii_lowercase()
+        .as_str()
+    {
+        "fast" | "balanced" | "accurate" | "custom" => {
+            config.translation.profile.trim().to_ascii_lowercase()
+        }
+        _ => "balanced".into(),
+    }
 }
 
 #[derive(Debug, PartialEq, Eq)]
@@ -331,6 +389,23 @@ mod tests {
     #[test]
     fn rejects_external_translation_chatter() {
         assert!(validate_output("说明：这句话可以根据语境翻译。").is_err());
+    }
+
+    #[test]
+    fn selects_profile_command_with_legacy_fallback() {
+        let mut config = AppConfig::default();
+        config.translation.engine = "external".into();
+        config.translation.profile = "fast".into();
+        config.translation.external_command = "legacy.exe --json".into();
+
+        assert_eq!(external_command_for_profile(&config), "legacy.exe --json");
+        assert_eq!(effective_model_label(&config), "mt/fast");
+
+        config.translation.models.fast_command = "fast.exe --stdin-json".into();
+        assert_eq!(
+            external_command_for_profile(&config),
+            "fast.exe --stdin-json"
+        );
     }
 
     #[test]

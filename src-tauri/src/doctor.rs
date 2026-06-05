@@ -369,15 +369,22 @@ fn check_models(paths: &Paths, config: &AppConfig, checks: &mut Vec<DoctorCheck>
 fn check_translation_backend(config: &AppConfig, checks: &mut Vec<DoctorCheck>) {
     match config.translation.engine.as_str() {
         "llm" | "" => check_llm_endpoint("翻译端点", &config.translation.endpoint, checks),
-        "external" => match translation::split_command_line(&config.translation.external_command) {
-            Ok(args) => push_check(
-                checks,
-                "外部翻译命令",
-                DoctorStatus::Pass,
-                args.first().cloned().unwrap_or_default(),
-            ),
-            Err(err) => push_check(checks, "外部翻译命令", DoctorStatus::Warn, err.to_string()),
-        },
+        "external" => {
+            match translation::split_command_line(translation::external_command_for_profile(config))
+            {
+                Ok(args) => push_check(
+                    checks,
+                    "外部翻译命令",
+                    DoctorStatus::Pass,
+                    format!(
+                        "{}；{}",
+                        translation::effective_model_label(config),
+                        args.first().cloned().unwrap_or_default()
+                    ),
+                ),
+                Err(err) => push_check(checks, "外部翻译命令", DoctorStatus::Warn, err.to_string()),
+            }
+        }
         "nllb" | "bergamot" => push_check(
             checks,
             "翻译引擎",
@@ -663,8 +670,11 @@ fn write_report(
         config.input.ptt_hold_threshold_ms
     ));
     lines.push(format!(
-        "Translation: engine={} timeout={}s",
-        config.translation.engine, config.translation.timeout_seconds
+        "Translation: engine={} profile={} model={} timeout={}s",
+        config.translation.engine,
+        config.translation.profile,
+        translation::effective_model_label(config),
+        config.translation.timeout_seconds
     ));
     lines.push(format!("Elapsed: {:.2}s", elapsed.as_secs_f32()));
     lines.push(String::new());

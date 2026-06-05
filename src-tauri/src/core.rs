@@ -1042,7 +1042,7 @@ impl WorkerState {
             session_id,
             target_language: target_language.clone(),
             engine: config.translation.engine.clone(),
-            model: config.translation.model.clone(),
+            model: translation::effective_model_label(&config),
             timeout_seconds: config.translation.timeout_seconds,
             elapsed_seconds: elapsed,
             source_chars,
@@ -1068,7 +1068,7 @@ impl WorkerState {
                         "翻译 {:.1}s / {} 字 / {}",
                         elapsed,
                         inner.text.chars().count(),
-                        config.translation.engine
+                        translation::effective_model_label(&config)
                     );
                 }
                 Err(err) => {

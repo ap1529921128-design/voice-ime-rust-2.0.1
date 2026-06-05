@@ -181,10 +181,18 @@
 
 1. Build or unpack a portable package.
 2. From the package root, run `powershell -NoProfile -ExecutionPolicy Bypass -File .\app\tools\Translation-Acceptance.ps1`.
-3. The script creates a temporary `VOICE_IME_APP_DIR`, writes a 2.0 config that selects `translation.engine=external`, and points it at packaged `Mock-External-Translate.ps1`.
+3. The script creates a temporary `VOICE_IME_APP_DIR`, writes a 2.0 config that selects `translation.engine=external` and `translation.profile=fast`, and points `translation.models.fast_command` at packaged `Mock-External-Translate.ps1`.
 4. It runs `VoiceIME.exe --benchmark-translation` with 3 zh/en/ja samples.
-5. The benchmark CSV must contain 3 rows, no error values, `language_match=true`, and matching optional hints.
+5. The benchmark CSV must contain 3 rows, no error values, `model=mt/fast`, `language_match=true`, and matching optional hints.
 6. The script does not require a real MT model or MiniCPM service and deletes its temporary app data unless `-KeepAppDir` is passed.
+
+## Translation Profile CLI
+
+1. Build or unpack a portable package.
+2. Configure `translation.models.fast_command`, `balanced_command`, or `accurate_command`, or keep `translation.external_command` as the fallback.
+3. Run `app\VoiceIME.exe --benchmark-translation-profile fast <samples-file>`.
+4. The command must write a `translation-benchmark-*.csv` row with `engine=external` and `model=mt/fast`.
+5. The portable release gate runs this smoke path with the packaged mock translator.
 
 ## Model Pack Script
 

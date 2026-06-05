@@ -445,6 +445,64 @@ function Invoke-AccurateExternalAsrSmoke {
     Write-Host "Accurate external ASR smoke passed: $($report.FullName)"
 }
 
+function Invoke-TranslationProfileCliSmoke {
+    param([Parameter(Mandatory = $true)][string]$Root)
+
+    $app = Join-Path $Root "app"
+    $exe = Join-Path $app "VoiceIME.exe"
+    $mockTranslator = Join-Path $app "tools\Mock-External-Translate.ps1"
+    if (-not (Test-Path -LiteralPath $mockTranslator -PathType Leaf)) {
+        throw "Mock external translator helper missing: $mockTranslator"
+    }
+    $appDir = Join-Path ([System.IO.Path]::GetTempPath()) ("voice-ime-translation-profile-" + [guid]::NewGuid().ToString("N"))
+    $samplePath = Join-Path $appDir "translation-samples.tsv"
+    $previousAppDir = [Environment]::GetEnvironmentVariable("VOICE_IME_APP_DIR", "Process")
+    try {
+        New-Item -ItemType Directory -Path $appDir -Force | Out-Null
+        $utf8NoBom = [System.Text.UTF8Encoding]::new($false)
+        $command = "powershell -NoProfile -ExecutionPolicy Bypass -File `"$mockTranslator`""
+        $config = @{
+            translation = @{
+                engine = "external"
+                profile = "fast"
+                timeout_seconds = 3
+                models = @{
+                    fast_command = $command
+                    balanced_command = ""
+                    accurate_command = ""
+                }
+            }
+        } | ConvertTo-Json -Depth 8
+        [System.IO.File]::WriteAllText((Join-Path $appDir "config.json"), $config, $utf8NoBom)
+        [System.IO.File]::WriteAllText($samplePath, "en`tsettings page local service`tLocal", $utf8NoBom)
+        $env:VOICE_IME_APP_DIR = $appDir
+        $process = Start-Process -FilePath $exe -ArgumentList @("--benchmark-translation-profile", "fast", $samplePath) -WorkingDirectory $app -WindowStyle Hidden -Wait -PassThru
+        if ($process.ExitCode -ne 0) {
+            throw "Translation profile CLI smoke exited with code $($process.ExitCode)"
+        }
+    }
+    finally {
+        if ([string]::IsNullOrEmpty($previousAppDir)) {
+            Remove-Item Env:\VOICE_IME_APP_DIR -ErrorAction SilentlyContinue
+        }
+        else {
+            $env:VOICE_IME_APP_DIR = $previousAppDir
+        }
+    }
+    $reports = @(Get-ChildItem -LiteralPath (Join-Path $appDir "logs") -Filter "translation-benchmark-*.csv" -File -ErrorAction SilentlyContinue)
+    if ($reports.Count -eq 0) {
+        throw "Translation profile CLI smoke did not write a CSV under $appDir"
+    }
+    $report = $reports | Sort-Object LastWriteTime -Descending | Select-Object -First 1
+    $body = [System.IO.File]::ReadAllText($report.FullName, [System.Text.Encoding]::UTF8)
+    foreach ($needle in @("external", "mt/fast", "true", "Local")) {
+        if (-not $body.Contains($needle)) {
+            throw "Translation profile CLI CSV missing '$needle'"
+        }
+    }
+    Write-Host "Translation profile CLI smoke passed: $($report.FullName)"
+}
+
 function Invoke-AcceptanceScript {
     param(
         [Parameter(Mandatory = $true)][string]$Root,
@@ -526,6 +584,7 @@ Invoke-PanicSmoke -Root $ReleaseRoot
 Invoke-AsrBenchmarkProfileSmoke -Root $ReleaseRoot
 Invoke-MockAsrBenchmarkSmoke -Root $ReleaseRoot
 Invoke-AccurateExternalAsrSmoke -Root $ReleaseRoot
+Invoke-TranslationProfileCliSmoke -Root $ReleaseRoot
 if (-not $SkipNotepad) {
     Invoke-AcceptanceScript -Root $ReleaseRoot -ScriptName "Notepad-Input-Acceptance.ps1"
 }

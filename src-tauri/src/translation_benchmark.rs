@@ -33,6 +33,20 @@ pub fn run_translation_cli(samples_path: Option<PathBuf>) -> Result<()> {
     Ok(())
 }
 
+pub fn run_translation_cli_with_profile(
+    profile: &str,
+    samples_path: Option<PathBuf>,
+) -> Result<()> {
+    let paths = Paths::discover()?;
+    let mut config = config::load_or_create(&paths)?;
+    config.translation.engine = "external".into();
+    config.translation.profile = profile.to_string();
+    let config = config::normalized(config);
+    let report = run_translation(samples_path.as_deref(), &paths, &config)?;
+    println!("{}", report.output_path);
+    Ok(())
+}
+
 pub fn run_translation(
     samples_path: Option<&Path>,
     paths: &Paths,
@@ -71,7 +85,7 @@ pub fn run_translation(
             "",
             "",
             &config.translation.engine,
-            &config.translation.model,
+            &translation::effective_model_label(config),
             &config.translation.timeout_seconds.to_string(),
             "",
             "",
@@ -122,7 +136,7 @@ pub fn run_translation(
                     &sample.target_language,
                     target_label(&sample.target_language),
                     &config.translation.engine,
-                    &config.translation.model,
+                    &translation::effective_model_label(config),
                     &config.translation.timeout_seconds.to_string(),
                     &format!("{elapsed:.3}"),
                     bool_cell(language_match),
@@ -140,7 +154,7 @@ pub fn run_translation(
                     &sample.target_language,
                     target_label(&sample.target_language),
                     &config.translation.engine,
-                    &config.translation.model,
+                    &translation::effective_model_label(config),
                     &config.translation.timeout_seconds.to_string(),
                     &format!("{elapsed:.3}"),
                     "",

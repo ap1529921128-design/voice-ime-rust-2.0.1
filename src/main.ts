@@ -96,10 +96,16 @@ type AppConfig = {
   };
   translation: {
     engine: string;
+    profile: string;
     endpoint: string;
     model: string;
     timeout_seconds: number;
     external_command: string;
+    models: {
+      fast_command: string;
+      balanced_command: string;
+      accurate_command: string;
+    };
   };
   ui: {
     theme: string;
@@ -743,6 +749,14 @@ function smartSettingsPanel(cfg: AppConfig) {
           ${option("bergamot", cfg.translation.engine, "Bergamot 预留")}
         </select>
       </label>
+      <label>翻译档位
+        <select data-config="translation.profile">
+          ${option("fast", cfg.translation.profile, "fast")}
+          ${option("balanced", cfg.translation.profile, "balanced")}
+          ${option("accurate", cfg.translation.profile, "accurate")}
+          ${option("custom", cfg.translation.profile, "custom")}
+        </select>
+      </label>
       <label>翻译端点
         <input value="${escapeAttr(cfg.translation.endpoint)}" data-config="translation.endpoint" />
       </label>
@@ -754,6 +768,15 @@ function smartSettingsPanel(cfg: AppConfig) {
       </label>
       <label>外部翻译命令
         <input value="${escapeAttr(cfg.translation.external_command)}" data-config="translation.external_command" />
+      </label>
+      <label>fast 翻译命令
+        <input value="${escapeAttr(cfg.translation.models.fast_command)}" data-config="translation.models.fast_command" />
+      </label>
+      <label>balanced 翻译命令
+        <input value="${escapeAttr(cfg.translation.models.balanced_command)}" data-config="translation.models.balanced_command" />
+      </label>
+      <label>accurate 翻译命令
+        <input value="${escapeAttr(cfg.translation.models.accurate_command)}" data-config="translation.models.accurate_command" />
       </label>
       <div class="prompt-editor">
         <div class="app-profile-head">

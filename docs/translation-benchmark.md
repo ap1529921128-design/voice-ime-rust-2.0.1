@@ -16,6 +16,16 @@ Custom samples:
 app\VoiceIME.exe --benchmark-translation D:\voice-ime-benchmarks\translation-samples.tsv
 ```
 
+Profile override for external MT commands:
+
+```powershell
+app\VoiceIME.exe --benchmark-translation-profile fast D:\voice-ime-benchmarks\translation-samples.tsv
+app\VoiceIME.exe --benchmark-translation-profile balanced D:\voice-ime-benchmarks\translation-samples.tsv
+app\VoiceIME.exe --benchmark-translation-profile accurate D:\voice-ime-benchmarks\translation-samples.tsv
+```
+
+The profile command forces `translation.engine=external` for that benchmark run only. It uses the matching `translation.models.<profile>_command`, and falls back to `translation.external_command` when the profile command is empty.
+
 The GUI exposes the built-in benchmark from Settings / Data / `翻译基准`.
 
 Every normal GUI translation also appends a JSON line to:
@@ -32,7 +42,24 @@ Portable packages also include an offline external-backend acceptance helper:
 powershell -NoProfile -ExecutionPolicy Bypass -File .\app\tools\Translation-Acceptance.ps1
 ```
 
-It uses the packaged `Mock-External-Translate.ps1` command with a temporary `VOICE_IME_APP_DIR`, so it verifies the external JSON pipeline without requiring a real MT model.
+It uses the packaged `Mock-External-Translate.ps1` command with a temporary `VOICE_IME_APP_DIR`, so it verifies the external JSON pipeline and the `mt/fast` profile label without requiring a real MT model.
+
+## External Command Payload
+
+External translation commands receive UTF-8 JSON on stdin:
+
+```json
+{
+  "source": "非洲之星和海洋之泪",
+  "target_language": "en",
+  "target_name": "英语",
+  "profile": "balanced",
+  "model": "mt/balanced",
+  "model_root": "D:/voice-ime-models"
+}
+```
+
+They may return plain text or JSON with one of `text`, `translation`, `result`, or `output`.
 
 ## Sample Format
 

@@ -799,6 +799,21 @@ pub fn run_cli_worker_if_requested() -> bool {
         }
         return true;
     }
+    if first == std::ffi::OsStr::new("--benchmark-translation-profile") {
+        let Some(profile) = args.next() else {
+            eprintln!("missing translation profile, expected fast, balanced, accurate, or custom");
+            std::process::exit(2);
+        };
+        let profile = profile.to_string_lossy().to_string();
+        let samples_path = args.next().map(std::path::PathBuf::from);
+        if let Err(err) =
+            translation_benchmark::run_translation_cli_with_profile(&profile, samples_path)
+        {
+            eprintln!("{err:?}");
+            std::process::exit(2);
+        }
+        return true;
+    }
     if first == std::ffi::OsStr::new("--install-model-pack") {
         let Some(pack_path) = args.next().map(std::path::PathBuf::from) else {
             eprintln!("missing model pack zip path");

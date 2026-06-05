@@ -36,6 +36,8 @@ Startup and uncaught thread panics now leave `panic-YYYYMMDD.log` entries with p
 
 GUI translation clicks now append `translation-YYYYMMDD.log` rows with engine, model, timeout, elapsed seconds, character counts, status, and errors. Doctor surfaces recent translation failures or slow requests, so local LLM stalls and prompt-like translation chatter are easier to diagnose.
 
+External translation now has model-profile slots. Settings / Smart exposes `fast`, `balanced`, `accurate`, and `custom` translation profiles with per-profile external commands; the runtime sends `profile`, `model`, and `model_root` in the JSON payload, logs labels like `mt/fast`, and adds `VoiceIME.exe --benchmark-translation-profile <profile> <samples-file>` for target-machine checks.
+
 Settings / Data now shows hotword and hot-rule stats, including hotword entries, aliases, valid regex rules, and invalid rule examples. Doctor includes the same check so broken `hot-rule.txt` lines are visible before the next dictation.
 
 Settings / Data also includes `词表试算`. Paste or type a sentence, click `试算`, and the app shows normalization, built-in corrections, hotword aliases, regex rules, ITN, and final cleanup with per-stage change and hit counts.
@@ -60,8 +62,11 @@ The release gate passed on the build machine for:
 - Notepad paste acceptance
 - Edge/Chrome textarea paste acceptance
 - external translation JSON-pipeline acceptance
+- translation profile CLI smoke with `mt/fast`
 - core package model-pack import acceptance with SHA-256 verification
 
 Real target-machine checks are still needed for WeChat/Feishu, Word/document editors, IDEs, multiple microphones, and long recordings.
 
 Model/app separation now supports `VOICE_IME_MODEL_DIR`, `app/MODEL_ROOT.txt`, and Settings / Models / `模型根目录`. Settings / Models can now write or clear `MODEL_ROOT.txt` from the UI, while packaged `app/models/MODELS.json/md` remains the manifest and repair source. Relative `models/...` paths are resolved under the effective model root, so a core app body can be moved between machines while ASR and MiniCPM model packs stay in one external repository.
+
+The model manifest now also reserves planned translation packs under `app/models/mt/...`, so future MT model upgrades can be distributed as model packs without changing `VoiceIME.exe`.

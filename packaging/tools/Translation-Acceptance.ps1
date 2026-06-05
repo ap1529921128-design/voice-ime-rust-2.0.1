@@ -84,10 +84,16 @@ try {
 {
   "asr": {},
   "input": {},
-    "translation": {
+  "translation": {
     "engine": "external",
-    "external_command": $(Quote-JsonString $externalCommand),
-    "timeout_seconds": 3
+    "profile": "fast",
+    "external_command": "",
+    "timeout_seconds": 3,
+    "models": {
+      "fast_command": $(Quote-JsonString $externalCommand),
+      "balanced_command": "",
+      "accurate_command": ""
+    }
   }
 }
 "@
@@ -121,6 +127,10 @@ try {
     $rows = @(Import-Csv -LiteralPath $benchmark.FullName)
     if ($rows.Count -ne 3) {
         throw "expected 3 benchmark rows, got $($rows.Count)"
+    }
+    $wrongModel = @($rows | Where-Object { $_.model -ne "mt/fast" })
+    if ($wrongModel.Count -gt 0) {
+        throw "translation acceptance did not use mt/fast profile: $($wrongModel | ConvertTo-Json -Compress)"
     }
     $failed = @($rows | Where-Object {
         $_.error -or

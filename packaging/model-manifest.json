@@ -77,6 +77,58 @@
       "estimated_size_mb": 657
     },
     {
+      "id": "mt-fast-bergamot-local",
+      "kind": "translation",
+      "profile": "fast",
+      "status": "planned",
+      "recommended_for": "Planned compact local machine-translation pack for short interactive translation.",
+      "target_dir": "app/models/mt/bergamot-fast",
+      "required_files": [
+        "model.bin",
+        "vocab.spm",
+        "config.json"
+      ],
+      "source": {
+        "mirror": "",
+        "official": ""
+      },
+      "estimated_size_mb": 180
+    },
+    {
+      "id": "mt-balanced-nllb-distilled-int8",
+      "kind": "translation",
+      "profile": "balanced",
+      "status": "planned",
+      "recommended_for": "Planned balanced local MT pack to replace chat-style MiniCPM translation for zh/en/ja tests.",
+      "target_dir": "app/models/mt/nllb-distilled-int8",
+      "required_files": [
+        "model.int8.onnx",
+        "sentencepiece.bpe.model",
+        "config.json"
+      ],
+      "source": {
+        "mirror": "",
+        "official": ""
+      },
+      "estimated_size_mb": 600
+    },
+    {
+      "id": "mt-accurate-external-command",
+      "kind": "translation",
+      "profile": "accurate",
+      "status": "planned",
+      "recommended_for": "Planned high-quality external MT command or local service profile for stronger target machines.",
+      "target_dir": "app/models/mt/accurate-external",
+      "required_files": [
+        "README.md"
+      ],
+      "source": {
+        "mirror": "",
+        "official": ""
+      },
+      "estimated_size_mb": 0
+    },
+    {
       "id": "asr-accurate-qwen3-1.7b-q4",
       "kind": "asr",
       "profile": "accurate",

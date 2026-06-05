@@ -92,7 +92,7 @@ app/models/
 
 ## 智能纠错和翻译
 
-智能纠错依赖本地 `llama-server`。翻译默认也走本地 LLM，但设置页可以把“翻译引擎”切到 `external`，接入 NLLB、Bergamot 或其他本地机器翻译命令。
+智能纠错依赖本地 `llama-server`。翻译默认也走本地 LLM，但设置页可以把“翻译引擎”切到 `external`，接入 NLLB、Bergamot 或其他本地机器翻译命令。外部翻译支持 `fast`、`balanced`、`accurate` 和 `custom` 档位，每个档位可以配置独立命令；没有配置分档命令时会回退到旧的“外部翻译命令”。
 
 默认端点是：
 
@@ -115,7 +115,7 @@ app/tools/Start-MiniCPM-Translate.ps1
 外部翻译命令通过标准输入接收 JSON：
 
 ```json
-{"source":"非洲之星和海洋之泪","target_language":"en","target_name":"英语"}
+{"source":"非洲之星和海洋之泪","target_language":"en","target_name":"英语","profile":"balanced","model":"mt/balanced","model_root":"D:/voice-ime-models"}
 ```
 
 标准输出可以返回纯文本，也可以返回 JSON：
@@ -174,6 +174,14 @@ app\VoiceIME.exe --benchmark-asr-profile accurate D:\voice-ime-benchmarks\asr
 app\VoiceIME.exe --benchmark-translation
 ```
 
+也可以临时指定外部翻译档位，不改保存配置：
+
+```powershell
+app\VoiceIME.exe --benchmark-translation-profile fast D:\voice-ime-benchmarks\translation-samples.tsv
+app\VoiceIME.exe --benchmark-translation-profile balanced D:\voice-ime-benchmarks\translation-samples.tsv
+app\VoiceIME.exe --benchmark-translation-profile accurate D:\voice-ime-benchmarks\translation-samples.tsv
+```
+
 结果会写到 `app/.voice_ime/logs/translation-benchmark-YYYYMMDD-HHMMSS.csv`，包含目标语言、翻译引擎、模型、耗时、输出、错误、语言匹配和可选提示词命中。普通界面每次点击英/日/中翻译也会追加 `app/.voice_ime/logs/translation-YYYYMMDD.log`，记录引擎、模型、超时、耗时、字数和错误；也可以在“设置 / 数据”点击“翻译基准”后台生成同样的 CSV。自定义样本格式见 [docs/translation-benchmark.md](docs/translation-benchmark.md)。
 
 ## 按应用输入画像
@@ -201,9 +209,9 @@ powershell -NoProfile -ExecutionPolicy Bypass -File .\app\tools\Foreground-Input
 ```
 
 Notepad 脚本会自动打开记事本、粘贴一段测试文本、读回内容并在 `app/.voice_ime/logs/notepad-acceptance-YYYYMMDD-HHMMSS.txt` 写入结果。Browser 脚本会用独立临时 Edge/Chrome profile 打开一个本地文本框页面，并为该临时浏览器强制启用 renderer accessibility，粘贴后通过窗口标题回读结果，并写入 `browser-acceptance-YYYYMMDD-HHMMSS.txt`。两者都会校验 `input-target` 日志里的目标进程，避免前台窗口被抢走时误报通过。Foreground 脚本用于微信、飞书、Word、IDE 等真实 App：运行后按倒计时把光标放进目标输入框，脚本会记录目标进程、窗口类名、标题、光标来源和输入方式；是否真的出现在目标文本框里仍需要肉眼确认。
-Translation 脚本使用包内 `Mock-External-Translate.ps1` 临时切到 `external` 翻译引擎，跑 3 条中日英 benchmark 样例，验证 stdin JSON、stdout JSON、语言匹配、hint 命中和错误列，不依赖真实 NLLB/Bergamot/MiniCPM 服务。
+Translation 脚本使用包内 `Mock-External-Translate.ps1` 临时切到 `external` 翻译引擎和 `fast` 翻译档位，跑 3 条中日英 benchmark 样例，验证 stdin JSON、stdout JSON、`mt/fast` 模型标签、语言匹配、hint 命中和错误列，不依赖真实 NLLB/Bergamot/MiniCPM 服务。
 Model Pack Import 脚本会复制一份 core 包到临时目录，调用 `VoiceIME.exe --install-model-pack` 导入 fallback 小模型包，并按 `MODEL_PACK.json` 校验导入后的文件大小和 SHA-256，不污染正式 core 包。
-发布门禁还会跑一次 mock ASR benchmark：临时生成 wav/txt 样本，确认无模型环境下也能得到 `mock-asr`、`accuracy=1.0000` 的 CSV；还会用 `Mock-External-Asr.ps1` 验证 `accurate` 外部 ASR 命令可以经 JSON stdin/stdout 产出同样的 CSV。
+发布门禁还会跑一次 mock ASR benchmark：临时生成 wav/txt 样本，确认无模型环境下也能得到 `mock-asr`、`accuracy=1.0000` 的 CSV；还会用 `Mock-External-Asr.ps1` 验证 `accurate` 外部 ASR 命令可以经 JSON stdin/stdout 产出同样的 CSV，并用 `--benchmark-translation-profile fast` 验证翻译 profile CLI。
 
 设置页“数据 / 导出”会先运行诊断，再生成 `app/.voice_ime/logs/voice-ime-support-YYYYMMDD-HHMMSS.zip`。导出包包含配置、历史、个人提示词、纠错表、热词/规则、日志、模型根目录来源和模型说明；如果外置模型根目录缺少 `MODELS.json/md`，会回退到主体包自带清单。不包含录音文件和模型二进制。“历史 CSV”只导出表格格式的历史记录。
 “数据”页还能控制长录音是否留存，并一键清理 `app/.voice_ime/recordings` 下的长录音文件。短录音只用于当次转写，默认不留存。
