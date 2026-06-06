@@ -412,14 +412,20 @@ function Invoke-TargetMachineAcceptanceSmoke {
         throw "Target machine acceptance helper missing: $script"
     }
     $samplesDir = Join-Path ([System.IO.Path]::GetTempPath()) ("voice-ime-target-acceptance-asr-" + [guid]::NewGuid().ToString("N"))
+    $runtimeDir = Join-Path $Root "app\.voice_ime"
     $previousAppDir = [Environment]::GetEnvironmentVariable("VOICE_IME_APP_DIR", "Process")
     try {
         $env:VOICE_IME_APP_DIR = Join-Path ([System.IO.Path]::GetTempPath()) ("voice-ime-target-acceptance-app-" + [guid]::NewGuid().ToString("N"))
+        New-Item -ItemType Directory -Path (Join-Path $runtimeDir "recordings") -Force | Out-Null
+        New-Item -ItemType Directory -Path (Join-Path $runtimeDir "backups") -Force | Out-Null
+        Set-Content -LiteralPath (Join-Path $runtimeDir "recordings\must-not-ship.wav") -Value "audio" -Encoding UTF8
+        Set-Content -LiteralPath (Join-Path $runtimeDir "backups\must-not-ship.txt") -Value "backup" -Encoding UTF8
         & powershell -NoProfile -ExecutionPolicy Bypass -File $script `
             -SamplesDir $samplesDir `
             -SkipNotepad `
             -SkipBrowser `
             -SkipTranslation `
+            -ExportBundle `
             -NoOpen
         if ($LASTEXITCODE -ne 0) {
             throw "Target machine acceptance helper exited with code $LASTEXITCODE"
@@ -436,6 +442,32 @@ function Invoke-TargetMachineAcceptanceSmoke {
                 throw "Target machine acceptance report missing '$needle'"
             }
         }
+        $supportLine = $body -split '\r?\n' | Where-Object { $_.StartsWith("support_bundle=") } | Select-Object -First 1
+        if (-not $supportLine) {
+            throw "Target machine acceptance report missing support_bundle path"
+        }
+        $supportBundle = $supportLine -replace "^support_bundle=", ""
+        if (-not (Test-Path -LiteralPath $supportBundle -PathType Leaf)) {
+            throw "Target machine support bundle missing: $supportBundle"
+        }
+        Add-Type -AssemblyName System.IO.Compression.FileSystem
+        $zip = [System.IO.Compression.ZipFile]::OpenRead($supportBundle)
+        try {
+            $names = @($zip.Entries | ForEach-Object { $_.FullName -replace "\\", "/" })
+            foreach ($needle in @("summary.txt", "reports/$($report.Name)", "app/BUILD.txt", "app/models/MODELS.json", "app/models/MODELS.md")) {
+                if (-not ($names -contains $needle)) {
+                    throw "Target machine support bundle missing '$needle'"
+                }
+            }
+            foreach ($name in $names) {
+                if ($name -match "(^|/)(recordings|backup|backups)(/|$)" -or $name -match "\.(onnx|bin|gguf|safetensors|pt|pth|wav|mp3|flac|m4a|zip)$") {
+                    throw "Target machine support bundle contains excluded entry '$name'"
+                }
+            }
+        }
+        finally {
+            $zip.Dispose()
+        }
     }
     finally {
         if ([string]::IsNullOrEmpty($previousAppDir)) {
@@ -447,6 +479,8 @@ function Invoke-TargetMachineAcceptanceSmoke {
         if (Test-Path -LiteralPath $samplesDir) {
             Remove-Item -LiteralPath $samplesDir -Recurse -Force -ErrorAction SilentlyContinue
         }
+        Remove-Item -LiteralPath (Join-Path $runtimeDir "recordings\must-not-ship.wav") -Force -ErrorAction SilentlyContinue
+        Remove-Item -LiteralPath (Join-Path $runtimeDir "backups\must-not-ship.txt") -Force -ErrorAction SilentlyContinue
     }
     Write-Host "Target machine acceptance helper smoke passed"
 }

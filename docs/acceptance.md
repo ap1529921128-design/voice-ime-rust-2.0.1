@@ -287,8 +287,9 @@
 2. From the package root, run `powershell -NoProfile -ExecutionPolicy Bypass -File .\app\tools\Target-Machine-Acceptance.ps1`.
 3. The script runs Doctor, creates the default ASR benchmark sample folder, runs Notepad paste acceptance, runs Edge/Chrome textarea acceptance, and runs the offline translation acceptance.
 4. A `target-machine-acceptance-YYYYMMDD-HHMMSS.txt` report appears under `app/.voice_ime/logs`.
-5. For real apps, run `powershell -NoProfile -ExecutionPolicy Bypass -File .\app\tools\Target-Machine-Acceptance.ps1 -RunForeground -ExpectedProcess <process.exe>` and focus the target input during the countdown.
-6. The report must show `passed=True`; skipped foreground app checks are acceptable unless real-app acceptance is being performed.
+5. Add `-ExportBundle` to create `target-machine-support-YYYYMMDD-HHMMSS.zip` beside the report. Failed runs export this support bundle automatically. The zip must include reports, logs, config/history/dictionaries, build metadata, and model manifests, while excluding recordings, backups, and model binaries.
+6. For real apps, run `powershell -NoProfile -ExecutionPolicy Bypass -File .\app\tools\Target-Machine-Acceptance.ps1 -RunForeground -ExpectedProcess <process.exe> -ExportBundle` and focus the target input during the countdown.
+7. The report must show `passed=True`; skipped foreground app checks are acceptable unless real-app acceptance is being performed.
 
 ## Browser Input Acceptance
 

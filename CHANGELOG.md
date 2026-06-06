@@ -58,7 +58,7 @@
 - Added `VoiceIME.exe --write-asr-benchmark-template <samples-dir>` to create the 10 Chinese reference transcripts and README for repeatable target-machine ASR tests without overwriting existing files.
 - Added a Settings / Data `ASR 样本` action that creates the same 10-sentence benchmark template from the GUI.
 - Added packaged `app/tools/ASR-Benchmark.ps1` to create the default target-machine ASR sample folder and run current or multi-profile benchmark CSVs.
-- Added packaged `app/tools/Target-Machine-Acceptance.ps1` to run the main target-machine smoke checks and write a single summary report.
+- Added packaged `app/tools/Target-Machine-Acceptance.ps1` to run the main target-machine smoke checks, write a single summary report, and export a redacted support bundle for failed or requested old-PC runs.
 - Added deterministic mock ASR and LLM backends for release gates and future CI-style UI/state tests without real model files or MiniCPM.
 - Added an experimental `accurate` ASR profile that calls a configured external command through JSON stdin/stdout for Qwen3/FunASR-style local backends, with packaged smoke coverage.
 - Added Settings / Smart local LLM service status and start controls, plus Doctor checks for the MiniCPM model, llama-server binary, and startup script.
