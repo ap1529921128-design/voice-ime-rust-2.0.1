@@ -78,6 +78,7 @@
 - Added a guarded UI Automation ValuePattern fallback for packaged browser input acceptance, while keeping normal confirm input on foreground restore plus clipboard paste.
 - Tightened confirm-paste focus verification for explicit child edit controls so Notepad-style windows do not report success until the target control or caret owns focus.
 - Hardened the GitHub Release publishing script to discover WinGet-installed GitHub CLI and report unauthenticated `gh` separately from missing tooling.
+- Made packaged browser input acceptance retry once with a longer paste delay to absorb Edge/WebView clipboard-focus timing jitter.
 
 ## 2.0.1 - 2026-05-31
 

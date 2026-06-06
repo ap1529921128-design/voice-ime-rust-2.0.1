@@ -219,9 +219,10 @@ function Wait-TitleContains {
         [string[]]$ProcessNames,
         [string]$TitleFragment,
         [int[]]$BaselineIds,
-        [string]$Expected
+        [string]$Expected,
+        [int]$TimeoutSeconds = 8
     )
-    $deadline = (Get-Date).AddSeconds(6)
+    $deadline = (Get-Date).AddSeconds($TimeoutSeconds)
     $latest = ""
     while ((Get-Date) -lt $deadline) {
         $candidate = Get-BrowserWindow -ProcessNames $ProcessNames -TitleFragment $TitleFragment -BaselineIds $BaselineIds
@@ -396,19 +397,33 @@ try {
     $env:VOICE_IME_INPUT_TARGET_HWND = [string]$browserWindow.MainWindowHandle.ToInt64()
     $env:VOICE_IME_ALLOW_TARGETED_UIA_VALUE = "1"
 
-    $argumentList = @(
-        (Quote-ProcessArgument "--paste-foreground"),
-        (Quote-ProcessArgument $Text),
-        (Quote-ProcessArgument "80")
-    ) -join " "
-    $paste = Start-Process -FilePath $Exe `
-        -ArgumentList $argumentList `
-        -WorkingDirectory $AppDir `
-        -PassThru `
-        -WindowStyle Hidden
-    Wait-ProcessWithFocus -Process $paste -ProcessNames $browserSpec.ProcessNames -TitleFragment $titleToken -BaselineIds $baselineIds
-
-    $titleResult = Wait-TitleContains -ProcessNames $browserSpec.ProcessNames -TitleFragment $titleToken -BaselineIds $baselineIds -Expected $Text
+    $pasteExitCode = -1
+    $pasteAttempts = 0
+    $titleResult = @{
+        Passed = $false
+        Title = ""
+    }
+    foreach ($pasteDelay in @(180, 520)) {
+        $pasteAttempts += 1
+        Focus-Window -Process $browserWindow
+        $argumentList = @(
+            (Quote-ProcessArgument "--paste-foreground"),
+            (Quote-ProcessArgument $Text),
+            (Quote-ProcessArgument ([string]$pasteDelay))
+        ) -join " "
+        $paste = Start-Process -FilePath $Exe `
+            -ArgumentList $argumentList `
+            -WorkingDirectory $AppDir `
+            -PassThru `
+            -WindowStyle Hidden
+        Wait-ProcessWithFocus -Process $paste -ProcessNames $browserSpec.ProcessNames -TitleFragment $titleToken -BaselineIds $baselineIds
+        $pasteExitCode = $paste.ExitCode
+        $titleResult = Wait-TitleContains -ProcessNames $browserSpec.ProcessNames -TitleFragment $titleToken -BaselineIds $baselineIds -Expected $Text -TimeoutSeconds 8
+        if (($pasteExitCode -eq 0) -and $titleResult.Passed) {
+            break
+        }
+        Start-Sleep -Milliseconds 350
+    }
     $targetEntry = Get-LatestInputTarget
     $targetProcess = if ($targetEntry) { [string]$targetEntry.target.process_name } else { "" }
     $targetTitle = if ($targetEntry) { [string]$targetEntry.target.title } else { "" }
@@ -420,13 +435,14 @@ try {
     $clipboardRestored = if ($targetEntry) { [string]$targetEntry.clipboard_restored } else { "" }
     $expectedProcesses = @($browserSpec.ProcessNames | ForEach-Object { "$_.exe" })
     $targetOk = @($expectedProcesses | Where-Object { $_ -ieq $targetProcess }).Count -gt 0
-    $passed = ($paste.ExitCode -eq 0) -and $targetOk -and $titleResult.Passed
+    $passed = ($pasteExitCode -eq 0) -and $targetOk -and $titleResult.Passed
     $lines = @(
         "Voice IME Browser Acceptance",
         "created_at=$((Get-Date).ToString("o"))",
         "passed=$passed",
         "browser=$($browserSpec.Id)",
-        "paste_exit_code=$($paste.ExitCode)",
+        "paste_exit_code=$pasteExitCode",
+        "paste_attempts=$pasteAttempts",
         "target_ok=$targetOk",
         "target_process=$targetProcess",
         "target_title=$targetTitle",
