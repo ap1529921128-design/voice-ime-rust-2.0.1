@@ -108,7 +108,7 @@ pub fn run_asr(
     fs::create_dir_all(&paths.logs_dir)?;
     let output_path = paths.logs_dir.join(format!(
         "asr-benchmark-{}.csv",
-        chrono::Local::now().format("%Y%m%d-%H%M%S")
+        chrono::Local::now().format("%Y%m%d-%H%M%S-%3f")
     ));
     let files = collect_wav_files(samples_dir);
     let sample_count = files.len();

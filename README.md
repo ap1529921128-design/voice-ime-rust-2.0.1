@@ -179,7 +179,7 @@ app\VoiceIME.exe --benchmark-asr-profile accurate D:\voice-ime-benchmarks\asr
 powershell -NoProfile -ExecutionPolicy Bypass -File .\app\tools\ASR-Benchmark.ps1 -Profiles fast,balanced,fallback
 ```
 
-结果会写到 `app/.voice_ime/logs/asr-benchmark-YYYYMMDD-HHMMSS.csv`，包含音频时长、当前 profile、worker 模式、后端、模型、耗时、实时率、参考文本、转写文本、字符错误率 CER、accuracy 和错误信息。样本句模板见 [docs/asr-benchmark.md](docs/asr-benchmark.md)。
+结果会写到 `app/.voice_ime/logs/asr-benchmark-YYYYMMDD-HHMMSS-fff.csv`，包含音频时长、当前 profile、worker 模式、后端、模型、耗时、实时率、参考文本、转写文本、字符错误率 CER、accuracy 和错误信息。便携 `ASR-Benchmark.ps1` 在跑完一个或多个 profile 后还会生成 `asr-benchmark-summary-YYYYMMDD-HHMMSS.txt`，汇总每个 profile 的平均耗时、RTF、CER、accuracy、错误数和后端/模型标签。样本句模板见 [docs/asr-benchmark.md](docs/asr-benchmark.md)。
 
 也可以在“设置 / 数据”点击“ASR 基准”，或在“设置 / 模型”点击某个档位行里的“基准”，选择同样的样本目录后后台生成 CSV。
 

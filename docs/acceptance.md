@@ -169,13 +169,14 @@
 2. Run `app\VoiceIME.exe --write-asr-benchmark-template <samples-dir>`, or open Settings / Data and click `ASR 样本`, to create the 10 reference `.txt` files and local README; existing files must not be overwritten.
 3. From the package root, `powershell -NoProfile -ExecutionPolicy Bypass -File .\app\tools\ASR-Benchmark.ps1 -TemplateOnly` creates the same templates under `app\benchmarks\asr` and opens the folder for recording.
 4. Run `app\VoiceIME.exe --benchmark-asr <samples-dir>` from a portable package, run `app\tools\ASR-Benchmark.ps1`, or open Settings / Data and click `ASR 基准` to choose the same sample directory.
-5. An `asr-benchmark-YYYYMMDD-HHMMSS.csv` file appears under `.voice_ime/logs`.
+5. An `asr-benchmark-YYYYMMDD-HHMMSS-fff.csv` file appears under `.voice_ime/logs`.
 6. The CSV includes file, duration, profile, worker mode, backend, model, transcribe seconds, realtime factor, expected text, transcript text, expected character count, edit distance, CER, accuracy, and error.
-7. If the sample directory is missing or empty, the command still writes a CSV row with `no wav samples found`.
-8. `app\VoiceIME.exe --benchmark-asr-profile <fast|balanced|fallback|accurate> <samples-dir>` and `app\tools\ASR-Benchmark.ps1 -Profiles fast,balanced,fallback` write the same CSV without changing the saved default profile.
-9. When `asr.profile=accurate`, `asr.accurate_external_command` receives a UTF-8 JSON payload with `wav_path`, `sample_rate`, `language`, `profile`, and `prompt`, and may return plain text or JSON `text`/`transcript`.
-10. Settings / Models / profile-row `基准` writes the same CSV, with the row `profile` set to the clicked profile even if Settings / Voice currently selects a different default profile.
-11. Settings / Data / `ASR 样本` writes the same 10 reference transcript files as the CLI template command and leaves existing files intact.
+7. Running the packaged helper with multiple profiles creates `asr-benchmark-summary-YYYYMMDD-HHMMSS.txt`, and the summary must include one `PROFILE` row per profile with average seconds, RTF, CER, accuracy, backend/model, and error count.
+8. If the sample directory is missing or empty, the command still writes a CSV row with `no wav samples found`.
+9. `app\VoiceIME.exe --benchmark-asr-profile <fast|balanced|fallback|accurate> <samples-dir>` and `app\tools\ASR-Benchmark.ps1 -Profiles fast,balanced,fallback` write the same CSV without changing the saved default profile.
+10. When `asr.profile=accurate`, `asr.accurate_external_command` receives a UTF-8 JSON payload with `wav_path`, `sample_rate`, `language`, `profile`, and `prompt`, and may return plain text or JSON `text`/`transcript`.
+11. Settings / Models / profile-row `基准` writes the same CSV, with the row `profile` set to the clicked profile even if Settings / Voice currently selects a different default profile.
+12. Settings / Data / `ASR 样本` writes the same 10 reference transcript files as the CLI template command and leaves existing files intact.
 
 ## Translation Benchmark
 

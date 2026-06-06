@@ -26,7 +26,7 @@ Voice IME Rust 2.0.1 is the first hardened portable release after the Rust/Tauri
 
 The app never sends Enter automatically. Confirmed text is pasted into the target app; if the caret cannot be located, the main confirmation box remains the fallback.
 
-2.0.1 now retries focus recovery before Ctrl+V, briefly shows an `已粘贴` state before hiding the overlay, and writes focus/clipboard diagnostics into `input-target-YYYYMMDD.log`. Text clipboard contents are restored where feasible; non-text clipboard formats are logged clearly instead of being reported as restored.
+2.0.1 now retries focus recovery before Ctrl+V, briefly shows an `已粘贴` state before hiding the overlay, and writes focus/clipboard diagnostics into `input-target-YYYYMMDD.log`. Focus recovery now restores the target window, temporarily attaches Windows input threads, and checks the foreground window before pasting, which is more reliable around topmost or foreground-stealing apps. Text clipboard contents are restored where feasible; non-text clipboard formats are logged clearly instead of being reported as restored.
 
 Task-style background workers now run with unwind panic guards in release builds. Recording/ASR, translation, model download, overlay cleanup, cancellation cleanup, prewarm, and benchmark panics report a UI error and append JSON rows to `worker-error-YYYYMMDD.log` instead of silently killing the task.
 
@@ -54,7 +54,7 @@ The packaged CLI also supports `VoiceIME.exe --benchmark-asr-profile <profile> <
 
 The same template is now available from Settings / Data / `ASR 样本`, so target-machine benchmark setup no longer requires the command line.
 
-Portable packages also include `app/tools/ASR-Benchmark.ps1`. It creates the default `app/benchmarks/asr` sample folder, opens it for recording, and can run current-profile or multi-profile ASR CSV benchmarks after wav files are present.
+Portable packages also include `app/tools/ASR-Benchmark.ps1`. It creates the default `app/benchmarks/asr` sample folder, opens it for recording, and can run current-profile or multi-profile ASR CSV benchmarks after wav files are present. Multi-profile helper runs now also emit `asr-benchmark-summary-YYYYMMDD-HHMMSS.txt`, grouping each profile by average latency, RTF, CER, accuracy, backend/model, and error count for quick old-PC comparison.
 
 `app/tools/Model-Root.ps1` can set or clear `app\MODEL_ROOT.txt` from the command line and writes a model-root report with the effective source, root path, manifest source, and READY/MISSING/PLANNED model-pack rows. This makes core-package plus removable-drive testing possible without opening the GUI first.
 

@@ -458,6 +458,75 @@ function Invoke-AsrBenchmarkToolSmoke {
     Write-Host "ASR benchmark helper smoke passed"
 }
 
+function Invoke-AsrBenchmarkToolSummarySmoke {
+    param([Parameter(Mandatory = $true)][string]$Root)
+
+    $script = Join-Path $Root "app\tools\ASR-Benchmark.ps1"
+    if (-not (Test-Path -LiteralPath $script -PathType Leaf)) {
+        throw "ASR benchmark helper missing: $script"
+    }
+    $appDir = Join-Path ([System.IO.Path]::GetTempPath()) ("voice-ime-asr-tool-summary-app-" + [guid]::NewGuid().ToString("N"))
+    $samplesDir = Join-Path ([System.IO.Path]::GetTempPath()) ("voice-ime-asr-tool-summary-samples-" + [guid]::NewGuid().ToString("N"))
+    $previousAppDir = [Environment]::GetEnvironmentVariable("VOICE_IME_APP_DIR", "Process")
+    try {
+        New-Item -ItemType Directory -Path $appDir -Force | Out-Null
+        New-Item -ItemType Directory -Path $samplesDir -Force | Out-Null
+        $utf8NoBom = [System.Text.UTF8Encoding]::new($false)
+        $mockText = "Voice IME ASR summary mock text"
+        $config = @{
+            asr = @{
+                default_engine = "mock"
+                profile = "balanced"
+                worker_mode = "isolated"
+            }
+            smart = @{
+                enabled = $false
+            }
+        } | ConvertTo-Json -Depth 6
+        [System.IO.File]::WriteAllText((Join-Path $appDir "config.json"), $config, $utf8NoBom)
+        New-TestWavFile -Path (Join-Path $samplesDir "001.wav")
+        [System.IO.File]::WriteAllText((Join-Path $samplesDir "001.txt"), $mockText, $utf8NoBom)
+        $env:VOICE_IME_APP_DIR = $appDir
+        & powershell -NoProfile -ExecutionPolicy Bypass -File $script `
+            -SamplesDir $samplesDir `
+            -Profiles fast,balanced `
+            -NoOpen
+        if ($LASTEXITCODE -ne 0) {
+            throw "ASR benchmark helper summary run exited with code $LASTEXITCODE"
+        }
+        $reports = @(Get-ChildItem -LiteralPath (Join-Path $appDir "logs") -Filter "asr-benchmark-*.csv" -File -ErrorAction SilentlyContinue)
+        if ($reports.Count -lt 2) {
+            throw "ASR benchmark summary smoke expected at least 2 CSV reports, got $($reports.Count)"
+        }
+        $summary = Get-ChildItem -LiteralPath (Join-Path $appDir "logs") -Filter "asr-benchmark-summary-*.txt" -File -ErrorAction SilentlyContinue |
+            Sort-Object LastWriteTime -Descending |
+            Select-Object -First 1
+        if (-not $summary) {
+            throw "ASR benchmark helper did not write a summary report"
+        }
+        $body = Get-Content -LiteralPath $summary.FullName -Raw
+        foreach ($needle in @("reports_count=2", "PROFILE`tfast", "PROFILE`tbalanced", "avg_accuracy=1.0000", "mock-asr")) {
+            if (-not $body.Contains($needle)) {
+                throw "ASR benchmark summary missing '$needle'"
+            }
+        }
+    }
+    finally {
+        if ([string]::IsNullOrEmpty($previousAppDir)) {
+            Remove-Item Env:\VOICE_IME_APP_DIR -ErrorAction SilentlyContinue
+        }
+        else {
+            $env:VOICE_IME_APP_DIR = $previousAppDir
+        }
+        foreach ($path in @($appDir, $samplesDir)) {
+            if (Test-Path -LiteralPath $path) {
+                Remove-Item -LiteralPath $path -Recurse -Force -ErrorAction SilentlyContinue
+            }
+        }
+    }
+    Write-Host "ASR benchmark helper summary smoke passed"
+}
+
 function Invoke-TargetMachineAcceptanceSmoke {
     param([Parameter(Mandatory = $true)][string]$Root)
 
@@ -800,6 +869,7 @@ Invoke-PanicSmoke -Root $ReleaseRoot
 Invoke-AsrBenchmarkProfileSmoke -Root $ReleaseRoot
 Invoke-AsrBenchmarkTemplateSmoke -Root $ReleaseRoot
 Invoke-AsrBenchmarkToolSmoke -Root $ReleaseRoot
+Invoke-AsrBenchmarkToolSummarySmoke -Root $ReleaseRoot
 Invoke-TargetMachineAcceptanceSmoke -Root $ReleaseRoot
 Invoke-MockAsrBenchmarkSmoke -Root $ReleaseRoot
 Invoke-AccurateExternalAsrSmoke -Root $ReleaseRoot

@@ -5,6 +5,7 @@ use crate::{
 use anyhow::{anyhow, Result};
 use serde::Serialize;
 use std::{
+    env,
     fs::{self, OpenOptions},
     io::Write,
     thread,
@@ -42,7 +43,7 @@ pub fn paste_foreground_cli(text: String, delay_ms: u64) -> Result<()> {
     fs::create_dir_all(&paths.logs_dir)?;
     thread::sleep(Duration::from_millis(250));
 
-    let target = InputTarget::capture();
+    let target = explicit_target_from_env().unwrap_or_else(InputTarget::capture);
     let target_info = target.info().clone();
     let paste_result = target.paste_text(&text, delay_ms);
     let paste_outcome = paste_result.as_ref().ok();
@@ -73,6 +74,17 @@ pub fn paste_foreground_cli(text: String, delay_ms: u64) -> Result<()> {
     paste_result?;
     println!("paste_foreground_cli ok: {}", target_info.process_name);
     Ok(())
+}
+
+fn explicit_target_from_env() -> Option<InputTarget> {
+    let hwnd = env::var("VOICE_IME_INPUT_TARGET_HWND")
+        .ok()
+        .and_then(|value| value.trim().parse::<usize>().ok())
+        .filter(|value| *value != 0)?;
+    Some(InputTarget::from_hwnd(
+        hwnd as windows_sys::Win32::Foundation::HWND,
+        "explicit-window",
+    ))
 }
 
 fn write_log(paths: &Paths, entry: &PasteForegroundLogEntry<'_>) -> Result<()> {

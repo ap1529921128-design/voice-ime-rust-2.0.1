@@ -33,6 +33,7 @@
 - Added a model-pack packaging script that creates standalone `voice-ime-model-pack-*.zip` archives from the manifest and an existing models directory.
 - Confirm paste now checks `SendInput` delivery, restores the previous text clipboard where feasible, and logs clipboard restoration fields in input-target logs.
 - Added a conservative direct Unicode typing fallback for short single-line text when clipboard paste fails.
+- Hardened confirm-paste focus recovery with Windows input-thread attachment and foreground retries for topmost or foreground-stealing apps.
 - Added a Playwright-based `npm run ui:smoke` QA harness with Tauri mock data, viewport/DPI checks, and screenshots for the main window, settings, history, and overlay.
 - Added a packaged `app/tools/启动语音输入-诊断.bat` helper while keeping the portable root limited to the single main launcher.
 - Added a packaged `app/tools/Notepad-Input-Acceptance.ps1` smoke test that exercises the same foreground-window paste path as confirm input.
@@ -59,6 +60,7 @@
 - Added `VoiceIME.exe --write-asr-benchmark-template <samples-dir>` to create the 10 Chinese reference transcripts and README for repeatable target-machine ASR tests without overwriting existing files.
 - Added a Settings / Data `ASR 样本` action that creates the same 10-sentence benchmark template from the GUI.
 - Added packaged `app/tools/ASR-Benchmark.ps1` to create the default target-machine ASR sample folder and run current or multi-profile benchmark CSVs.
+- Added packaged ASR benchmark summary reports that compare generated profile CSVs by average latency, RTF, CER, accuracy, backend/model, and error count.
 - Added packaged `app/tools/Model-Root.ps1` to set, clear, and report the portable model root with manifest READY/MISSING/PLANNED rows for removable-drive testing.
 - Added packaged `app/tools/Target-Machine-Acceptance.ps1` to run the main target-machine smoke checks, write a single summary report, and export a redacted support bundle for failed or requested old-PC runs.
 - Added deterministic mock ASR and LLM backends for release gates and future CI-style UI/state tests without real model files or MiniCPM.

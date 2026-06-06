@@ -21,15 +21,17 @@ use windows_sys::Win32::System::DataExchange::{
     CountClipboardFormats, GetClipboardSequenceNumber, IsClipboardFormatAvailable,
 };
 use windows_sys::Win32::System::Threading::{
-    GetCurrentThreadId, OpenProcess, QueryFullProcessImageNameW, PROCESS_QUERY_LIMITED_INFORMATION,
+    AttachThreadInput, GetCurrentThreadId, OpenProcess, QueryFullProcessImageNameW,
+    PROCESS_QUERY_LIMITED_INFORMATION,
 };
 use windows_sys::Win32::UI::Input::KeyboardAndMouse::{
-    SendInput, INPUT, INPUT_0, INPUT_KEYBOARD, KEYBDINPUT, KEYEVENTF_KEYUP, KEYEVENTF_UNICODE,
-    VIRTUAL_KEY, VK_CONTROL, VK_V,
+    SendInput, SetActiveWindow, SetFocus, INPUT, INPUT_0, INPUT_KEYBOARD, KEYBDINPUT,
+    KEYEVENTF_KEYUP, KEYEVENTF_UNICODE, VIRTUAL_KEY, VK_CONTROL, VK_V,
 };
 use windows_sys::Win32::UI::WindowsAndMessaging::{
-    GetClassNameW, GetForegroundWindow, GetGUIThreadInfo, GetWindowTextLengthW, GetWindowTextW,
-    GetWindowThreadProcessId, SetForegroundWindow, GUITHREADINFO,
+    BringWindowToTop, GetClassNameW, GetForegroundWindow, GetGUIThreadInfo, GetWindowTextLengthW,
+    GetWindowTextW, GetWindowThreadProcessId, SetForegroundWindow, ShowWindow, SwitchToThisWindow,
+    GUITHREADINFO, SW_RESTORE,
 };
 
 const OVERLAY_WIDTH: i32 = 480;
@@ -116,6 +118,15 @@ impl InputTarget {
         };
         let info = target_info(hwnd, caret_source, rect);
         Self { hwnd, rect, info }
+    }
+
+    pub fn from_hwnd(hwnd: HWND, caret_source: &'static str) -> Self {
+        let info = target_info(hwnd, caret_source, None);
+        Self {
+            hwnd,
+            rect: None,
+            info,
+        }
     }
 
     pub fn rect(&self) -> Option<OverlayRect> {
@@ -216,7 +227,7 @@ impl InputTarget {
         }
         for attempt in 1..=4 {
             unsafe {
-                SetForegroundWindow(self.hwnd);
+                restore_foreground_window(self.hwnd);
             }
             thread::sleep(Duration::from_millis(45 * attempt as u64));
             if unsafe { GetForegroundWindow() } == self.hwnd {
@@ -231,6 +242,45 @@ impl InputTarget {
             restored: false,
         }
     }
+}
+
+unsafe fn restore_foreground_window(hwnd: HWND) {
+    ShowWindow(hwnd, SW_RESTORE);
+
+    let current_thread = GetCurrentThreadId();
+    let foreground = GetForegroundWindow();
+    let foreground_thread = window_thread_id(foreground);
+    let target_thread = window_thread_id(hwnd);
+    let attach_foreground = foreground_thread != 0 && foreground_thread != current_thread;
+    let attach_target = target_thread != 0 && target_thread != current_thread;
+
+    if attach_foreground {
+        AttachThreadInput(current_thread, foreground_thread, 1);
+    }
+    if attach_target {
+        AttachThreadInput(current_thread, target_thread, 1);
+    }
+
+    BringWindowToTop(hwnd);
+    SetForegroundWindow(hwnd);
+    SetActiveWindow(hwnd);
+    SetFocus(hwnd);
+    SwitchToThisWindow(hwnd, 1);
+
+    if attach_target {
+        AttachThreadInput(current_thread, target_thread, 0);
+    }
+    if attach_foreground {
+        AttachThreadInput(current_thread, foreground_thread, 0);
+    }
+}
+
+unsafe fn window_thread_id(hwnd: HWND) -> u32 {
+    if hwnd.is_null() {
+        return 0;
+    }
+    let mut process_id = 0;
+    GetWindowThreadProcessId(hwnd, &mut process_id)
 }
 
 fn restore_clipboard_text(

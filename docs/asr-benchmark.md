@@ -30,6 +30,14 @@ Or compare profiles:
 powershell -NoProfile -ExecutionPolicy Bypass -File .\app\tools\ASR-Benchmark.ps1 -Profiles fast,balanced,fallback
 ```
 
+When wav files exist, the helper writes one CSV per profile and also creates:
+
+```text
+app/.voice_ime/logs/asr-benchmark-summary-YYYYMMDD-HHMMSS.txt
+```
+
+The summary groups rows by profile and shows row count, ok/error count, average transcription seconds, average realtime factor, average CER, average accuracy, backend, and model labels. This is the quickest way to compare `fast`, `balanced`, `fallback`, and `accurate` on an old target machine.
+
 Example:
 
 ```text

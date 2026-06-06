@@ -241,6 +241,7 @@ function Get-LatestInputTarget {
 }
 
 $previousClipboard = $null
+$previousInputTargetHwnd = [Environment]::GetEnvironmentVariable("VOICE_IME_INPUT_TARGET_HWND", "Process")
 try {
     $previousClipboard = Get-Clipboard -Raw -ErrorAction SilentlyContinue
 }
@@ -258,6 +259,7 @@ try {
     Clear-EditorText -Process $notepad
     Focus-Window -Process $notepad
     Start-Sleep -Milliseconds 300
+    $env:VOICE_IME_INPUT_TARGET_HWND = [string]$notepad.MainWindowHandle.ToInt64()
 
     $argumentList = @(
         (Quote-ProcessArgument "--paste-foreground"),
@@ -322,5 +324,11 @@ finally {
     Remove-Item -LiteralPath $tempFile -Force -ErrorAction SilentlyContinue
     if ($null -ne $previousClipboard) {
         Set-Clipboard -Value $previousClipboard
+    }
+    if ($null -eq $previousInputTargetHwnd) {
+        Remove-Item Env:\VOICE_IME_INPUT_TARGET_HWND -ErrorAction SilentlyContinue
+    }
+    else {
+        $env:VOICE_IME_INPUT_TARGET_HWND = $previousInputTargetHwnd
     }
 }

@@ -278,6 +278,7 @@ function Get-LatestInputTarget {
 }
 
 $previousClipboard = $null
+$previousInputTargetHwnd = [Environment]::GetEnvironmentVariable("VOICE_IME_INPUT_TARGET_HWND", "Process")
 try {
     $previousClipboard = Get-Clipboard -Raw -ErrorAction SilentlyContinue
 }
@@ -367,6 +368,7 @@ try {
 
     $browserWindow = Wait-BrowserWindow -ProcessNames $browserSpec.ProcessNames -TitleFragment $titleToken -BaselineIds $baselineIds
     Focus-Window -Process $browserWindow
+    $env:VOICE_IME_INPUT_TARGET_HWND = [string]$browserWindow.MainWindowHandle.ToInt64()
 
     $argumentList = @(
         (Quote-ProcessArgument "--paste-foreground"),
@@ -424,5 +426,11 @@ finally {
     Remove-Item -LiteralPath $tempRoot -Recurse -Force -ErrorAction SilentlyContinue
     if ($null -ne $previousClipboard) {
         Set-Clipboard -Value $previousClipboard
+    }
+    if ($null -eq $previousInputTargetHwnd) {
+        Remove-Item Env:\VOICE_IME_INPUT_TARGET_HWND -ErrorAction SilentlyContinue
+    }
+    else {
+        $env:VOICE_IME_INPUT_TARGET_HWND = $previousInputTargetHwnd
     }
 }
