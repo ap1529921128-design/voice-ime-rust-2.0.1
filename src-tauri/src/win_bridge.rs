@@ -179,7 +179,7 @@ impl InputTarget {
         if !focus.restored {
             if allow_targeted_wm_paste() {
                 let send_input_events = send_targeted_wm_paste(self.hwnd)?;
-                thread::sleep(Duration::from_millis(160));
+                thread::sleep(Duration::from_millis(700));
                 let (clipboard_restored, clipboard_restore_error) = restore_clipboard_text(
                     &mut clipboard,
                     previous_text.as_deref(),
