@@ -245,6 +245,13 @@ $assetArgs = ($uploadPaths | ForEach-Object { '"' + $_ + '"' }) -join " "
 $lines.Add('```powershell')
 $lines.Add("gh release create v$Version $assetArgs --repo ap1529921128-design/voice-ime-rust-2.0.1 --title ""Voice IME Rust $Version"" --notes-file ""docs/release-notes-$Version.md""")
 $lines.Add('```')
+$lines.Add("")
+$lines.Add("Suggested upload command without GitHub CLI:")
+$lines.Add("")
+$lines.Add('```powershell')
+$lines.Add('$env:GH_TOKEN = "<github-token-with-repo-scope>"')
+$lines.Add(".\packaging\publish-github-release.ps1 -AssetsManifest ""$jsonPath""")
+$lines.Add('```')
 Write-Utf8NoBom -Path $mdPath -Text ($lines -join [Environment]::NewLine)
 
 Write-Host "Release assets packaged:"
