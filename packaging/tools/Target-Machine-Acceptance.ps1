@@ -1,6 +1,7 @@
 param(
     [string]$SamplesDir = "",
     [switch]$SkipDoctor,
+    [switch]$SkipModelRoot,
     [switch]$SkipAsrTemplate,
     [switch]$SkipNotepad,
     [switch]$SkipBrowser,
@@ -201,6 +202,20 @@ else {
             return $report.FullName
         }
         return "doctor finished"
+    }
+}
+
+if ($SkipModelRoot) {
+    Add-Row -Name "Model Root" -Status "SKIP" -Detail "skipped by flag"
+}
+else {
+    Invoke-Step -Name "Model Root" -Body {
+        Invoke-ToolScript -ScriptName "Model-Root.ps1" | Out-Null
+        $report = Get-ChildItem -LiteralPath $LogsDir -Filter "model-root-*.txt" -File -ErrorAction SilentlyContinue |
+            Sort-Object LastWriteTime -Descending |
+            Select-Object -First 1
+        if ($report) { return $report.FullName }
+        return "model root checked"
     }
 }
 

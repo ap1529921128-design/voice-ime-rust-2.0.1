@@ -77,6 +77,15 @@ E:\voice-ime-model-packs
 
 后端、启动脚本和 MiniCPM 启动脚本都会在没有外部 `VOICE_IME_MODEL_DIR` 环境变量时读取这个文件，并把它作为当前模型根目录。托盘菜单里的“模型目录”和设置页/诊断页会打开同一个有效目录，避免一边导入到外置盘、一边托盘仍打开内置 `app/models`。主体包内置的 `app/models/MODELS.json` 和 `MODELS.md` 始终作为发布清单和修复来源保留，即使当前有效模型根目录已经切到移动硬盘。
 
+core 包也可以不进 GUI，直接用工具脚本写入或清除模型根目录：
+
+```powershell
+powershell -NoProfile -ExecutionPolicy Bypass -File .\app\tools\Model-Root.ps1 -ModelRoot E:\voice-ime-models
+powershell -NoProfile -ExecutionPolicy Bypass -File .\app\tools\Model-Root.ps1 -Clear
+```
+
+该脚本会生成 `app/.voice_ime/logs/model-root-YYYYMMDD-HHMMSS.txt`，记录 `VOICE_IME_MODEL_DIR`、`MODEL_ROOT.txt`、`asr.model_root` 或默认 `app/models` 中哪一个正在生效，并按 `MODELS.json` 列出各模型包的 READY、MISSING、PLANNED 状态。这样在移动硬盘和多台旧电脑之间切换时，不需要先启动 GUI 才知道模型目录有没有接对。
+
 ## 打模型包
 
 从当前 full 包或任意模型目录打出单独模型包：

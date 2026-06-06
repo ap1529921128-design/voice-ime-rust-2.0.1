@@ -182,6 +182,60 @@ function Invoke-ModelRootFileSmoke {
     Write-Host "MODEL_ROOT.txt smoke passed"
 }
 
+function Invoke-ModelRootToolSmoke {
+    param([Parameter(Mandatory = $true)][string]$CoreRoot)
+
+    $tempBase = [System.IO.Path]::GetTempPath()
+    $workRoot = Join-Path $tempBase ("voice-ime-model-root-tool-" + [guid]::NewGuid().ToString("N"))
+    $modelRoot = Join-Path $tempBase ("voice-ime-shared-model-root-tool-" + [guid]::NewGuid().ToString("N"))
+    try {
+        Copy-Item -LiteralPath $CoreRoot -Destination $workRoot -Recurse -Force
+        $script = Join-Path $workRoot "app\tools\Model-Root.ps1"
+        if (-not (Test-Path -LiteralPath $script -PathType Leaf)) {
+            throw "Model-Root.ps1 missing from core package: $script"
+        }
+        & powershell -NoProfile -ExecutionPolicy Bypass -File $script -ModelRoot $modelRoot
+        if ($LASTEXITCODE -ne 0) {
+            throw "Model-Root.ps1 -ModelRoot exited with code $LASTEXITCODE"
+        }
+        $modelRootFile = Join-Path $workRoot "app\MODEL_ROOT.txt"
+        if (-not (Test-Path -LiteralPath $modelRootFile -PathType Leaf)) {
+            throw "Model-Root.ps1 did not write MODEL_ROOT.txt"
+        }
+        $override = Get-Content -LiteralPath $modelRootFile -Raw
+        if (-not $override.Contains($modelRoot)) {
+            throw "MODEL_ROOT.txt does not contain the requested root: $modelRoot"
+        }
+        $report = Get-ChildItem -LiteralPath (Join-Path $workRoot "app\.voice_ime\logs") -Filter "model-root-*.txt" -File -ErrorAction SilentlyContinue |
+            Sort-Object LastWriteTime -Descending |
+            Select-Object -First 1
+        if (-not $report) {
+            throw "Model-Root.ps1 did not write a report"
+        }
+        $body = Get-Content -LiteralPath $report.FullName -Raw
+        foreach ($needle in @("effective_source=MODEL_ROOT.txt", "effective_root=$modelRoot", "manifest_source=packaged", "missing_count=")) {
+            if (-not $body.Contains($needle)) {
+                throw "Model-Root.ps1 report missing '$needle'"
+            }
+        }
+        & powershell -NoProfile -ExecutionPolicy Bypass -File $script -Clear
+        if ($LASTEXITCODE -ne 0) {
+            throw "Model-Root.ps1 -Clear exited with code $LASTEXITCODE"
+        }
+        if (Test-Path -LiteralPath $modelRootFile -PathType Leaf) {
+            throw "Model-Root.ps1 -Clear did not remove MODEL_ROOT.txt"
+        }
+    }
+    finally {
+        foreach ($path in @($workRoot, $modelRoot)) {
+            if ((Test-Path -LiteralPath $path) -and $path.StartsWith($tempBase, [StringComparison]::OrdinalIgnoreCase)) {
+                Remove-Item -LiteralPath $path -Recurse -Force -ErrorAction SilentlyContinue
+            }
+        }
+    }
+    Write-Host "Model root tool smoke passed"
+}
+
 function Invoke-ShutdownSmoke {
     param([Parameter(Mandatory = $true)][string]$Root)
 
@@ -437,7 +491,7 @@ function Invoke-TargetMachineAcceptanceSmoke {
             throw "Target machine acceptance helper did not write a report"
         }
         $body = Get-Content -LiteralPath $report.FullName -Raw
-        foreach ($needle in @("passed=True", "PASS`tDoctor", "PASS`tASR Template", "SKIP`tNotepad Paste", "SKIP`tBrowser Paste", "SKIP`tTranslation")) {
+        foreach ($needle in @("passed=True", "PASS`tDoctor", "PASS`tModel Root", "PASS`tASR Template", "SKIP`tNotepad Paste", "SKIP`tBrowser Paste", "SKIP`tTranslation")) {
             if (-not $body.Contains($needle)) {
                 throw "Target machine acceptance report missing '$needle'"
             }
@@ -740,6 +794,7 @@ Invoke-StartupSmoke -Root $ReleaseRoot -Name "full"
 Invoke-StartupSmoke -Root $CoreReleaseRoot -Name "core"
 Invoke-DoctorSmoke -Root $ReleaseRoot
 Invoke-ModelRootFileSmoke -CoreRoot $CoreReleaseRoot
+Invoke-ModelRootToolSmoke -CoreRoot $CoreReleaseRoot
 Invoke-ShutdownSmoke -Root $ReleaseRoot
 Invoke-PanicSmoke -Root $ReleaseRoot
 Invoke-AsrBenchmarkProfileSmoke -Root $ReleaseRoot

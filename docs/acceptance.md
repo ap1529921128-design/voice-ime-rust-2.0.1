@@ -285,11 +285,19 @@
 
 1. Build or unpack a portable package.
 2. From the package root, run `powershell -NoProfile -ExecutionPolicy Bypass -File .\app\tools\Target-Machine-Acceptance.ps1`.
-3. The script runs Doctor, creates the default ASR benchmark sample folder, runs Notepad paste acceptance, runs Edge/Chrome textarea acceptance, and runs the offline translation acceptance.
+3. The script runs Doctor, checks the effective model root, creates the default ASR benchmark sample folder, runs Notepad paste acceptance, runs Edge/Chrome textarea acceptance, and runs the offline translation acceptance.
 4. A `target-machine-acceptance-YYYYMMDD-HHMMSS.txt` report appears under `app/.voice_ime/logs`.
 5. Add `-ExportBundle` to create `target-machine-support-YYYYMMDD-HHMMSS.zip` beside the report. Failed runs export this support bundle automatically. The zip must include reports, logs, config/history/dictionaries, build metadata, and model manifests, while excluding recordings, backups, and model binaries.
 6. For real apps, run `powershell -NoProfile -ExecutionPolicy Bypass -File .\app\tools\Target-Machine-Acceptance.ps1 -RunForeground -ExpectedProcess <process.exe> -ExportBundle` and focus the target input during the countdown.
 7. The report must show `passed=True`; skipped foreground app checks are acceptable unless real-app acceptance is being performed.
+
+## Model Root Tool Acceptance
+
+1. Build or unpack a portable package.
+2. From the package root, run `powershell -NoProfile -ExecutionPolicy Bypass -File .\app\tools\Model-Root.ps1 -ModelRoot <shared-model-dir>`.
+3. The script must create `app\MODEL_ROOT.txt`, create the model root directory if needed, and write `model-root-YYYYMMDD-HHMMSS.txt` under `app/.voice_ime/logs`.
+4. The report must show `effective_source=MODEL_ROOT.txt`, the selected `effective_root`, the manifest source, and READY/MISSING/PLANNED rows for manifest packs.
+5. Run `powershell -NoProfile -ExecutionPolicy Bypass -File .\app\tools\Model-Root.ps1 -Clear`; `app\MODEL_ROOT.txt` must be removed.
 
 ## Browser Input Acceptance
 

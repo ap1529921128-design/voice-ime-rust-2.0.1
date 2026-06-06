@@ -217,7 +217,7 @@ app\VoiceIME.exe --doctor
 
 便携包的 `app/tools/启动语音输入-诊断.bat` 也会运行同一套诊断并打开日志目录；根目录仍然只保留 `启动语音输入.bat`。
 
-便携包还包含一键目标机器验收脚本，用来确认当前机器的诊断、ASR 样本准备、记事本粘贴、浏览器粘贴和翻译 mock 管道：
+便携包还包含一键目标机器验收脚本，用来确认当前机器的诊断、模型根目录、ASR 样本准备、记事本粘贴、浏览器粘贴和翻译 mock 管道：
 
 ```powershell
 powershell -NoProfile -ExecutionPolicy Bypass -File .\app\tools\Target-Machine-Acceptance.ps1
@@ -229,13 +229,14 @@ powershell -NoProfile -ExecutionPolicy Bypass -File .\app\tools\Target-Machine-A
 ```powershell
 powershell -NoProfile -ExecutionPolicy Bypass -File .\app\tools\Notepad-Input-Acceptance.ps1
 powershell -NoProfile -ExecutionPolicy Bypass -File .\app\tools\Browser-Input-Acceptance.ps1
+powershell -NoProfile -ExecutionPolicy Bypass -File .\app\tools\Model-Root.ps1 -ModelRoot E:\voice-ime-models
 powershell -NoProfile -ExecutionPolicy Bypass -File .\app\tools\ASR-Benchmark.ps1 -TemplateOnly
 powershell -NoProfile -ExecutionPolicy Bypass -File .\app\tools\Translation-Acceptance.ps1
 powershell -NoProfile -ExecutionPolicy Bypass -File .\app\tools\Model-Pack-Import-Acceptance.ps1
 powershell -NoProfile -ExecutionPolicy Bypass -File .\app\tools\Foreground-Input-Acceptance.ps1 -ExpectedProcess WeChat.exe
 ```
 
-Target-Machine 脚本会在 `app/.voice_ime/logs/target-machine-acceptance-YYYYMMDD-HHMMSS.txt` 汇总通过、失败和跳过项。加 `-ExportBundle` 会同时生成 `target-machine-support-YYYYMMDD-HHMMSS.zip`；如果验收失败，即使没加参数也会自动生成。这个包只包含报告、配置、历史、词表、日志、构建信息和模型清单，不包含录音、备份目录和模型二进制。Notepad 脚本会自动打开记事本、粘贴一段测试文本、读回内容并在 `notepad-acceptance-YYYYMMDD-HHMMSS.txt` 写入结果。Browser 脚本会用独立临时 Edge/Chrome profile 打开一个本地文本框页面，并为该临时浏览器强制启用 renderer accessibility，粘贴后通过窗口标题回读结果，并写入 `browser-acceptance-YYYYMMDD-HHMMSS.txt`。两者都会校验 `input-target` 日志里的目标进程，避免前台窗口被抢走时误报通过。Foreground 脚本用于微信、飞书、Word、IDE 等真实 App：运行后按倒计时把光标放进目标输入框，脚本会记录目标进程、窗口类名、标题、光标来源和输入方式；是否真的出现在目标文本框里仍需要肉眼确认。也可以用汇总脚本触发真实 App 检查，例如 `.\app\tools\Target-Machine-Acceptance.ps1 -RunForeground -ExpectedProcess WeChat.exe -ExportBundle`。
+Target-Machine 脚本会在 `app/.voice_ime/logs/target-machine-acceptance-YYYYMMDD-HHMMSS.txt` 汇总通过、失败和跳过项。加 `-ExportBundle` 会同时生成 `target-machine-support-YYYYMMDD-HHMMSS.zip`；如果验收失败，即使没加参数也会自动生成。这个包只包含报告、配置、历史、词表、日志、构建信息和模型清单，不包含录音、备份目录和模型二进制。Model-Root 脚本会写入/清除 `app\MODEL_ROOT.txt`，并生成 `model-root-YYYYMMDD-HHMMSS.txt`，列出当前有效模型根目录来源以及各模型包 READY/MISSING/PLANNED 状态。Notepad 脚本会自动打开记事本、粘贴一段测试文本、读回内容并在 `notepad-acceptance-YYYYMMDD-HHMMSS.txt` 写入结果。Browser 脚本会用独立临时 Edge/Chrome profile 打开一个本地文本框页面，并为该临时浏览器强制启用 renderer accessibility，粘贴后通过窗口标题回读结果，并写入 `browser-acceptance-YYYYMMDD-HHMMSS.txt`。两者都会校验 `input-target` 日志里的目标进程，避免前台窗口被抢走时误报通过。Foreground 脚本用于微信、飞书、Word、IDE 等真实 App：运行后按倒计时把光标放进目标输入框，脚本会记录目标进程、窗口类名、标题、光标来源和输入方式；是否真的出现在目标文本框里仍需要肉眼确认。也可以用汇总脚本触发真实 App 检查，例如 `.\app\tools\Target-Machine-Acceptance.ps1 -RunForeground -ExpectedProcess WeChat.exe -ExportBundle`。
 Translation 脚本使用包内 `Mock-External-Translate.ps1` 临时切到 `external` 翻译引擎和 `fast` 翻译档位，跑 3 条中日英 benchmark 样例，验证 stdin JSON、stdout JSON、`mt/fast` 模型标签、语言匹配、hint 命中和错误列，不依赖真实 NLLB/Bergamot/MiniCPM 服务。
 Model Pack Import 脚本会复制一份 core 包到临时目录，调用 `VoiceIME.exe --install-model-pack` 导入 fallback 小模型包，并按 `MODEL_PACK.json` 校验导入后的文件大小和 SHA-256，不污染正式 core 包。
 发布门禁还会跑一次 mock ASR benchmark：临时生成 wav/txt 样本，确认无模型环境下也能得到 `mock-asr`、`accuracy=1.0000` 的 CSV；还会用 `Mock-External-Asr.ps1` 验证 `accurate` 外部 ASR 命令可以经 JSON stdin/stdout 产出同样的 CSV，并用 `--benchmark-translation-profile fast` 验证翻译 profile CLI。

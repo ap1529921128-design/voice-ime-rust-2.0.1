@@ -56,7 +56,9 @@ The same template is now available from Settings / Data / `ASR 样本`, so targe
 
 Portable packages also include `app/tools/ASR-Benchmark.ps1`. It creates the default `app/benchmarks/asr` sample folder, opens it for recording, and can run current-profile or multi-profile ASR CSV benchmarks after wav files are present.
 
-`app/tools/Target-Machine-Acceptance.ps1` now gives old-PC testing a single entry point: Doctor, ASR sample setup, Notepad paste, Edge/Chrome paste, and offline translation acceptance are summarized into one target-machine report. Add `-ExportBundle`, or let a failed run export automatically, to produce a redacted support zip with reports, logs, config/history/dictionaries, build metadata, and model manifests, excluding recordings, backups, and model binaries.
+`app/tools/Model-Root.ps1` can set or clear `app\MODEL_ROOT.txt` from the command line and writes a model-root report with the effective source, root path, manifest source, and READY/MISSING/PLANNED model-pack rows. This makes core-package plus removable-drive testing possible without opening the GUI first.
+
+`app/tools/Target-Machine-Acceptance.ps1` now gives old-PC testing a single entry point: Doctor, model-root check, ASR sample setup, Notepad paste, Edge/Chrome paste, and offline translation acceptance are summarized into one target-machine report. Add `-ExportBundle`, or let a failed run export automatically, to produce a redacted support zip with reports, logs, config/history/dictionaries, build metadata, and model manifests, excluding recordings, backups, and model binaries.
 
 The `accurate` ASR profile is now an experimental external-command adapter for Qwen3/FunASR-style local backends. Configure `asr.accurate_external_command`; Voice IME sends UTF-8 JSON with a temporary wav path and accepts plain text or JSON `text`/`transcript` output. Large accurate models remain outside the core package.
 
