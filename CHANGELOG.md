@@ -76,6 +76,7 @@
 - Added GitHub Release asset preflight validation so upload sets are checked for presence and SHA-256 before publishing.
 - Made model-pack metadata writing UTF-8 without BOM and kept the Rust importer compatible with older BOM metadata.
 - Added a guarded UI Automation ValuePattern fallback for packaged browser input acceptance, while keeping normal confirm input on foreground restore plus clipboard paste.
+- Tightened confirm-paste focus verification for explicit child edit controls so Notepad-style windows do not report success until the target control or caret owns focus.
 
 ## 2.0.1 - 2026-05-31
 

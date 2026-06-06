@@ -30,7 +30,7 @@ use windows_sys::Win32::UI::Input::KeyboardAndMouse::{
 };
 use windows_sys::Win32::UI::WindowsAndMessaging::{
     AllowSetForegroundWindow, BringWindowToTop, GetAncestor, GetClassNameW, GetForegroundWindow,
-    GetGUIThreadInfo, GetWindowTextLengthW, GetWindowTextW, GetWindowThreadProcessId,
+    GetGUIThreadInfo, GetWindowTextLengthW, GetWindowTextW, GetWindowThreadProcessId, IsChild,
     LockSetForegroundWindow, SendMessageW, SetForegroundWindow, SetWindowPos, ShowWindow,
     SwitchToThisWindow, ASFW_ANY, GA_ROOT, GUITHREADINFO, HWND_NOTOPMOST, HWND_TOPMOST,
     LSFW_UNLOCK, SWP_NOMOVE, SWP_NOSIZE, SWP_SHOWWINDOW, SW_RESTORE, WM_SETTEXT,
@@ -281,7 +281,7 @@ impl InputTarget {
                 restore_foreground_window(foreground_hwnd, self.hwnd);
             }
             thread::sleep(Duration::from_millis(45 * attempt as u64));
-            if unsafe { GetForegroundWindow() } == foreground_hwnd {
+            if unsafe { foreground_and_target_focus_restored(foreground_hwnd, self.hwnd) } {
                 return FocusOutcome {
                     attempts: attempt,
                     restored: true,
@@ -434,6 +434,29 @@ unsafe fn restore_foreground_window(foreground_hwnd: HWND, focus_hwnd: HWND) {
     if attach_foreground {
         AttachThreadInput(current_thread, foreground_thread, 0);
     }
+}
+
+unsafe fn foreground_and_target_focus_restored(foreground_hwnd: HWND, focus_hwnd: HWND) -> bool {
+    if GetForegroundWindow() != foreground_hwnd {
+        return false;
+    }
+    if focus_hwnd.is_null() || focus_hwnd == foreground_hwnd {
+        return true;
+    }
+    let target_thread = window_thread_id(focus_hwnd);
+    if target_thread == 0 {
+        return true;
+    }
+    let mut info = empty_gui_thread_info();
+    if GetGUIThreadInfo(target_thread, &mut info) == 0 {
+        return true;
+    }
+    hwnd_matches_or_contains(focus_hwnd, info.hwndFocus)
+        || hwnd_matches_or_contains(focus_hwnd, info.hwndCaret)
+}
+
+unsafe fn hwnd_matches_or_contains(parent: HWND, child: HWND) -> bool {
+    !parent.is_null() && !child.is_null() && (parent == child || IsChild(parent, child) != 0)
 }
 
 unsafe fn window_thread_id(hwnd: HWND) -> u32 {
@@ -864,22 +887,7 @@ fn caret_rect_gui_thread() -> Option<OverlayRect> {
         if thread_id == GetCurrentThreadId() {
             return None;
         }
-        let mut info = GUITHREADINFO {
-            cbSize: std::mem::size_of::<GUITHREADINFO>() as u32,
-            flags: 0,
-            hwndActive: std::ptr::null_mut(),
-            hwndFocus: std::ptr::null_mut(),
-            hwndCapture: std::ptr::null_mut(),
-            hwndMenuOwner: std::ptr::null_mut(),
-            hwndMoveSize: std::ptr::null_mut(),
-            hwndCaret: std::ptr::null_mut(),
-            rcCaret: RECT {
-                left: 0,
-                top: 0,
-                right: 0,
-                bottom: 0,
-            },
-        };
+        let mut info = empty_gui_thread_info();
         if GetGUIThreadInfo(thread_id, &mut info) == 0 || info.hwndCaret.is_null() {
             return None;
         }
@@ -898,6 +906,25 @@ fn caret_rect_gui_thread() -> Option<OverlayRect> {
             width,
             height,
         })
+    }
+}
+
+fn empty_gui_thread_info() -> GUITHREADINFO {
+    GUITHREADINFO {
+        cbSize: std::mem::size_of::<GUITHREADINFO>() as u32,
+        flags: 0,
+        hwndActive: std::ptr::null_mut(),
+        hwndFocus: std::ptr::null_mut(),
+        hwndCapture: std::ptr::null_mut(),
+        hwndMenuOwner: std::ptr::null_mut(),
+        hwndMoveSize: std::ptr::null_mut(),
+        hwndCaret: std::ptr::null_mut(),
+        rcCaret: RECT {
+            left: 0,
+            top: 0,
+            right: 0,
+            bottom: 0,
+        },
     }
 }
 
