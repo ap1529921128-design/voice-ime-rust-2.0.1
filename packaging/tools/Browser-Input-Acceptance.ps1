@@ -259,16 +259,18 @@ function Stop-BrowserProfileProcesses {
 function Wait-ProcessWithFocus {
     param(
         [System.Diagnostics.Process]$Process,
-        [System.Diagnostics.Process]$FocusProcess,
+        [string[]]$ProcessNames,
+        [string]$TitleFragment,
+        [int[]]$BaselineIds,
         [int]$TimeoutSeconds = 12
     )
     $deadline = (Get-Date).AddSeconds($TimeoutSeconds)
     while (-not $Process.HasExited -and (Get-Date) -lt $deadline) {
-        $FocusProcess.Refresh()
-        if ($FocusProcess.MainWindowHandle -ne 0) {
-            [VoiceImeBrowserWin32]::ShowWindow($FocusProcess.MainWindowHandle, 9) | Out-Null
-            [VoiceImeBrowserWin32]::SetWindowPos($FocusProcess.MainWindowHandle, [IntPtr]::new(-1), 0, 0, 0, 0, 0x0043) | Out-Null
-            [VoiceImeBrowserWin32]::SetForegroundWindow($FocusProcess.MainWindowHandle) | Out-Null
+        $focusWindow = Get-BrowserWindow -ProcessNames $ProcessNames -TitleFragment $TitleFragment -BaselineIds $BaselineIds
+        if ($focusWindow -and $focusWindow.MainWindowHandle -ne 0) {
+            [VoiceImeBrowserWin32]::ShowWindow($focusWindow.MainWindowHandle, 9) | Out-Null
+            [VoiceImeBrowserWin32]::SetWindowPos($focusWindow.MainWindowHandle, [IntPtr]::new(-1), 0, 0, 0, 0, 0x0043) | Out-Null
+            [VoiceImeBrowserWin32]::SetForegroundWindow($focusWindow.MainWindowHandle) | Out-Null
         }
         Start-Sleep -Milliseconds 80
         $Process.Refresh()
@@ -402,7 +404,7 @@ try {
         -WorkingDirectory $AppDir `
         -PassThru `
         -WindowStyle Hidden
-    Wait-ProcessWithFocus -Process $paste -FocusProcess $browserWindow
+    Wait-ProcessWithFocus -Process $paste -ProcessNames $browserSpec.ProcessNames -TitleFragment $titleToken -BaselineIds $baselineIds
 
     $titleResult = Wait-TitleContains -ProcessNames $browserSpec.ProcessNames -TitleFragment $titleToken -BaselineIds $baselineIds -Expected $Text
     $targetEntry = Get-LatestInputTarget
