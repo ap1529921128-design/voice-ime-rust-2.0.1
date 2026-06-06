@@ -288,11 +288,11 @@ fn send_targeted_wm_settext(hwnd: HWND, text: &str) -> Result<u32> {
     let mut wide: Vec<u16> = text.encode_utf16().collect();
     wide.push(0);
     let result = unsafe { SendMessageW(hwnd, WM_SETTEXT, 0, wide.as_ptr() as isize) };
-    for _ in 0..10 {
+    for _ in 0..25 {
         if window_text(hwnd) == text {
             return Ok(1);
         }
-        thread::sleep(Duration::from_millis(100));
+        thread::sleep(Duration::from_millis(200));
     }
     Err(anyhow!(
         "定向设置文本失败：WM_SETTEXT 返回 {result}，目标文本未更新"
