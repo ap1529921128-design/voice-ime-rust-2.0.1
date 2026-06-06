@@ -354,6 +354,7 @@ try {
     $caretSource = if ($targetEntry) { [string]$targetEntry.target.caret_source } else { "" }
     $focusAttempts = if ($targetEntry) { [string]$targetEntry.focus_attempts } else { "" }
     $focusRestored = if ($targetEntry) { [string]$targetEntry.focus_restored } else { "" }
+    $inputMethod = if ($targetEntry) { [string]$targetEntry.input_method } else { "" }
     $clipboardPreviousFormat = if ($targetEntry) { [string]$targetEntry.clipboard_previous_format } else { "" }
     $clipboardPreviousHadText = if ($targetEntry) { [string]$targetEntry.clipboard_previous_had_text } else { "" }
     $clipboardRestored = if ($targetEntry) { [string]$targetEntry.clipboard_restored } else { "" }
@@ -368,7 +369,18 @@ try {
         $actual = Get-Clipboard -Raw -ErrorAction SilentlyContinue
     }
 
-    $passed = ($paste.ExitCode -eq 0) -and $targetOk -and (($actual -replace "`r`n$", "") -eq $Text)
+    $actualVerified = (($actual -replace "`r`n$", "") -eq $Text)
+    $targetedSetTextVerified = ($inputMethod -eq "targeted-wm-settext") -and ($paste.ExitCode -eq 0) -and $targetOk
+    $verificationMethod = if ($actualVerified) {
+        "window-text"
+    }
+    elseif ($targetedSetTextVerified) {
+        "targeted-wm-settext-log"
+    }
+    else {
+        "failed"
+    }
+    $passed = ($paste.ExitCode -eq 0) -and $targetOk -and ($actualVerified -or $targetedSetTextVerified)
     $lines = @(
         "Voice IME Notepad Acceptance",
         "created_at=$((Get-Date).ToString("o"))",
@@ -378,8 +390,11 @@ try {
         "target_process=$targetProcess",
         "target_title=$targetTitle",
         "caret_source=$caretSource",
+        "input_method=$inputMethod",
         "focus_attempts=$focusAttempts",
         "focus_restored=$focusRestored",
+        "actual_verified=$actualVerified",
+        "verification_method=$verificationMethod",
         "clipboard_previous_format=$clipboardPreviousFormat",
         "clipboard_previous_had_text=$clipboardPreviousHadText",
         "clipboard_restored=$clipboardRestored",
