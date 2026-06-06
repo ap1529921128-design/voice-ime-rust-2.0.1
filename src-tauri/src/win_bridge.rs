@@ -26,7 +26,7 @@ use windows_sys::Win32::System::Threading::{
 };
 use windows_sys::Win32::UI::Input::KeyboardAndMouse::{
     SendInput, SetActiveWindow, SetFocus, INPUT, INPUT_0, INPUT_KEYBOARD, KEYBDINPUT,
-    KEYEVENTF_KEYUP, KEYEVENTF_UNICODE, VIRTUAL_KEY, VK_CONTROL, VK_V,
+    KEYEVENTF_KEYUP, KEYEVENTF_UNICODE, VIRTUAL_KEY, VK_CONTROL, VK_MENU, VK_V,
 };
 use windows_sys::Win32::UI::WindowsAndMessaging::{
     BringWindowToTop, GetClassNameW, GetForegroundWindow, GetGUIThreadInfo, GetWindowTextLengthW,
@@ -261,6 +261,7 @@ unsafe fn restore_foreground_window(hwnd: HWND) {
         AttachThreadInput(current_thread, target_thread, 1);
     }
 
+    send_foreground_unlock_alt_tap();
     BringWindowToTop(hwnd);
     SetForegroundWindow(hwnd);
     SetActiveWindow(hwnd);
@@ -281,6 +282,18 @@ unsafe fn window_thread_id(hwnd: HWND) -> u32 {
     }
     let mut process_id = 0;
     GetWindowThreadProcessId(hwnd, &mut process_id)
+}
+
+unsafe fn send_foreground_unlock_alt_tap() {
+    let inputs = [
+        keyboard_input(VK_MENU, false),
+        keyboard_input(VK_MENU, true),
+    ];
+    SendInput(
+        inputs.len() as u32,
+        inputs.as_ptr(),
+        std::mem::size_of::<INPUT>() as i32,
+    );
 }
 
 fn restore_clipboard_text(
