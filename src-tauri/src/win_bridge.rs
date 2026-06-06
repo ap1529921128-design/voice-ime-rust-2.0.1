@@ -29,10 +29,10 @@ use windows_sys::Win32::UI::Input::KeyboardAndMouse::{
     KEYEVENTF_KEYUP, KEYEVENTF_UNICODE, VIRTUAL_KEY, VK_CONTROL, VK_MENU, VK_V,
 };
 use windows_sys::Win32::UI::WindowsAndMessaging::{
-    BringWindowToTop, GetClassNameW, GetForegroundWindow, GetGUIThreadInfo, GetWindowTextLengthW,
-    GetWindowTextW, GetWindowThreadProcessId, SendMessageW, SetForegroundWindow, SetWindowPos,
-    ShowWindow, SwitchToThisWindow, GUITHREADINFO, HWND_NOTOPMOST, HWND_TOPMOST, SWP_NOMOVE,
-    SWP_NOSIZE, SWP_SHOWWINDOW, SW_RESTORE, WM_SETTEXT,
+    BringWindowToTop, GetAncestor, GetClassNameW, GetForegroundWindow, GetGUIThreadInfo,
+    GetWindowTextLengthW, GetWindowTextW, GetWindowThreadProcessId, SendMessageW,
+    SetForegroundWindow, SetWindowPos, ShowWindow, SwitchToThisWindow, GA_ROOT, GUITHREADINFO,
+    HWND_NOTOPMOST, HWND_TOPMOST, SWP_NOMOVE, SWP_NOSIZE, SWP_SHOWWINDOW, SW_RESTORE, WM_SETTEXT,
 };
 
 const OVERLAY_WIDTH: i32 = 480;
@@ -250,12 +250,13 @@ impl InputTarget {
                 restored: false,
             };
         }
+        let foreground_hwnd = foreground_window_for_target(self.hwnd);
         for attempt in 1..=4 {
             unsafe {
-                restore_foreground_window(self.hwnd);
+                restore_foreground_window(foreground_hwnd, self.hwnd);
             }
             thread::sleep(Duration::from_millis(45 * attempt as u64));
-            if unsafe { GetForegroundWindow() } == self.hwnd {
+            if unsafe { GetForegroundWindow() } == foreground_hwnd {
                 return FocusOutcome {
                     attempts: attempt,
                     restored: true,
@@ -294,13 +295,25 @@ fn send_targeted_wm_settext(hwnd: HWND, text: &str) -> Result<u32> {
     Ok(1)
 }
 
-unsafe fn restore_foreground_window(hwnd: HWND) {
-    ShowWindow(hwnd, SW_RESTORE);
+fn foreground_window_for_target(hwnd: HWND) -> HWND {
+    if hwnd.is_null() {
+        return hwnd;
+    }
+    let root = unsafe { GetAncestor(hwnd, GA_ROOT) };
+    if root.is_null() {
+        hwnd
+    } else {
+        root
+    }
+}
+
+unsafe fn restore_foreground_window(foreground_hwnd: HWND, focus_hwnd: HWND) {
+    ShowWindow(foreground_hwnd, SW_RESTORE);
 
     let current_thread = GetCurrentThreadId();
     let foreground = GetForegroundWindow();
     let foreground_thread = window_thread_id(foreground);
-    let target_thread = window_thread_id(hwnd);
+    let target_thread = window_thread_id(focus_hwnd);
     let attach_foreground = foreground_thread != 0 && foreground_thread != current_thread;
     let attach_target = target_thread != 0 && target_thread != current_thread;
 
@@ -313,7 +326,7 @@ unsafe fn restore_foreground_window(hwnd: HWND) {
 
     send_foreground_unlock_alt_tap();
     SetWindowPos(
-        hwnd,
+        foreground_hwnd,
         HWND_TOPMOST,
         0,
         0,
@@ -321,13 +334,13 @@ unsafe fn restore_foreground_window(hwnd: HWND) {
         0,
         SWP_NOMOVE | SWP_NOSIZE | SWP_SHOWWINDOW,
     );
-    BringWindowToTop(hwnd);
-    SetForegroundWindow(hwnd);
-    SetActiveWindow(hwnd);
-    SetFocus(hwnd);
-    SwitchToThisWindow(hwnd, 1);
+    BringWindowToTop(foreground_hwnd);
+    SetForegroundWindow(foreground_hwnd);
+    SetActiveWindow(foreground_hwnd);
+    SetFocus(focus_hwnd);
+    SwitchToThisWindow(foreground_hwnd, 1);
     SetWindowPos(
-        hwnd,
+        foreground_hwnd,
         HWND_NOTOPMOST,
         0,
         0,
