@@ -154,6 +154,11 @@ app\VoiceIME.exe --write-asr-benchmark-template D:\voice-ime-benchmarks\asr
 
 这个命令会生成 `001.txt` 到 `010.txt` 和 README，不覆盖已有文件；你只需要在同一目录录制同名 `001.wav` 到 `010.wav`。
 也可以打开“设置 / 数据”，点击“ASR 样本”，选择目标目录后生成同一套模板。
+便携包还带了一个一键脚本，默认把模板放到 `app/benchmarks/asr` 并打开目录：
+
+```powershell
+powershell -NoProfile -ExecutionPolicy Bypass -File .\app\tools\ASR-Benchmark.ps1 -TemplateOnly
+```
 
 ```powershell
 app\VoiceIME.exe --benchmark-asr D:\voice-ime-benchmarks\asr
@@ -166,6 +171,12 @@ app\VoiceIME.exe --benchmark-asr-profile fast D:\voice-ime-benchmarks\asr
 app\VoiceIME.exe --benchmark-asr-profile balanced D:\voice-ime-benchmarks\asr
 app\VoiceIME.exe --benchmark-asr-profile fallback D:\voice-ime-benchmarks\asr
 app\VoiceIME.exe --benchmark-asr-profile accurate D:\voice-ime-benchmarks\asr
+```
+
+也可以在同一个脚本里指定档位批量跑：
+
+```powershell
+powershell -NoProfile -ExecutionPolicy Bypass -File .\app\tools\ASR-Benchmark.ps1 -Profiles fast,balanced,fallback
 ```
 
 结果会写到 `app/.voice_ime/logs/asr-benchmark-YYYYMMDD-HHMMSS.csv`，包含音频时长、当前 profile、worker 模式、后端、模型、耗时、实时率、参考文本、转写文本、字符错误率 CER、accuracy 和错误信息。样本句模板见 [docs/asr-benchmark.md](docs/asr-benchmark.md)。
@@ -211,6 +222,7 @@ app\VoiceIME.exe --doctor
 ```powershell
 powershell -NoProfile -ExecutionPolicy Bypass -File .\app\tools\Notepad-Input-Acceptance.ps1
 powershell -NoProfile -ExecutionPolicy Bypass -File .\app\tools\Browser-Input-Acceptance.ps1
+powershell -NoProfile -ExecutionPolicy Bypass -File .\app\tools\ASR-Benchmark.ps1 -TemplateOnly
 powershell -NoProfile -ExecutionPolicy Bypass -File .\app\tools\Translation-Acceptance.ps1
 powershell -NoProfile -ExecutionPolicy Bypass -File .\app\tools\Model-Pack-Import-Acceptance.ps1
 powershell -NoProfile -ExecutionPolicy Bypass -File .\app\tools\Foreground-Input-Acceptance.ps1 -ExpectedProcess WeChat.exe

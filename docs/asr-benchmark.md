@@ -12,6 +12,24 @@ The command writes `001.txt` through `010.txt` and does not overwrite existing f
 
 The same template can be created from the GUI: open Settings / Data, click `ASR 样本`, and choose the target sample folder.
 
+Portable packages also include a helper script. From the package root:
+
+```powershell
+powershell -NoProfile -ExecutionPolicy Bypass -File .\app\tools\ASR-Benchmark.ps1 -TemplateOnly
+```
+
+After recording wav files, run the current profile:
+
+```powershell
+powershell -NoProfile -ExecutionPolicy Bypass -File .\app\tools\ASR-Benchmark.ps1
+```
+
+Or compare profiles:
+
+```powershell
+powershell -NoProfile -ExecutionPolicy Bypass -File .\app\tools\ASR-Benchmark.ps1 -Profiles fast,balanced,fallback
+```
+
 Example:
 
 ```text

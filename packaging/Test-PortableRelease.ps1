@@ -367,6 +367,43 @@ function Invoke-AsrBenchmarkTemplateSmoke {
     Write-Host "ASR benchmark template smoke passed"
 }
 
+function Invoke-AsrBenchmarkToolSmoke {
+    param([Parameter(Mandatory = $true)][string]$Root)
+
+    $script = Join-Path $Root "app\tools\ASR-Benchmark.ps1"
+    if (-not (Test-Path -LiteralPath $script -PathType Leaf)) {
+        throw "ASR benchmark helper missing: $script"
+    }
+    $samplesDir = Join-Path ([System.IO.Path]::GetTempPath()) ("voice-ime-asr-tool-" + [guid]::NewGuid().ToString("N"))
+    $previousAppDir = [Environment]::GetEnvironmentVariable("VOICE_IME_APP_DIR", "Process")
+    try {
+        $env:VOICE_IME_APP_DIR = Join-Path ([System.IO.Path]::GetTempPath()) ("voice-ime-asr-tool-app-" + [guid]::NewGuid().ToString("N"))
+        & powershell -NoProfile -ExecutionPolicy Bypass -File $script -SamplesDir $samplesDir -TemplateOnly -NoOpen
+        if ($LASTEXITCODE -ne 0) {
+            throw "ASR benchmark helper exited with code $LASTEXITCODE"
+        }
+        $txtFiles = @(Get-ChildItem -LiteralPath $samplesDir -Filter "*.txt" -File)
+        if ($txtFiles.Count -ne 10) {
+            throw "ASR benchmark helper expected 10 txt files, got $($txtFiles.Count)"
+        }
+        if (-not (Test-Path -LiteralPath (Join-Path $samplesDir "README.md") -PathType Leaf)) {
+            throw "ASR benchmark helper did not write README.md"
+        }
+    }
+    finally {
+        if ([string]::IsNullOrEmpty($previousAppDir)) {
+            Remove-Item Env:\VOICE_IME_APP_DIR -ErrorAction SilentlyContinue
+        }
+        else {
+            $env:VOICE_IME_APP_DIR = $previousAppDir
+        }
+        if (Test-Path -LiteralPath $samplesDir) {
+            Remove-Item -LiteralPath $samplesDir -Recurse -Force -ErrorAction SilentlyContinue
+        }
+    }
+    Write-Host "ASR benchmark helper smoke passed"
+}
+
 function Invoke-MockAsrBenchmarkSmoke {
     param([Parameter(Mandatory = $true)][string]$Root)
 
@@ -626,6 +663,7 @@ Invoke-ShutdownSmoke -Root $ReleaseRoot
 Invoke-PanicSmoke -Root $ReleaseRoot
 Invoke-AsrBenchmarkProfileSmoke -Root $ReleaseRoot
 Invoke-AsrBenchmarkTemplateSmoke -Root $ReleaseRoot
+Invoke-AsrBenchmarkToolSmoke -Root $ReleaseRoot
 Invoke-MockAsrBenchmarkSmoke -Root $ReleaseRoot
 Invoke-AccurateExternalAsrSmoke -Root $ReleaseRoot
 Invoke-TranslationProfileCliSmoke -Root $ReleaseRoot

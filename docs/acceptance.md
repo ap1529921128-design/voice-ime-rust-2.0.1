@@ -167,14 +167,15 @@
 
 1. Prepare a directory of `.wav` files and optional same-name `.txt` expected transcripts.
 2. Run `app\VoiceIME.exe --write-asr-benchmark-template <samples-dir>`, or open Settings / Data and click `ASR 样本`, to create the 10 reference `.txt` files and local README; existing files must not be overwritten.
-3. Run `app\VoiceIME.exe --benchmark-asr <samples-dir>` from a portable package, or open Settings / Data and click `ASR 基准` to choose the same sample directory.
-4. An `asr-benchmark-YYYYMMDD-HHMMSS.csv` file appears under `.voice_ime/logs`.
-5. The CSV includes file, duration, profile, worker mode, backend, model, transcribe seconds, realtime factor, expected text, transcript text, expected character count, edit distance, CER, accuracy, and error.
-6. If the sample directory is missing or empty, the command still writes a CSV row with `no wav samples found`.
-7. `app\VoiceIME.exe --benchmark-asr-profile <fast|balanced|fallback|accurate> <samples-dir>` writes the same CSV without changing the saved default profile.
-8. When `asr.profile=accurate`, `asr.accurate_external_command` receives a UTF-8 JSON payload with `wav_path`, `sample_rate`, `language`, `profile`, and `prompt`, and may return plain text or JSON `text`/`transcript`.
-9. Settings / Models / profile-row `基准` writes the same CSV, with the row `profile` set to the clicked profile even if Settings / Voice currently selects a different default profile.
-10. Settings / Data / `ASR 样本` writes the same 10 reference transcript files as the CLI template command and leaves existing files intact.
+3. From the package root, `powershell -NoProfile -ExecutionPolicy Bypass -File .\app\tools\ASR-Benchmark.ps1 -TemplateOnly` creates the same templates under `app\benchmarks\asr` and opens the folder for recording.
+4. Run `app\VoiceIME.exe --benchmark-asr <samples-dir>` from a portable package, run `app\tools\ASR-Benchmark.ps1`, or open Settings / Data and click `ASR 基准` to choose the same sample directory.
+5. An `asr-benchmark-YYYYMMDD-HHMMSS.csv` file appears under `.voice_ime/logs`.
+6. The CSV includes file, duration, profile, worker mode, backend, model, transcribe seconds, realtime factor, expected text, transcript text, expected character count, edit distance, CER, accuracy, and error.
+7. If the sample directory is missing or empty, the command still writes a CSV row with `no wav samples found`.
+8. `app\VoiceIME.exe --benchmark-asr-profile <fast|balanced|fallback|accurate> <samples-dir>` and `app\tools\ASR-Benchmark.ps1 -Profiles fast,balanced,fallback` write the same CSV without changing the saved default profile.
+9. When `asr.profile=accurate`, `asr.accurate_external_command` receives a UTF-8 JSON payload with `wav_path`, `sample_rate`, `language`, `profile`, and `prompt`, and may return plain text or JSON `text`/`transcript`.
+10. Settings / Models / profile-row `基准` writes the same CSV, with the row `profile` set to the clicked profile even if Settings / Voice currently selects a different default profile.
+11. Settings / Data / `ASR 样本` writes the same 10 reference transcript files as the CLI template command and leaves existing files intact.
 
 ## Translation Benchmark
 
@@ -342,6 +343,7 @@
 - Packaged builds now include `app/tools/启动语音输入-诊断.bat`; portable root layout still visibly exposes only the main launcher.
 - Packaged builds now include `app/tools/Notepad-Input-Acceptance.ps1`; Notepad has an automated paste-path smoke, while other real apps still need manual coverage.
 - Packaged builds now include `app/tools/Browser-Input-Acceptance.ps1`; Edge/Chrome textarea paste has an automated smoke with an isolated temporary browser profile.
+- Packaged builds now include `app/tools/ASR-Benchmark.ps1`; target machines can create the 10-sentence sample folder and run ASR profile benchmark CSVs without typing raw `VoiceIME.exe` CLI arguments.
 - Packaged builds now include `app/tools/Foreground-Input-Acceptance.ps1`; WeChat/Feishu, Word/document editors, and IDEs can be checked with the same foreground paste path and target-log validation.
 - Packaged builds now include `app/tools/Translation-Acceptance.ps1` and `Mock-External-Translate.ps1`; the external translation JSON path has an offline acceptance smoke.
 - Packaged builds now include `app/tools\Model-Pack-Import-Acceptance.ps1`; the Rust `--install-model-pack` importer is checked against a copied core package and a real model pack zip.

@@ -54,6 +54,8 @@ The packaged CLI also supports `VoiceIME.exe --benchmark-asr-profile <profile> <
 
 The same template is now available from Settings / Data / `ASR 样本`, so target-machine benchmark setup no longer requires the command line.
 
+Portable packages also include `app/tools/ASR-Benchmark.ps1`. It creates the default `app/benchmarks/asr` sample folder, opens it for recording, and can run current-profile or multi-profile ASR CSV benchmarks after wav files are present.
+
 The `accurate` ASR profile is now an experimental external-command adapter for Qwen3/FunASR-style local backends. Configure `asr.accurate_external_command`; Voice IME sends UTF-8 JSON with a temporary wav path and accepts plain text or JSON `text`/`transcript` output. Large accurate models remain outside the core package.
 
 2.0.1 also has deterministic test backends. `asr.default_engine=mock` bypasses model loading and lets ASR benchmark use same-name `.txt` files as transcript fixtures, while `mock://echo`, `mock://translate`, and `mock://fixed/<text>` exercise correction/translation cleanup without MiniCPM or network access. These paths are for release gates and CI-style plumbing tests, not real ASR/translation quality.
