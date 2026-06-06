@@ -29,10 +29,11 @@ use windows_sys::Win32::UI::Input::KeyboardAndMouse::{
     KEYEVENTF_KEYUP, KEYEVENTF_UNICODE, VIRTUAL_KEY, VK_CONTROL, VK_MENU, VK_V,
 };
 use windows_sys::Win32::UI::WindowsAndMessaging::{
-    BringWindowToTop, GetAncestor, GetClassNameW, GetForegroundWindow, GetGUIThreadInfo,
-    GetWindowTextLengthW, GetWindowTextW, GetWindowThreadProcessId, SendMessageW,
-    SetForegroundWindow, SetWindowPos, ShowWindow, SwitchToThisWindow, GA_ROOT, GUITHREADINFO,
-    HWND_NOTOPMOST, HWND_TOPMOST, SWP_NOMOVE, SWP_NOSIZE, SWP_SHOWWINDOW, SW_RESTORE, WM_SETTEXT,
+    AllowSetForegroundWindow, BringWindowToTop, GetAncestor, GetClassNameW, GetForegroundWindow,
+    GetGUIThreadInfo, GetWindowTextLengthW, GetWindowTextW, GetWindowThreadProcessId,
+    LockSetForegroundWindow, SendMessageW, SetForegroundWindow, SetWindowPos, ShowWindow,
+    SwitchToThisWindow, ASFW_ANY, GA_ROOT, GUITHREADINFO, HWND_NOTOPMOST, HWND_TOPMOST,
+    LSFW_UNLOCK, SWP_NOMOVE, SWP_NOSIZE, SWP_SHOWWINDOW, SW_RESTORE, WM_SETTEXT,
 };
 
 const OVERLAY_WIDTH: i32 = 480;
@@ -325,6 +326,8 @@ unsafe fn restore_foreground_window(foreground_hwnd: HWND, focus_hwnd: HWND) {
     }
 
     send_foreground_unlock_alt_tap();
+    LockSetForegroundWindow(LSFW_UNLOCK);
+    AllowSetForegroundWindow(ASFW_ANY);
     SetWindowPos(
         foreground_hwnd,
         HWND_TOPMOST,
