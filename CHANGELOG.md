@@ -43,6 +43,7 @@
 - Hardened packaged input acceptance scripts so they fail if the captured foreground target process is not the expected Notepad or Edge/Chrome process.
 - Browser input acceptance now launches its temporary Edge/Chrome profile with renderer accessibility forced so Chromium UIA fallback paths can be verified.
 - Further hardened packaged Notepad and browser input acceptance scripts by temporarily foregrounding their own test windows when other desktop apps are topmost.
+- Switched packaged Notepad input acceptance clearing from Delete to Backspace to avoid stray key text in some desktop input states.
 - Added a conservative Settings / Data repair action that creates missing runtime directories and default prompt/correction/hotword/rule files without overwriting existing user data.
 - Added a Settings / Models model-pack importer that safely extracts `app/models` or `models` entries from `voice-ime-model-pack-*.zip` into the current portable body.
 - Added CER, edit-distance, expected-character-count, and accuracy columns to the CLI ASR benchmark CSV.

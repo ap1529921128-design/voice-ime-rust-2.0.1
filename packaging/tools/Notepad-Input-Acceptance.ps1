@@ -172,6 +172,13 @@ function Send-CtrlKey {
     Start-Sleep -Milliseconds 120
 }
 
+function Clear-EditorText {
+    param([System.Diagnostics.Process]$Process)
+    Focus-Window -Process $Process
+    Send-CtrlKey 0x41
+    Send-Key 0x08
+}
+
 function Get-LatestInputTarget {
     $targetLog = Get-ChildItem -LiteralPath $LogsDir -Filter "input-target-*.log" -ErrorAction SilentlyContinue |
         Sort-Object LastWriteTime -Descending |
@@ -208,9 +215,7 @@ try {
     $baselineNotepadIds = @(Get-Process -Name "Notepad" -ErrorAction SilentlyContinue | Select-Object -ExpandProperty Id)
     $notepad = Start-Process -FilePath "notepad.exe" -ArgumentList (Quote-ProcessArgument $tempFile) -PassThru
     $notepad = Wait-MainWindow -Process $notepad -TitleFragment (Split-Path $tempFile -Leaf) -BaselineIds $baselineNotepadIds
-    Focus-Window -Process $notepad
-    Send-CtrlKey 0x41
-    Send-Key 0x2E
+    Clear-EditorText -Process $notepad
 
     $argumentList = @(
         (Quote-ProcessArgument "--paste-foreground"),
