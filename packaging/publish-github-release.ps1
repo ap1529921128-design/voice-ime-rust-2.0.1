@@ -65,6 +65,47 @@ function Invoke-WithRetry {
     }
 }
 
+function Resolve-GitHubCli {
+    $command = Get-Command gh -ErrorAction SilentlyContinue
+    if ($command -and $command.Source) {
+        return $command.Source
+    }
+
+    $candidateRoots = @(
+        (Join-Path $env:LOCALAPPDATA "Microsoft\WinGet\Packages"),
+        (Join-Path $env:ProgramFiles "GitHub CLI"),
+        (Join-Path ${env:ProgramFiles(x86)} "GitHub CLI")
+    ) | Where-Object { $_ -and (Test-Path -LiteralPath $_) }
+
+    foreach ($root in $candidateRoots) {
+        $candidate = Get-ChildItem -LiteralPath $root -Recurse -Filter "gh.exe" -ErrorAction SilentlyContinue |
+            Where-Object { $_.FullName -match "\\GitHub\.cli|\\GitHub CLI\\" } |
+            Sort-Object FullName |
+            Select-Object -First 1
+        if ($candidate) {
+            return $candidate.FullName
+        }
+    }
+    return $null
+}
+
+function Invoke-NativeExitCode {
+    param(
+        [Parameter(Mandatory = $true)][string]$FilePath,
+        [Parameter(Mandatory = $true)][string[]]$Arguments
+    )
+    try {
+        & $FilePath @Arguments *> $null
+        return $LASTEXITCODE
+    }
+    catch {
+        if ($null -ne $LASTEXITCODE) {
+            return $LASTEXITCODE
+        }
+        return 1
+    }
+}
+
 $manifest = Get-Content -LiteralPath $AssetsManifest -Raw | ConvertFrom-Json
 $assets = @()
 foreach ($asset in @($manifest.assets)) {
@@ -106,15 +147,28 @@ if ($ValidateOnly) {
     exit 0
 }
 
-$gh = Get-Command gh -ErrorAction SilentlyContinue
-if ($gh) {
-    & gh release view $Tag --repo $Repo *> $null
-    if ($LASTEXITCODE -eq 0) {
-        & gh release edit $Tag --repo $Repo --title $Title --notes-file $NotesPath
+if ([string]::IsNullOrWhiteSpace($Token)) {
+    if (-not [string]::IsNullOrWhiteSpace($env:GH_TOKEN)) {
+        $Token = $env:GH_TOKEN
+    }
+    elseif (-not [string]::IsNullOrWhiteSpace($env:GITHUB_TOKEN)) {
+        $Token = $env:GITHUB_TOKEN
+    }
+}
+
+$gh = Resolve-GitHubCli
+if ($gh -and [string]::IsNullOrWhiteSpace($Token)) {
+    $authExitCode = Invoke-NativeExitCode -FilePath $gh -Arguments @("auth", "status", "--hostname", "github.com")
+    if ($authExitCode -ne 0) {
+        throw "GitHub CLI is installed at $gh but is not authenticated. Run `gh auth login --hostname github.com --git-protocol ssh --scopes repo`, or set `$env:GH_TOKEN and rerun this script."
+    }
+    $releaseViewExitCode = Invoke-NativeExitCode -FilePath $gh -Arguments @("release", "view", $Tag, "--repo", $Repo)
+    if ($releaseViewExitCode -eq 0) {
+        & $gh release edit $Tag --repo $Repo --title $Title --notes-file $NotesPath
         if ($LASTEXITCODE -ne 0) {
             throw "gh release edit failed"
         }
-        & gh release upload $Tag @($assets | ForEach-Object { $_.path }) --repo $Repo --clobber
+        & $gh release upload $Tag @($assets | ForEach-Object { $_.path }) --repo $Repo --clobber
         if ($LASTEXITCODE -ne 0) {
             throw "gh release upload failed"
         }
@@ -124,7 +178,7 @@ if ($gh) {
         if ($Draft) {
             $ghArgs += "--draft"
         }
-        & gh @ghArgs
+        & $gh @ghArgs
         if ($LASTEXITCODE -ne 0) {
             throw "gh release create failed"
         }
@@ -133,14 +187,6 @@ if ($gh) {
     exit 0
 }
 
-if ([string]::IsNullOrWhiteSpace($Token)) {
-    if (-not [string]::IsNullOrWhiteSpace($env:GH_TOKEN)) {
-        $Token = $env:GH_TOKEN
-    }
-    elseif (-not [string]::IsNullOrWhiteSpace($env:GITHUB_TOKEN)) {
-        $Token = $env:GITHUB_TOKEN
-    }
-}
 if ([string]::IsNullOrWhiteSpace($Token)) {
     throw "GitHub CLI is not installed and no GH_TOKEN/GITHUB_TOKEN was provided. Install and authenticate gh, or set `$env:GH_TOKEN and rerun: powershell -NoProfile -ExecutionPolicy Bypass -File .\packaging\publish-github-release.ps1"
 }
