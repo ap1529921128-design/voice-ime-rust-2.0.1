@@ -30,8 +30,9 @@ use windows_sys::Win32::UI::Input::KeyboardAndMouse::{
 };
 use windows_sys::Win32::UI::WindowsAndMessaging::{
     BringWindowToTop, GetClassNameW, GetForegroundWindow, GetGUIThreadInfo, GetWindowTextLengthW,
-    GetWindowTextW, GetWindowThreadProcessId, SetForegroundWindow, ShowWindow, SwitchToThisWindow,
-    GUITHREADINFO, SW_RESTORE,
+    GetWindowTextW, GetWindowThreadProcessId, SetForegroundWindow, SetWindowPos, ShowWindow,
+    SwitchToThisWindow, GUITHREADINFO, HWND_NOTOPMOST, HWND_TOPMOST, SWP_NOMOVE, SWP_NOSIZE,
+    SWP_SHOWWINDOW, SW_RESTORE,
 };
 
 const OVERLAY_WIDTH: i32 = 480;
@@ -262,11 +263,29 @@ unsafe fn restore_foreground_window(hwnd: HWND) {
     }
 
     send_foreground_unlock_alt_tap();
+    SetWindowPos(
+        hwnd,
+        HWND_TOPMOST,
+        0,
+        0,
+        0,
+        0,
+        SWP_NOMOVE | SWP_NOSIZE | SWP_SHOWWINDOW,
+    );
     BringWindowToTop(hwnd);
     SetForegroundWindow(hwnd);
     SetActiveWindow(hwnd);
     SetFocus(hwnd);
     SwitchToThisWindow(hwnd, 1);
+    SetWindowPos(
+        hwnd,
+        HWND_NOTOPMOST,
+        0,
+        0,
+        0,
+        0,
+        SWP_NOMOVE | SWP_NOSIZE | SWP_SHOWWINDOW,
+    );
 
     if attach_target {
         AttachThreadInput(current_thread, target_thread, 0);
