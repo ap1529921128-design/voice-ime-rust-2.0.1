@@ -281,6 +281,15 @@
 6. The report must show `target_ok=True` and `target_process=Notepad.exe`; otherwise the script fails because another foreground app received the paste.
 7. This is an automated smoke for Notepad only; WeChat/Feishu, Word/document editors, and IDE input boxes still need manual target-machine acceptance.
 
+## Target Machine Acceptance
+
+1. Build or unpack a portable package.
+2. From the package root, run `powershell -NoProfile -ExecutionPolicy Bypass -File .\app\tools\Target-Machine-Acceptance.ps1`.
+3. The script runs Doctor, creates the default ASR benchmark sample folder, runs Notepad paste acceptance, runs Edge/Chrome textarea acceptance, and runs the offline translation acceptance.
+4. A `target-machine-acceptance-YYYYMMDD-HHMMSS.txt` report appears under `app/.voice_ime/logs`.
+5. For real apps, run `powershell -NoProfile -ExecutionPolicy Bypass -File .\app\tools\Target-Machine-Acceptance.ps1 -RunForeground -ExpectedProcess <process.exe>` and focus the target input during the countdown.
+6. The report must show `passed=True`; skipped foreground app checks are acceptable unless real-app acceptance is being performed.
+
 ## Browser Input Acceptance
 
 1. Build or unpack a portable package.
@@ -344,6 +353,7 @@
 - Packaged builds now include `app/tools/Notepad-Input-Acceptance.ps1`; Notepad has an automated paste-path smoke, while other real apps still need manual coverage.
 - Packaged builds now include `app/tools/Browser-Input-Acceptance.ps1`; Edge/Chrome textarea paste has an automated smoke with an isolated temporary browser profile.
 - Packaged builds now include `app/tools/ASR-Benchmark.ps1`; target machines can create the 10-sentence sample folder and run ASR profile benchmark CSVs without typing raw `VoiceIME.exe` CLI arguments.
+- Packaged builds now include `app/tools/Target-Machine-Acceptance.ps1`; target machines can run the main local smoke checks and get one summary report.
 - Packaged builds now include `app/tools/Foreground-Input-Acceptance.ps1`; WeChat/Feishu, Word/document editors, and IDEs can be checked with the same foreground paste path and target-log validation.
 - Packaged builds now include `app/tools/Translation-Acceptance.ps1` and `Mock-External-Translate.ps1`; the external translation JSON path has an offline acceptance smoke.
 - Packaged builds now include `app/tools\Model-Pack-Import-Acceptance.ps1`; the Rust `--install-model-pack` importer is checked against a copied core package and a real model pack zip.

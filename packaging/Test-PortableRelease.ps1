@@ -404,6 +404,53 @@ function Invoke-AsrBenchmarkToolSmoke {
     Write-Host "ASR benchmark helper smoke passed"
 }
 
+function Invoke-TargetMachineAcceptanceSmoke {
+    param([Parameter(Mandatory = $true)][string]$Root)
+
+    $script = Join-Path $Root "app\tools\Target-Machine-Acceptance.ps1"
+    if (-not (Test-Path -LiteralPath $script -PathType Leaf)) {
+        throw "Target machine acceptance helper missing: $script"
+    }
+    $samplesDir = Join-Path ([System.IO.Path]::GetTempPath()) ("voice-ime-target-acceptance-asr-" + [guid]::NewGuid().ToString("N"))
+    $previousAppDir = [Environment]::GetEnvironmentVariable("VOICE_IME_APP_DIR", "Process")
+    try {
+        $env:VOICE_IME_APP_DIR = Join-Path ([System.IO.Path]::GetTempPath()) ("voice-ime-target-acceptance-app-" + [guid]::NewGuid().ToString("N"))
+        & powershell -NoProfile -ExecutionPolicy Bypass -File $script `
+            -SamplesDir $samplesDir `
+            -SkipNotepad `
+            -SkipBrowser `
+            -SkipTranslation `
+            -NoOpen
+        if ($LASTEXITCODE -ne 0) {
+            throw "Target machine acceptance helper exited with code $LASTEXITCODE"
+        }
+        $report = Get-ChildItem -LiteralPath (Join-Path $Root "app\.voice_ime\logs") -Filter "target-machine-acceptance-*.txt" -File -ErrorAction SilentlyContinue |
+            Sort-Object LastWriteTime -Descending |
+            Select-Object -First 1
+        if (-not $report) {
+            throw "Target machine acceptance helper did not write a report"
+        }
+        $body = Get-Content -LiteralPath $report.FullName -Raw
+        foreach ($needle in @("passed=True", "PASS`tDoctor", "PASS`tASR Template", "SKIP`tNotepad Paste", "SKIP`tBrowser Paste", "SKIP`tTranslation")) {
+            if (-not $body.Contains($needle)) {
+                throw "Target machine acceptance report missing '$needle'"
+            }
+        }
+    }
+    finally {
+        if ([string]::IsNullOrEmpty($previousAppDir)) {
+            Remove-Item Env:\VOICE_IME_APP_DIR -ErrorAction SilentlyContinue
+        }
+        else {
+            $env:VOICE_IME_APP_DIR = $previousAppDir
+        }
+        if (Test-Path -LiteralPath $samplesDir) {
+            Remove-Item -LiteralPath $samplesDir -Recurse -Force -ErrorAction SilentlyContinue
+        }
+    }
+    Write-Host "Target machine acceptance helper smoke passed"
+}
+
 function Invoke-MockAsrBenchmarkSmoke {
     param([Parameter(Mandatory = $true)][string]$Root)
 
@@ -664,6 +711,7 @@ Invoke-PanicSmoke -Root $ReleaseRoot
 Invoke-AsrBenchmarkProfileSmoke -Root $ReleaseRoot
 Invoke-AsrBenchmarkTemplateSmoke -Root $ReleaseRoot
 Invoke-AsrBenchmarkToolSmoke -Root $ReleaseRoot
+Invoke-TargetMachineAcceptanceSmoke -Root $ReleaseRoot
 Invoke-MockAsrBenchmarkSmoke -Root $ReleaseRoot
 Invoke-AccurateExternalAsrSmoke -Root $ReleaseRoot
 Invoke-TranslationProfileCliSmoke -Root $ReleaseRoot
