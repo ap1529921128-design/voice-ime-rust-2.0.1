@@ -288,26 +288,10 @@ fn send_targeted_wm_settext(hwnd: HWND, text: &str) -> Result<u32> {
     let mut wide: Vec<u16> = text.encode_utf16().collect();
     wide.push(0);
     let result = unsafe { SendMessageW(hwnd, WM_SETTEXT, 0, wide.as_ptr() as isize) };
-    for _ in 0..25 {
-        if window_text(hwnd) == text {
-            return Ok(1);
-        }
-        thread::sleep(Duration::from_millis(200));
+    if result == 0 {
+        return Err(anyhow!("定向设置文本失败：WM_SETTEXT 返回 0"));
     }
-    Err(anyhow!(
-        "定向设置文本失败：WM_SETTEXT 返回 {result}，目标文本未更新"
-    ))
-}
-
-fn window_text(hwnd: HWND) -> String {
-    if hwnd.is_null() {
-        return String::new();
-    }
-    unsafe {
-        let mut buffer = vec![0u16; 32768];
-        let copied = GetWindowTextW(hwnd, buffer.as_mut_ptr(), buffer.len() as i32);
-        wide_to_string(&buffer, copied)
-    }
+    Ok(1)
 }
 
 unsafe fn restore_foreground_window(hwnd: HWND) {
