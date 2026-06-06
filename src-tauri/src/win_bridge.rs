@@ -2,8 +2,8 @@ use anyhow::{anyhow, Result};
 use arboard::Clipboard;
 use serde::Serialize;
 use std::{env, path::Path, thread, time::Duration};
-use uiautomation::patterns::{UITextPattern, UITextRange};
-use uiautomation::types::{ControlType, Rect as UiRect};
+use uiautomation::patterns::{UITextPattern, UITextRange, UIValuePattern};
+use uiautomation::types::{ControlType, Handle, Rect as UiRect};
 use uiautomation::UIAutomation;
 use windows::Win32::System::{
     Com::SAFEARRAY,
@@ -178,6 +178,30 @@ impl InputTarget {
         }
         let focus = self.focus_with_retry();
         if !focus.restored {
+            if allow_targeted_uia_value() {
+                let send_input_events = send_targeted_uia_value(self.hwnd, text)?;
+                thread::sleep(Duration::from_millis(160));
+                let (clipboard_restored, clipboard_restore_error) = restore_clipboard_text(
+                    &mut clipboard,
+                    previous_text.as_deref(),
+                    text,
+                    clipboard_before,
+                );
+                return Ok(PasteOutcome {
+                    method: "targeted-uia-value",
+                    send_input_events,
+                    focus_attempts: focus.attempts,
+                    focus_restored: focus.restored,
+                    clipboard_previous_had_text: previous_text.is_some()
+                        || clipboard_before.has_text,
+                    clipboard_previous_format: clipboard_before.format_hint,
+                    clipboard_format_count: clipboard_before.format_count,
+                    clipboard_sequence_before: clipboard_before.sequence,
+                    clipboard_sequence_after: clipboard_sequence_number(),
+                    clipboard_restored,
+                    clipboard_restore_error,
+                });
+            }
             if allow_targeted_wm_settext() {
                 let send_input_events = send_targeted_wm_settext(self.hwnd, text)?;
                 thread::sleep(Duration::from_millis(160));
@@ -283,6 +307,18 @@ fn allow_targeted_wm_settext() -> bool {
         .unwrap_or(false)
 }
 
+fn allow_targeted_uia_value() -> bool {
+    env::var("VOICE_IME_ALLOW_TARGETED_UIA_VALUE")
+        .ok()
+        .map(|value| {
+            matches!(
+                value.trim().to_ascii_lowercase().as_str(),
+                "1" | "true" | "yes"
+            )
+        })
+        .unwrap_or(false)
+}
+
 fn send_targeted_wm_settext(hwnd: HWND, text: &str) -> Result<u32> {
     if hwnd.is_null() {
         return Err(anyhow!("目标窗口为空，无法定向设置文本"));
@@ -294,6 +330,46 @@ fn send_targeted_wm_settext(hwnd: HWND, text: &str) -> Result<u32> {
         return Err(anyhow!("定向设置文本失败：WM_SETTEXT 返回 0"));
     }
     Ok(1)
+}
+
+fn send_targeted_uia_value(hwnd: HWND, text: &str) -> Result<u32> {
+    if hwnd.is_null() {
+        return Err(anyhow!("目标窗口为空，无法定向 UIA 写入"));
+    }
+    let automation = UIAutomation::new().map_err(|err| anyhow!("UI Automation 不可用：{err}"))?;
+    let root = automation
+        .element_from_handle(Handle::from(hwnd as isize))
+        .map_err(|err| anyhow!("无法读取目标窗口 UIA 树：{err}"))?;
+    let mut candidates = vec![root.clone()];
+    for control_type in [ControlType::Edit, ControlType::Document] {
+        if let Ok(mut elements) = automation
+            .create_matcher()
+            .from_ref(&root)
+            .control_type(control_type)
+            .depth(12)
+            .timeout(700)
+            .find_all()
+        {
+            candidates.append(&mut elements);
+        }
+    }
+    for element in candidates {
+        let Ok(pattern) = element.get_pattern::<UIValuePattern>() else {
+            continue;
+        };
+        if pattern.is_readonly().unwrap_or(true) {
+            continue;
+        }
+        pattern
+            .set_value(text)
+            .map_err(|err| anyhow!("定向 UIA 写入失败：{err}"))?;
+        let verified = pattern.get_value().unwrap_or_default();
+        if verified == text || verified.contains(text) {
+            return Ok(1);
+        }
+        return Err(anyhow!("定向 UIA 写入后校验失败"));
+    }
+    Err(anyhow!("目标窗口里没有可写 UIA Value 输入框"))
 }
 
 fn foreground_window_for_target(hwnd: HWND) -> HWND {

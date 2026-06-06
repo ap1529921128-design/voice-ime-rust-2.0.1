@@ -303,6 +303,7 @@ function Get-LatestInputTarget {
 
 $previousClipboard = $null
 $previousInputTargetHwnd = [Environment]::GetEnvironmentVariable("VOICE_IME_INPUT_TARGET_HWND", "Process")
+$previousTargetedUiaValue = [Environment]::GetEnvironmentVariable("VOICE_IME_ALLOW_TARGETED_UIA_VALUE", "Process")
 try {
     $previousClipboard = Get-Clipboard -Raw -ErrorAction SilentlyContinue
 }
@@ -393,6 +394,7 @@ try {
     $browserWindow = Wait-BrowserWindow -ProcessNames $browserSpec.ProcessNames -TitleFragment $titleToken -BaselineIds $baselineIds
     Focus-Window -Process $browserWindow
     $env:VOICE_IME_INPUT_TARGET_HWND = [string]$browserWindow.MainWindowHandle.ToInt64()
+    $env:VOICE_IME_ALLOW_TARGETED_UIA_VALUE = "1"
 
     $argumentList = @(
         (Quote-ProcessArgument "--paste-foreground"),
@@ -456,5 +458,11 @@ finally {
     }
     else {
         $env:VOICE_IME_INPUT_TARGET_HWND = $previousInputTargetHwnd
+    }
+    if ($null -eq $previousTargetedUiaValue) {
+        Remove-Item Env:\VOICE_IME_ALLOW_TARGETED_UIA_VALUE -ErrorAction SilentlyContinue
+    }
+    else {
+        $env:VOICE_IME_ALLOW_TARGETED_UIA_VALUE = $previousTargetedUiaValue
     }
 }

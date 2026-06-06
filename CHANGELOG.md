@@ -75,6 +75,7 @@
 - Added release asset packaging and optional GitHub Release publishing scripts for full/core portable zips, model packs, release notes, and SHA-256 manifests.
 - Added GitHub Release asset preflight validation so upload sets are checked for presence and SHA-256 before publishing.
 - Made model-pack metadata writing UTF-8 without BOM and kept the Rust importer compatible with older BOM metadata.
+- Added a guarded UI Automation ValuePattern fallback for packaged browser input acceptance, while keeping normal confirm input on foreground restore plus clipboard paste.
 
 ## 2.0.1 - 2026-05-31
 
