@@ -313,7 +313,7 @@ function Get-LatestInputTarget {
 
 $previousClipboard = $null
 $previousInputTargetHwnd = [Environment]::GetEnvironmentVariable("VOICE_IME_INPUT_TARGET_HWND", "Process")
-$previousTargetedPaste = [Environment]::GetEnvironmentVariable("VOICE_IME_ALLOW_TARGETED_WM_PASTE", "Process")
+$previousTargetedSetText = [Environment]::GetEnvironmentVariable("VOICE_IME_ALLOW_TARGETED_WM_SETTEXT", "Process")
 try {
     $previousClipboard = Get-Clipboard -Raw -ErrorAction SilentlyContinue
 }
@@ -333,7 +333,7 @@ try {
     Start-Sleep -Milliseconds 300
     $editorHwnd = Get-EditorWindow -Process $notepad
     $env:VOICE_IME_INPUT_TARGET_HWND = [string]$editorHwnd.ToInt64()
-    $env:VOICE_IME_ALLOW_TARGETED_WM_PASTE = "1"
+    $env:VOICE_IME_ALLOW_TARGETED_WM_SETTEXT = "1"
 
     $argumentList = @(
         (Quote-ProcessArgument "--paste-foreground"),
@@ -408,10 +408,10 @@ finally {
     else {
         $env:VOICE_IME_INPUT_TARGET_HWND = $previousInputTargetHwnd
     }
-    if ($null -eq $previousTargetedPaste) {
-        Remove-Item Env:\VOICE_IME_ALLOW_TARGETED_WM_PASTE -ErrorAction SilentlyContinue
+    if ($null -eq $previousTargetedSetText) {
+        Remove-Item Env:\VOICE_IME_ALLOW_TARGETED_WM_SETTEXT -ErrorAction SilentlyContinue
     }
     else {
-        $env:VOICE_IME_ALLOW_TARGETED_WM_PASTE = $previousTargetedPaste
+        $env:VOICE_IME_ALLOW_TARGETED_WM_SETTEXT = $previousTargetedSetText
     }
 }

@@ -32,7 +32,7 @@ use windows_sys::Win32::UI::WindowsAndMessaging::{
     BringWindowToTop, GetClassNameW, GetForegroundWindow, GetGUIThreadInfo, GetWindowTextLengthW,
     GetWindowTextW, GetWindowThreadProcessId, SendMessageW, SetForegroundWindow, SetWindowPos,
     ShowWindow, SwitchToThisWindow, GUITHREADINFO, HWND_NOTOPMOST, HWND_TOPMOST, SWP_NOMOVE,
-    SWP_NOSIZE, SWP_SHOWWINDOW, SW_RESTORE, WM_PASTE,
+    SWP_NOSIZE, SWP_SHOWWINDOW, SW_RESTORE, WM_SETTEXT,
 };
 
 const OVERLAY_WIDTH: i32 = 480;
@@ -177,9 +177,9 @@ impl InputTarget {
         }
         let focus = self.focus_with_retry();
         if !focus.restored {
-            if allow_targeted_wm_paste() {
-                let send_input_events = send_targeted_wm_paste(self.hwnd)?;
-                thread::sleep(Duration::from_millis(700));
+            if allow_targeted_wm_settext() {
+                let send_input_events = send_targeted_wm_settext(self.hwnd, text)?;
+                thread::sleep(Duration::from_millis(160));
                 let (clipboard_restored, clipboard_restore_error) = restore_clipboard_text(
                     &mut clipboard,
                     previous_text.as_deref(),
@@ -187,7 +187,7 @@ impl InputTarget {
                     clipboard_before,
                 );
                 return Ok(PasteOutcome {
-                    method: "targeted-wm-paste",
+                    method: "targeted-wm-settext",
                     send_input_events,
                     focus_attempts: focus.attempts,
                     focus_restored: focus.restored,
@@ -269,8 +269,8 @@ impl InputTarget {
     }
 }
 
-fn allow_targeted_wm_paste() -> bool {
-    env::var("VOICE_IME_ALLOW_TARGETED_WM_PASTE")
+fn allow_targeted_wm_settext() -> bool {
+    env::var("VOICE_IME_ALLOW_TARGETED_WM_SETTEXT")
         .ok()
         .map(|value| {
             matches!(
@@ -281,12 +281,14 @@ fn allow_targeted_wm_paste() -> bool {
         .unwrap_or(false)
 }
 
-fn send_targeted_wm_paste(hwnd: HWND) -> Result<u32> {
+fn send_targeted_wm_settext(hwnd: HWND, text: &str) -> Result<u32> {
     if hwnd.is_null() {
-        return Err(anyhow!("目标窗口为空，无法定向粘贴"));
+        return Err(anyhow!("目标窗口为空，无法定向设置文本"));
     }
+    let mut wide: Vec<u16> = text.encode_utf16().collect();
+    wide.push(0);
     unsafe {
-        SendMessageW(hwnd, WM_PASTE, 0, 0);
+        SendMessageW(hwnd, WM_SETTEXT, 0, wide.as_ptr() as isize);
     }
     Ok(1)
 }
