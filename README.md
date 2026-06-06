@@ -313,9 +313,10 @@ powershell -NoProfile -ExecutionPolicy Bypass -File .\packaging\Test-PortableRel
 
 它会检查 full/core 包结构、`BUILD.txt`、启动 5 秒存活、`--doctor` 写报告、Notepad 输入、浏览器输入、external 翻译验收和 core 模型包导入验收，并在结束时清理包内测试产生的 `.voice_ime`。
 
-需要发布 GitHub Release 时，先生成 release assets，再在有 `gh` 或 `GH_TOKEN/GITHUB_TOKEN` 的环境运行：
+需要发布 GitHub Release 时，先生成 release assets，再在有 `gh` 或 `GH_TOKEN/GITHUB_TOKEN` 的环境先校验、后上传：
 
 ```powershell
+powershell -NoProfile -ExecutionPolicy Bypass -File .\packaging\publish-github-release.ps1 -ValidateOnly
 powershell -NoProfile -ExecutionPolicy Bypass -File .\packaging\publish-github-release.ps1
 ```
 

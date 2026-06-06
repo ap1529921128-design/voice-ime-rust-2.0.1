@@ -73,6 +73,7 @@
 - Added external translation profiles with per-profile command slots, `mt/<profile>` log/CSV labels, `profile/model/model_root` JSON payload fields, planned MT model-pack manifest entries, and `VoiceIME.exe --benchmark-translation-profile <profile>`.
 - Added `VoiceIME.exe --install-model-pack` plus packaged model-pack import acceptance, verifying Rust importer checksum behavior against a copied core package.
 - Added release asset packaging and optional GitHub Release publishing scripts for full/core portable zips, model packs, release notes, and SHA-256 manifests.
+- Added GitHub Release asset preflight validation so upload sets are checked for presence and SHA-256 before publishing.
 - Made model-pack metadata writing UTF-8 without BOM and kept the Rust importer compatible with older BOM metadata.
 
 ## 2.0.1 - 2026-05-31

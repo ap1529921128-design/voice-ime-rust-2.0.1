@@ -4,7 +4,10 @@ param(
     [string]$Title = "Voice IME Rust 2.0.1",
     [string]$AssetsManifest = "D:\voice-ime-build-release\voice-ime-release-assets-2.0.1.json",
     [string]$NotesPath = "docs\release-notes-2.0.1.md",
-    [string]$Token = ""
+    [string]$Token = "",
+    [switch]$ValidateOnly,
+    [switch]$Draft,
+    [int]$UploadRetryCount = 3
 )
 
 $ErrorActionPreference = "Stop"
@@ -21,8 +24,61 @@ if (-not (Test-Path -LiteralPath $NotesPath -PathType Leaf)) {
     throw "Release notes missing: $NotesPath"
 }
 
+function Get-ResponseStatusCode {
+    param([Parameter(Mandatory = $true)]$ErrorRecord)
+    if ($ErrorRecord.Exception.Response) {
+        return $ErrorRecord.Exception.Response.StatusCode.value__
+    }
+    return $null
+}
+
+function Get-AssetContentType {
+    param([Parameter(Mandatory = $true)][string]$Path)
+    switch -Regex ([System.IO.Path]::GetExtension($Path).ToLowerInvariant()) {
+        '^\.zip$' { return "application/zip" }
+        '^\.json$' { return "application/json; charset=utf-8" }
+        '^\.md$' { return "text/markdown; charset=utf-8" }
+        default { return "application/octet-stream" }
+    }
+}
+
+function Invoke-WithRetry {
+    param(
+        [Parameter(Mandatory = $true)][scriptblock]$Action,
+        [Parameter(Mandatory = $true)][string]$Label,
+        [int]$RetryCount = 3
+    )
+    $attempt = 0
+    while ($true) {
+        $attempt += 1
+        try {
+            return & $Action
+        }
+        catch {
+            if ($attempt -ge [Math]::Max(1, $RetryCount)) {
+                throw
+            }
+            $delay = [Math]::Min(30, 2 * $attempt)
+            Write-Warning "$Label failed on attempt $attempt; retrying in $delay seconds. $($_.Exception.Message)"
+            Start-Sleep -Seconds $delay
+        }
+    }
+}
+
 $manifest = Get-Content -LiteralPath $AssetsManifest -Raw | ConvertFrom-Json
-$assets = @($manifest.assets | Where-Object { Test-Path -LiteralPath $_.path -PathType Leaf })
+$assets = @()
+foreach ($asset in @($manifest.assets)) {
+    if (-not (Test-Path -LiteralPath $asset.path -PathType Leaf)) {
+        throw "Asset missing: $($asset.path)"
+    }
+    if (-not [string]::IsNullOrWhiteSpace([string]$asset.sha256)) {
+        $actualHash = (Get-FileHash -LiteralPath ([string]$asset.path) -Algorithm SHA256).Hash.ToLowerInvariant()
+        if ($actualHash -ne ([string]$asset.sha256).ToLowerInvariant()) {
+            throw "Asset hash mismatch for $($asset.name): expected $($asset.sha256), got $actualHash"
+        }
+    }
+    $assets += $asset
+}
 $summaryPath = [System.IO.Path]::ChangeExtension($AssetsManifest, ".md")
 foreach ($extra in @($AssetsManifest, $summaryPath)) {
     if (Test-Path -LiteralPath $extra -PathType Leaf) {
@@ -39,6 +95,17 @@ if ($assets.Count -eq 0) {
     throw "No uploadable assets found in $AssetsManifest"
 }
 
+Write-Host "Release upload set:"
+foreach ($asset in $assets) {
+    $item = Get-Item -LiteralPath ([string]$asset.path)
+    Write-Host (" - {0} {1} MB" -f $item.Name, [Math]::Round($item.Length / 1MB, 1))
+}
+
+if ($ValidateOnly) {
+    Write-Host "Validation passed. Assets are ready for https://github.com/$Repo/releases/tag/$Tag"
+    exit 0
+}
+
 $gh = Get-Command gh -ErrorAction SilentlyContinue
 if ($gh) {
     & gh release view $Tag --repo $Repo *> $null
@@ -53,7 +120,11 @@ if ($gh) {
         }
     }
     else {
-        & gh release create $Tag @($assets | ForEach-Object { $_.path }) --repo $Repo --title $Title --notes-file $NotesPath
+        $ghArgs = @("release", "create", $Tag) + @($assets | ForEach-Object { $_.path }) + @("--repo", $Repo, "--title", $Title, "--notes-file", $NotesPath)
+        if ($Draft) {
+            $ghArgs += "--draft"
+        }
+        & gh @ghArgs
         if ($LASTEXITCODE -ne 0) {
             throw "gh release create failed"
         }
@@ -71,7 +142,7 @@ if ([string]::IsNullOrWhiteSpace($Token)) {
     }
 }
 if ([string]::IsNullOrWhiteSpace($Token)) {
-    throw "GitHub CLI is not installed and no GH_TOKEN/GITHUB_TOKEN was provided. Install gh or pass -Token."
+    throw "GitHub CLI is not installed and no GH_TOKEN/GITHUB_TOKEN was provided. Install and authenticate gh, or set `$env:GH_TOKEN and rerun: powershell -NoProfile -ExecutionPolicy Bypass -File .\packaging\publish-github-release.ps1"
 }
 
 $headers = @{
@@ -92,7 +163,7 @@ try {
     $release = Invoke-RestMethod -Method Patch -Uri "$apiBase/releases/$($release.id)" -Headers $headers -Body $body -ContentType "application/json"
 }
 catch {
-    $status = $_.Exception.Response.StatusCode.value__
+    $status = Get-ResponseStatusCode -ErrorRecord $_
     if ($status -ne 404) {
         throw
     }
@@ -101,7 +172,7 @@ catch {
         target_commitish = "main"
         name       = $Title
         body       = $notes
-        draft      = $false
+        draft      = [bool]$Draft
         prerelease = $false
     } | ConvertTo-Json -Depth 4
     $release = Invoke-RestMethod -Method Post -Uri "$apiBase/releases" -Headers $headers -Body $body -ContentType "application/json"
@@ -116,12 +187,14 @@ foreach ($asset in $assets) {
         Invoke-RestMethod -Method Delete -Uri "$apiBase/releases/assets/$($existing[0].id)" -Headers $headers | Out-Null
     }
     $encodedName = [System.Uri]::EscapeDataString([string]$asset.name)
-    Invoke-RestMethod `
-        -Method Post `
-        -Uri "$uploadBase?name=$encodedName" `
-        -Headers $headers `
-        -ContentType "application/octet-stream" `
-        -InFile ([string]$asset.path) | Out-Null
+    Invoke-WithRetry -RetryCount $UploadRetryCount -Label "Upload $($asset.name)" -Action {
+        Invoke-RestMethod `
+            -Method Post `
+            -Uri "$uploadBase?name=$encodedName" `
+            -Headers $headers `
+            -ContentType (Get-AssetContentType -Path ([string]$asset.path)) `
+            -InFile ([string]$asset.path) | Out-Null
+    } | Out-Null
     Write-Host "Uploaded: $($asset.name)"
 }
 
