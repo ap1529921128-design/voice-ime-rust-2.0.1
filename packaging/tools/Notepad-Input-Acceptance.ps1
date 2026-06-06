@@ -219,6 +219,28 @@ function Clear-EditorText {
     Send-Key 0x08
 }
 
+function Wait-ProcessWithFocus {
+    param(
+        [System.Diagnostics.Process]$Process,
+        [System.Diagnostics.Process]$FocusProcess,
+        [int]$TimeoutSeconds = 12
+    )
+    $deadline = (Get-Date).AddSeconds($TimeoutSeconds)
+    while (-not $Process.HasExited -and (Get-Date) -lt $deadline) {
+        $FocusProcess.Refresh()
+        if ($FocusProcess.MainWindowHandle -ne 0) {
+            [VoiceImeWin32]::ShowWindow($FocusProcess.MainWindowHandle, 9) | Out-Null
+            [VoiceImeWin32]::SetWindowPos($FocusProcess.MainWindowHandle, [IntPtr]::new(-1), 0, 0, 0, 0, 0x0043) | Out-Null
+            [VoiceImeWin32]::SetForegroundWindow($FocusProcess.MainWindowHandle) | Out-Null
+        }
+        Start-Sleep -Milliseconds 80
+        $Process.Refresh()
+    }
+    if (-not $Process.HasExited) {
+        $Process.WaitForExit(5000) | Out-Null
+    }
+}
+
 function Get-LatestInputTarget {
     $targetLog = Get-ChildItem -LiteralPath $LogsDir -Filter "input-target-*.log" -ErrorAction SilentlyContinue |
         Sort-Object LastWriteTime -Descending |
@@ -271,8 +293,8 @@ try {
         -ArgumentList $argumentList `
         -WorkingDirectory $AppDir `
         -PassThru `
-        -Wait `
         -WindowStyle Hidden
+    Wait-ProcessWithFocus -Process $paste -FocusProcess $notepad
 
     $targetEntry = Get-LatestInputTarget
     $targetProcess = if ($targetEntry) { [string]$targetEntry.target.process_name } else { "" }

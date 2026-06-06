@@ -256,6 +256,28 @@ function Stop-BrowserProfileProcesses {
     }
 }
 
+function Wait-ProcessWithFocus {
+    param(
+        [System.Diagnostics.Process]$Process,
+        [System.Diagnostics.Process]$FocusProcess,
+        [int]$TimeoutSeconds = 12
+    )
+    $deadline = (Get-Date).AddSeconds($TimeoutSeconds)
+    while (-not $Process.HasExited -and (Get-Date) -lt $deadline) {
+        $FocusProcess.Refresh()
+        if ($FocusProcess.MainWindowHandle -ne 0) {
+            [VoiceImeBrowserWin32]::ShowWindow($FocusProcess.MainWindowHandle, 9) | Out-Null
+            [VoiceImeBrowserWin32]::SetWindowPos($FocusProcess.MainWindowHandle, [IntPtr]::new(-1), 0, 0, 0, 0, 0x0043) | Out-Null
+            [VoiceImeBrowserWin32]::SetForegroundWindow($FocusProcess.MainWindowHandle) | Out-Null
+        }
+        Start-Sleep -Milliseconds 80
+        $Process.Refresh()
+    }
+    if (-not $Process.HasExited) {
+        $Process.WaitForExit(5000) | Out-Null
+    }
+}
+
 function Get-LatestInputTarget {
     $targetLog = Get-ChildItem -LiteralPath $LogsDir -Filter "input-target-*.log" -ErrorAction SilentlyContinue |
         Sort-Object LastWriteTime -Descending |
@@ -379,8 +401,8 @@ try {
         -ArgumentList $argumentList `
         -WorkingDirectory $AppDir `
         -PassThru `
-        -Wait `
         -WindowStyle Hidden
+    Wait-ProcessWithFocus -Process $paste -FocusProcess $browserWindow
 
     $titleResult = Wait-TitleContains -ProcessNames $browserSpec.ProcessNames -TitleFragment $titleToken -BaselineIds $baselineIds -Expected $Text
     $targetEntry = Get-LatestInputTarget
