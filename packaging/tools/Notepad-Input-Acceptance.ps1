@@ -24,6 +24,20 @@ public static class VoiceImeWin32 {
   [DllImport("user32.dll")]
   public static extern IntPtr GetForegroundWindow();
   [DllImport("user32.dll")]
+  public static extern bool BringWindowToTop(IntPtr hWnd);
+  [DllImport("user32.dll")]
+  public static extern IntPtr SetActiveWindow(IntPtr hWnd);
+  [DllImport("user32.dll")]
+  public static extern IntPtr SetFocus(IntPtr hWnd);
+  [DllImport("user32.dll")]
+  public static extern void SwitchToThisWindow(IntPtr hWnd, bool fAltTab);
+  [DllImport("user32.dll")]
+  public static extern uint GetWindowThreadProcessId(IntPtr hWnd, out uint lpdwProcessId);
+  [DllImport("user32.dll")]
+  public static extern bool AttachThreadInput(uint idAttach, uint idAttachTo, bool fAttach);
+  [DllImport("kernel32.dll")]
+  public static extern uint GetCurrentThreadId();
+  [DllImport("user32.dll")]
   public static extern bool ShowWindow(IntPtr hWnd, int nCmdShow);
   [DllImport("user32.dll", SetLastError=true)]
   public static extern bool SetWindowPos(IntPtr hWnd, IntPtr hWndInsertAfter, int X, int Y, int cx, int cy, uint uFlags);
@@ -122,8 +136,34 @@ function Focus-Window {
     [VoiceImeWin32]::SetWindowPos($Process.MainWindowHandle, [IntPtr]::new(-1), 0, 0, 0, 0, 0x0043) | Out-Null
     $shell = New-Object -ComObject WScript.Shell
     for ($attempt = 0; $attempt -lt 4; $attempt += 1) {
+        $foreground = [VoiceImeWin32]::GetForegroundWindow()
+        [uint32]$foregroundPid = 0
+        [uint32]$targetPid = 0
+        $currentThread = [VoiceImeWin32]::GetCurrentThreadId()
+        $foregroundThread = if ($foreground -ne [IntPtr]::Zero) { [VoiceImeWin32]::GetWindowThreadProcessId($foreground, [ref]$foregroundPid) } else { 0 }
+        $targetThread = [VoiceImeWin32]::GetWindowThreadProcessId($Process.MainWindowHandle, [ref]$targetPid)
         $shell.AppActivate($Process.Id) | Out-Null
-        [VoiceImeWin32]::SetForegroundWindow($Process.MainWindowHandle) | Out-Null
+        try {
+            if ($foregroundThread -ne 0 -and $foregroundThread -ne $currentThread) {
+                [VoiceImeWin32]::AttachThreadInput($currentThread, $foregroundThread, $true) | Out-Null
+            }
+            if ($targetThread -ne 0 -and $targetThread -ne $currentThread) {
+                [VoiceImeWin32]::AttachThreadInput($currentThread, $targetThread, $true) | Out-Null
+            }
+            [VoiceImeWin32]::BringWindowToTop($Process.MainWindowHandle) | Out-Null
+            [VoiceImeWin32]::SetForegroundWindow($Process.MainWindowHandle) | Out-Null
+            [VoiceImeWin32]::SetActiveWindow($Process.MainWindowHandle) | Out-Null
+            [VoiceImeWin32]::SetFocus($Process.MainWindowHandle) | Out-Null
+            [VoiceImeWin32]::SwitchToThisWindow($Process.MainWindowHandle, $true)
+        }
+        finally {
+            if ($targetThread -ne 0 -and $targetThread -ne $currentThread) {
+                [VoiceImeWin32]::AttachThreadInput($currentThread, $targetThread, $false) | Out-Null
+            }
+            if ($foregroundThread -ne 0 -and $foregroundThread -ne $currentThread) {
+                [VoiceImeWin32]::AttachThreadInput($currentThread, $foregroundThread, $false) | Out-Null
+            }
+        }
         Start-Sleep -Milliseconds 250
         $rect = New-Object RECT
         if ([VoiceImeWin32]::GetWindowRect($Process.MainWindowHandle, [ref]$rect)) {
@@ -216,6 +256,8 @@ try {
     $notepad = Start-Process -FilePath "notepad.exe" -ArgumentList (Quote-ProcessArgument $tempFile) -PassThru
     $notepad = Wait-MainWindow -Process $notepad -TitleFragment (Split-Path $tempFile -Leaf) -BaselineIds $baselineNotepadIds
     Clear-EditorText -Process $notepad
+    Focus-Window -Process $notepad
+    Start-Sleep -Milliseconds 300
 
     $argumentList = @(
         (Quote-ProcessArgument "--paste-foreground"),
