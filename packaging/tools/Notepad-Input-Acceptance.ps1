@@ -17,6 +17,7 @@ New-Item -ItemType Directory -Path $LogsDir -Force | Out-Null
 if (-not ("VoiceImeWin32" -as [type])) {
     Add-Type -TypeDefinition @"
 using System;
+using System.Text;
 using System.Runtime.InteropServices;
 public static class VoiceImeWin32 {
   [DllImport("user32.dll")]
@@ -49,6 +50,13 @@ public static class VoiceImeWin32 {
   public static extern void mouse_event(uint dwFlags, uint dx, uint dy, uint dwData, UIntPtr dwExtraInfo);
   [DllImport("user32.dll")]
   public static extern void keybd_event(byte bVk, byte bScan, uint dwFlags, UIntPtr dwExtraInfo);
+  public delegate bool EnumChildProc(IntPtr hwnd, IntPtr lParam);
+  [DllImport("user32.dll")]
+  public static extern bool EnumChildWindows(IntPtr hwnd, EnumChildProc callback, IntPtr lParam);
+  [DllImport("user32.dll")]
+  public static extern int GetClassName(IntPtr hWnd, StringBuilder lpClassName, int nMaxCount);
+  [DllImport("user32.dll")]
+  public static extern int GetWindowText(IntPtr hWnd, StringBuilder lpString, int nMaxCount);
 }
 public struct RECT {
   public int Left;
@@ -219,6 +227,47 @@ function Clear-EditorText {
     Send-Key 0x08
 }
 
+function Get-WindowTextValue {
+    param([IntPtr]$Hwnd)
+    if ($Hwnd -eq [IntPtr]::Zero) {
+        return ""
+    }
+    $buffer = New-Object System.Text.StringBuilder 32768
+    [VoiceImeWin32]::GetWindowText($Hwnd, $buffer, $buffer.Capacity) | Out-Null
+    return $buffer.ToString()
+}
+
+function Get-EditorWindow {
+    param([System.Diagnostics.Process]$Process)
+    $Process.Refresh()
+    if ($Process.MainWindowHandle -eq 0) {
+        return [IntPtr]::Zero
+    }
+    $script:voiceImeEditorPreferred = [IntPtr]::Zero
+    $script:voiceImeEditorFallback = [IntPtr]::Zero
+    $callback = [VoiceImeWin32+EnumChildProc]{
+        param([IntPtr]$hwnd, [IntPtr]$lParam)
+        $className = New-Object System.Text.StringBuilder 256
+        [VoiceImeWin32]::GetClassName($hwnd, $className, $className.Capacity) | Out-Null
+        $name = $className.ToString()
+        if ($name -eq "RichEditD2DPT") {
+            $script:voiceImeEditorPreferred = $hwnd
+        }
+        elseif ($name -eq "NotepadTextBox" -and $script:voiceImeEditorFallback -eq [IntPtr]::Zero) {
+            $script:voiceImeEditorFallback = $hwnd
+        }
+        return $true
+    }
+    [VoiceImeWin32]::EnumChildWindows($Process.MainWindowHandle, $callback, [IntPtr]::Zero) | Out-Null
+    if ($script:voiceImeEditorPreferred -ne [IntPtr]::Zero) {
+        return $script:voiceImeEditorPreferred
+    }
+    if ($script:voiceImeEditorFallback -ne [IntPtr]::Zero) {
+        return $script:voiceImeEditorFallback
+    }
+    return $Process.MainWindowHandle
+}
+
 function Wait-ProcessWithFocus {
     param(
         [System.Diagnostics.Process]$Process,
@@ -264,6 +313,7 @@ function Get-LatestInputTarget {
 
 $previousClipboard = $null
 $previousInputTargetHwnd = [Environment]::GetEnvironmentVariable("VOICE_IME_INPUT_TARGET_HWND", "Process")
+$previousTargetedPaste = [Environment]::GetEnvironmentVariable("VOICE_IME_ALLOW_TARGETED_WM_PASTE", "Process")
 try {
     $previousClipboard = Get-Clipboard -Raw -ErrorAction SilentlyContinue
 }
@@ -281,7 +331,9 @@ try {
     Clear-EditorText -Process $notepad
     Focus-Window -Process $notepad
     Start-Sleep -Milliseconds 300
-    $env:VOICE_IME_INPUT_TARGET_HWND = [string]$notepad.MainWindowHandle.ToInt64()
+    $editorHwnd = Get-EditorWindow -Process $notepad
+    $env:VOICE_IME_INPUT_TARGET_HWND = [string]$editorHwnd.ToInt64()
+    $env:VOICE_IME_ALLOW_TARGETED_WM_PASTE = "1"
 
     $argumentList = @(
         (Quote-ProcessArgument "--paste-foreground"),
@@ -307,11 +359,14 @@ try {
     $clipboardRestored = if ($targetEntry) { [string]$targetEntry.clipboard_restored } else { "" }
     $targetOk = ($targetProcess -ieq "notepad.exe")
 
-    Focus-Window -Process $notepad
-    Send-CtrlKey 0x41
-    Send-CtrlKey 0x43
-    Start-Sleep -Milliseconds 500
-    $actual = Get-Clipboard -Raw -ErrorAction SilentlyContinue
+    $actual = Get-WindowTextValue -Hwnd $editorHwnd
+    if ([string]::IsNullOrEmpty($actual)) {
+        Focus-Window -Process $notepad
+        Send-CtrlKey 0x41
+        Send-CtrlKey 0x43
+        Start-Sleep -Milliseconds 500
+        $actual = Get-Clipboard -Raw -ErrorAction SilentlyContinue
+    }
 
     $passed = ($paste.ExitCode -eq 0) -and $targetOk -and (($actual -replace "`r`n$", "") -eq $Text)
     $lines = @(
@@ -352,5 +407,11 @@ finally {
     }
     else {
         $env:VOICE_IME_INPUT_TARGET_HWND = $previousInputTargetHwnd
+    }
+    if ($null -eq $previousTargetedPaste) {
+        Remove-Item Env:\VOICE_IME_ALLOW_TARGETED_WM_PASTE -ErrorAction SilentlyContinue
+    }
+    else {
+        $env:VOICE_IME_ALLOW_TARGETED_WM_PASTE = $previousTargetedPaste
     }
 }

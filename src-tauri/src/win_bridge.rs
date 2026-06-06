@@ -1,7 +1,7 @@
 use anyhow::{anyhow, Result};
 use arboard::Clipboard;
 use serde::Serialize;
-use std::{path::Path, thread, time::Duration};
+use std::{env, path::Path, thread, time::Duration};
 use uiautomation::patterns::{UITextPattern, UITextRange};
 use uiautomation::types::{ControlType, Rect as UiRect};
 use uiautomation::UIAutomation;
@@ -30,9 +30,9 @@ use windows_sys::Win32::UI::Input::KeyboardAndMouse::{
 };
 use windows_sys::Win32::UI::WindowsAndMessaging::{
     BringWindowToTop, GetClassNameW, GetForegroundWindow, GetGUIThreadInfo, GetWindowTextLengthW,
-    GetWindowTextW, GetWindowThreadProcessId, SetForegroundWindow, SetWindowPos, ShowWindow,
-    SwitchToThisWindow, GUITHREADINFO, HWND_NOTOPMOST, HWND_TOPMOST, SWP_NOMOVE, SWP_NOSIZE,
-    SWP_SHOWWINDOW, SW_RESTORE,
+    GetWindowTextW, GetWindowThreadProcessId, SendMessageW, SetForegroundWindow, SetWindowPos,
+    ShowWindow, SwitchToThisWindow, GUITHREADINFO, HWND_NOTOPMOST, HWND_TOPMOST, SWP_NOMOVE,
+    SWP_NOSIZE, SWP_SHOWWINDOW, SW_RESTORE, WM_PASTE,
 };
 
 const OVERLAY_WIDTH: i32 = 480;
@@ -177,6 +177,30 @@ impl InputTarget {
         }
         let focus = self.focus_with_retry();
         if !focus.restored {
+            if allow_targeted_wm_paste() {
+                let send_input_events = send_targeted_wm_paste(self.hwnd)?;
+                thread::sleep(Duration::from_millis(160));
+                let (clipboard_restored, clipboard_restore_error) = restore_clipboard_text(
+                    &mut clipboard,
+                    previous_text.as_deref(),
+                    text,
+                    clipboard_before,
+                );
+                return Ok(PasteOutcome {
+                    method: "targeted-wm-paste",
+                    send_input_events,
+                    focus_attempts: focus.attempts,
+                    focus_restored: focus.restored,
+                    clipboard_previous_had_text: previous_text.is_some()
+                        || clipboard_before.has_text,
+                    clipboard_previous_format: clipboard_before.format_hint,
+                    clipboard_format_count: clipboard_before.format_count,
+                    clipboard_sequence_before: clipboard_before.sequence,
+                    clipboard_sequence_after: clipboard_sequence_number(),
+                    clipboard_restored,
+                    clipboard_restore_error,
+                });
+            }
             let _ = restore_clipboard_text(
                 &mut clipboard,
                 previous_text.as_deref(),
@@ -243,6 +267,28 @@ impl InputTarget {
             restored: false,
         }
     }
+}
+
+fn allow_targeted_wm_paste() -> bool {
+    env::var("VOICE_IME_ALLOW_TARGETED_WM_PASTE")
+        .ok()
+        .map(|value| {
+            matches!(
+                value.trim().to_ascii_lowercase().as_str(),
+                "1" | "true" | "yes"
+            )
+        })
+        .unwrap_or(false)
+}
+
+fn send_targeted_wm_paste(hwnd: HWND) -> Result<u32> {
+    if hwnd.is_null() {
+        return Err(anyhow!("目标窗口为空，无法定向粘贴"));
+    }
+    unsafe {
+        SendMessageW(hwnd, WM_PASTE, 0, 0);
+    }
+    Ok(1)
 }
 
 unsafe fn restore_foreground_window(hwnd: HWND) {
