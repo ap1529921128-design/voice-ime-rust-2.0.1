@@ -874,11 +874,11 @@ Invoke-TargetMachineAcceptanceSmoke -Root $ReleaseRoot
 Invoke-MockAsrBenchmarkSmoke -Root $ReleaseRoot
 Invoke-AccurateExternalAsrSmoke -Root $ReleaseRoot
 Invoke-TranslationProfileCliSmoke -Root $ReleaseRoot
-if (-not $SkipNotepad) {
-    Invoke-AcceptanceScript -Root $ReleaseRoot -ScriptName "Notepad-Input-Acceptance.ps1"
-}
 if (-not $SkipBrowser) {
     Invoke-AcceptanceScript -Root $ReleaseRoot -ScriptName "Browser-Input-Acceptance.ps1"
+}
+if (-not $SkipNotepad) {
+    Invoke-AcceptanceScript -Root $ReleaseRoot -ScriptName "Notepad-Input-Acceptance.ps1"
 }
 if (-not $SkipTranslation) {
     Invoke-AcceptanceScript -Root $ReleaseRoot -ScriptName "Translation-Acceptance.ps1"
