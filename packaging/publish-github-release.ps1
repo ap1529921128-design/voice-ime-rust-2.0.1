@@ -5,6 +5,7 @@ param(
     [string]$AssetsManifest = "D:\voice-ime-build-release\voice-ime-release-assets-2.0.1.json",
     [string]$NotesPath = "docs\release-notes-2.0.1.md",
     [string]$Token = "",
+    [switch]$PromptForToken,
     [switch]$ValidateOnly,
     [switch]$Draft,
     [int]$UploadRetryCount = 3
@@ -89,6 +90,28 @@ function Resolve-GitHubCli {
     return $null
 }
 
+function Read-GitHubTokenFromConsole {
+    Write-Host ""
+    Write-Host "GitHub Release asset upload needs GitHub API authorization."
+    Write-Host "Paste a token in this local PowerShell window only. It will not be saved."
+    Write-Host "Required permission: repo scope, or fine-grained Contents Read and write for this repository."
+    $secure = Read-Host "GH_TOKEN (leave empty to cancel)" -AsSecureString
+    if ($secure.Length -eq 0) {
+        return ""
+    }
+
+    $bstr = [System.IntPtr]::Zero
+    try {
+        $bstr = [Runtime.InteropServices.Marshal]::SecureStringToBSTR($secure)
+        return [Runtime.InteropServices.Marshal]::PtrToStringBSTR($bstr)
+    }
+    finally {
+        if ($bstr -ne [System.IntPtr]::Zero) {
+            [Runtime.InteropServices.Marshal]::ZeroFreeBSTR($bstr)
+        }
+    }
+}
+
 function Invoke-NativeExitCode {
     param(
         [Parameter(Mandatory = $true)][string]$FilePath,
@@ -157,11 +180,22 @@ if ([string]::IsNullOrWhiteSpace($Token)) {
 }
 
 $gh = Resolve-GitHubCli
+$canUseGitHubCli = $false
 if ($gh -and [string]::IsNullOrWhiteSpace($Token)) {
     $authExitCode = Invoke-NativeExitCode -FilePath $gh -Arguments @("auth", "status", "--hostname", "github.com")
     if ($authExitCode -ne 0) {
-        throw "GitHub CLI is installed at $gh but is not authenticated. Run `gh auth login --hostname github.com --git-protocol ssh --scopes repo`, or set `$env:GH_TOKEN and rerun this script."
+        if ($PromptForToken) {
+            Write-Warning "GitHub CLI is installed at $gh but is not authenticated. Falling back to local token prompt."
+        }
+        else {
+            throw "GitHub CLI is installed at $gh but is not authenticated. Run `gh auth login --hostname github.com --git-protocol ssh --scopes repo`, set `$env:GH_TOKEN, or rerun this script with -PromptForToken."
+        }
     }
+    else {
+        $canUseGitHubCli = $true
+    }
+}
+if ($canUseGitHubCli -and [string]::IsNullOrWhiteSpace($Token)) {
     $releaseViewExitCode = Invoke-NativeExitCode -FilePath $gh -Arguments @("release", "view", $Tag, "--repo", $Repo)
     if ($releaseViewExitCode -eq 0) {
         & $gh release edit $Tag --repo $Repo --title $Title --notes-file $NotesPath
@@ -187,8 +221,12 @@ if ($gh -and [string]::IsNullOrWhiteSpace($Token)) {
     exit 0
 }
 
+if ([string]::IsNullOrWhiteSpace($Token) -and $PromptForToken) {
+    $Token = Read-GitHubTokenFromConsole
+}
+
 if ([string]::IsNullOrWhiteSpace($Token)) {
-    throw "GitHub CLI is not installed and no GH_TOKEN/GITHUB_TOKEN was provided. Install and authenticate gh, or set `$env:GH_TOKEN and rerun: powershell -NoProfile -ExecutionPolicy Bypass -File .\packaging\publish-github-release.ps1"
+    throw "GitHub CLI is not installed/authenticated and no GH_TOKEN/GITHUB_TOKEN was provided. Install and authenticate gh, set `$env:GH_TOKEN, or rerun with -PromptForToken: powershell -NoProfile -ExecutionPolicy Bypass -File .\packaging\publish-github-release.ps1 -PromptForToken"
 }
 
 $headers = @{

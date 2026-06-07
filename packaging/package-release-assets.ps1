@@ -27,6 +27,65 @@ function Write-Utf8NoBom {
     [System.IO.File]::WriteAllText($Path, $Text, [System.Text.UTF8Encoding]::new($false))
 }
 
+function Get-UploadHelperName {
+    return ([string][char]19978 + [string][char]20256 + "GitHub" + [string][char]19979 + [string][char]36733 + [string][char]38468 + [string][char]20214 + ".bat")
+}
+
+function Write-GitHubUploadHelper {
+    param(
+        [Parameter(Mandatory = $true)][string]$OutputRoot,
+        [Parameter(Mandatory = $true)][string]$RootPath,
+        [Parameter(Mandatory = $true)][string]$Version,
+        [Parameter(Mandatory = $true)][string]$AssetsManifest
+    )
+    $helperPath = Join-Path $OutputRoot (Get-UploadHelperName)
+    $escapedRoot = $RootPath.Replace('"', '""')
+    $escapedManifest = $AssetsManifest.Replace('"', '""')
+    $lines = @(
+        "@echo off",
+        "chcp 65001 >nul",
+        "setlocal",
+        "cd /d ""$escapedRoot""",
+        "",
+        "echo Voice IME Rust $Version - GitHub Release asset upload",
+        "echo.",
+        "echo This helper uploads the prepared zip files and model packs to GitHub Release.",
+        "echo.",
+        "echo Supported paths:",
+        "echo   1. If gh is installed and authenticated, it will be reused.",
+        "echo   2. If gh auth login times out, paste a GitHub token in this local window.",
+        "echo.",
+        "echo The token is used only by this PowerShell process and is not saved.",
+        "echo Required permission: repo scope, or fine-grained Contents Read and write.",
+        "echo Do not paste the token into chat.",
+        "echo.",
+        "echo Press any key to start; close this window if you do not have a token.",
+        "pause >nul",
+        "",
+        "powershell -NoProfile -ExecutionPolicy Bypass -File .\packaging\publish-github-release.ps1 -AssetsManifest ""$escapedManifest"" -PromptForToken",
+        "if errorlevel 1 (",
+        "  echo.",
+        "  echo Upload did not complete.",
+        "  echo For network issues, set proxy variables and retry, for example:",
+        "  echo   set HTTPS_PROXY=http://127.0.0.1:7890",
+        "  echo   set HTTP_PROXY=http://127.0.0.1:7890",
+        "  echo.",
+        "  echo For permission issues, make sure the token has repo or Contents Read and write permission.",
+        "  echo.",
+        "  pause",
+        "  exit /b 1",
+        ")",
+        "",
+        "echo.",
+        "echo Upload completed:",
+        "echo https://github.com/ap1529921128-design/voice-ime-rust-2.0.1/releases/tag/v$Version",
+        "echo.",
+        "pause"
+    )
+    Write-Utf8NoBom -Path $helperPath -Text ($lines -join [Environment]::NewLine)
+    return $helperPath
+}
+
 function Get-RelativeZipName {
     param(
         [Parameter(Mandatory = $true)][string]$RootPath,
@@ -256,8 +315,11 @@ $lines.Add('```powershell')
 $lines.Add('$env:GH_TOKEN = "<github-token-with-repo-scope>"')
 $lines.Add(".\packaging\publish-github-release.ps1 -AssetsManifest ""$jsonPath"" -ValidateOnly")
 $lines.Add(".\packaging\publish-github-release.ps1 -AssetsManifest ""$jsonPath""")
+$lines.Add("# Or prompt for a token locally without saving it:")
+$lines.Add(".\packaging\publish-github-release.ps1 -AssetsManifest ""$jsonPath"" -PromptForToken")
 $lines.Add('```')
 Write-Utf8NoBom -Path $mdPath -Text ($lines -join [Environment]::NewLine)
+$uploadHelperPath = Write-GitHubUploadHelper -OutputRoot $OutputRoot -RootPath $Root.Path -Version $Version -AssetsManifest $jsonPath
 
 Write-Host "Release assets packaged:"
 foreach ($asset in $assets) {
@@ -267,3 +329,4 @@ Write-Host " - $(Split-Path -Leaf $jsonPath) manifest"
 Write-Host " - $(Split-Path -Leaf $mdPath) summary"
 Write-Host "Manifest: $jsonPath"
 Write-Host "Summary: $mdPath"
+Write-Host "Upload helper: $uploadHelperPath"

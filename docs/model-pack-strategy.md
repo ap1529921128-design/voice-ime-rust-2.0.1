@@ -156,4 +156,12 @@ powershell -NoProfile -ExecutionPolicy Bypass -File .\packaging\publish-github-r
 powershell -NoProfile -ExecutionPolicy Bypass -File .\packaging\publish-github-release.ps1
 ```
 
+如果当前网络能 SSH push 代码、但 `gh auth login` 的 GitHub 设备码接口超时，可以使用发布目录生成的中文助手：
+
+```powershell
+D:\voice-ime-build-release\上传GitHub下载附件.bat
+```
+
+它会在本地 PowerShell 窗口提示输入 GitHub token，仅本次上传使用，不保存。token 需要 `repo` 权限，或 fine-grained token 对该仓库的 Contents Read and write 权限。
+
 当前机器如果只有 SSH push 权限、没有 GitHub API token，则只能推代码，不能创建带附件的 GitHub Release；这时可用生成出的资产手动上传。

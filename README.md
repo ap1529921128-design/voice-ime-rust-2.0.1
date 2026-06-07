@@ -320,6 +320,14 @@ powershell -NoProfile -ExecutionPolicy Bypass -File .\packaging\publish-github-r
 powershell -NoProfile -ExecutionPolicy Bypass -File .\packaging\publish-github-release.ps1
 ```
 
+如果 `gh auth login` 卡在 GitHub 设备码接口，直接运行发布目录生成的中文助手：
+
+```powershell
+D:\voice-ime-build-release\上传GitHub下载附件.bat
+```
+
+它会优先复用已登录的 `gh`；没有 `gh` 或未登录时，会在本地窗口提示粘贴 GitHub token，仅本次进程使用，不保存到磁盘。token 需要 `repo` 权限，或 fine-grained token 对该仓库的 Contents Read and write 权限。
+
 ## 当前边界
 
 - 2.0.1 不是完整 TSF 系统输入法，TSF 只做了后续阶段预留。
