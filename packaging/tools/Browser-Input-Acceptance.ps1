@@ -396,7 +396,7 @@ try {
     $browserWindow = Wait-BrowserWindow -ProcessNames $browserSpec.ProcessNames -TitleFragment $titleToken -BaselineIds $baselineIds
     Focus-Window -Process $browserWindow
     $env:VOICE_IME_INPUT_TARGET_HWND = [string]$browserWindow.MainWindowHandle.ToInt64()
-    $env:VOICE_IME_ALLOW_TARGETED_UIA_VALUE = "1"
+    $env:VOICE_IME_ALLOW_TARGETED_UIA_VALUE = "0"
 
     $pasteExitCode = -1
     $pasteAttempts = 0
