@@ -7,6 +7,7 @@
 - Kept the previous isolated per-request ASR worker as a settings option and automatic fallback if the persistent worker fails.
 - Improved browser input acceptance verification by polling textarea value into the page title, covering UIA value writes that do not fire DOM `input`.
 - Changed browser input acceptance to exercise the normal clipboard paste path instead of the test-only targeted UIA value path for top-level browser windows.
+- Changed browser input acceptance auto mode to prefer Chrome, matching the documented Chrome-textbox release target while keeping Edge as fallback.
 - Exposed the ASR worker mode in Settings as "常驻加速" and "隔离稳妥".
 - Added a versioned model manifest and a core portable package strategy so the app body can be tested and upgraded separately from large ASR/LLM model packs.
 - Added `hot.txt` alias replacement and `hot-rule.txt` regex replacement, with Settings buttons to open both files.

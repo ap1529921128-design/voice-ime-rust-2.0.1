@@ -91,19 +91,19 @@ function Resolve-Browser {
     param([string]$Requested)
     $specs = @(
         @{
-            Id = "edge"
-            ProcessNames = @("msedge")
-            Paths = @(
-                (Join-Path ${env:ProgramFiles(x86)} "Microsoft\Edge\Application\msedge.exe"),
-                (Join-Path $env:ProgramFiles "Microsoft\Edge\Application\msedge.exe")
-            )
-        },
-        @{
             Id = "chrome"
             ProcessNames = @("chrome")
             Paths = @(
                 (Join-Path $env:ProgramFiles "Google\Chrome\Application\chrome.exe"),
                 (Join-Path ${env:ProgramFiles(x86)} "Google\Chrome\Application\chrome.exe")
+            )
+        },
+        @{
+            Id = "edge"
+            ProcessNames = @("msedge")
+            Paths = @(
+                (Join-Path ${env:ProgramFiles(x86)} "Microsoft\Edge\Application\msedge.exe"),
+                (Join-Path $env:ProgramFiles "Microsoft\Edge\Application\msedge.exe")
             )
         }
     )
