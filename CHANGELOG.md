@@ -5,6 +5,7 @@
 - Added a persistent ASR worker mode that keeps a hidden subprocess alive and reuses the loaded recognizer for the same profile, reducing repeated model cold-start cost.
 - Added a local-token GitHub Release upload path and generated Chinese upload helper for networks where `gh auth login` device-code authentication times out.
 - Kept the previous isolated per-request ASR worker as a settings option and automatic fallback if the persistent worker fails.
+- Improved browser input acceptance verification by polling textarea value into the page title, covering UIA value writes that do not fire DOM `input`.
 - Exposed the ASR worker mode in Settings as "常驻加速" and "隔离稳妥".
 - Added a versioned model manifest and a core portable package strategy so the app body can be tested and upgraded separately from large ASR/LLM model packs.
 - Added `hot.txt` alias replacement and `hot-rule.txt` regex replacement, with Settings buttons to open both files.

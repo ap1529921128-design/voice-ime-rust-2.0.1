@@ -366,6 +366,7 @@ try {
       const timer = setInterval(() => {
         focusTarget();
         ticks += 1;
+        syncTitle();
         if (ticks > 40 || box.value.length > 0) clearInterval(timer);
       }, 100);
     });
