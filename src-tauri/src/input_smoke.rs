@@ -1,6 +1,6 @@
 use crate::{
     config::Paths,
-    win_bridge::{InputTarget, InputTargetInfo},
+    input_target::{InputTarget, InputTargetInfo},
 };
 use anyhow::{anyhow, Result};
 use serde::Serialize;
@@ -77,6 +77,11 @@ pub fn paste_foreground_cli(text: String, delay_ms: u64) -> Result<()> {
 }
 
 fn explicit_target_from_env() -> Option<InputTarget> {
+    explicit_target_from_env_platform()
+}
+
+#[cfg(target_os = "windows")]
+fn explicit_target_from_env_platform() -> Option<InputTarget> {
     let hwnd = env::var("VOICE_IME_INPUT_TARGET_HWND")
         .ok()
         .and_then(|value| value.trim().parse::<usize>().ok())
@@ -85,6 +90,12 @@ fn explicit_target_from_env() -> Option<InputTarget> {
         hwnd as windows_sys::Win32::Foundation::HWND,
         "explicit-window",
     ))
+}
+
+#[cfg(not(target_os = "windows"))]
+fn explicit_target_from_env_platform() -> Option<InputTarget> {
+    let _ = env::var("VOICE_IME_INPUT_TARGET_HWND");
+    None
 }
 
 fn write_log(paths: &Paths, entry: &PasteForegroundLogEntry<'_>) -> Result<()> {

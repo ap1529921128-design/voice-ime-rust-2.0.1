@@ -2,10 +2,11 @@ use crate::{
     asr::{self, AsrInput},
     audio::{self, Recorder},
     cancel::CancellationToken,
+    clipboard,
     config::{self, AppConfig, Paths},
     history::{HistoryStore, TranscriptRecord},
+    input_target::{self, InputTarget, InputTargetInfo, OverlayRect},
     llm, text, translation, translation_log,
-    win_bridge::{self, InputTarget, InputTargetInfo, OverlayRect},
 };
 use anyhow::{anyhow, Result};
 use serde::Serialize;
@@ -149,7 +150,7 @@ impl AppState {
         self.begin_task(session_id);
         let target = InputTarget::capture();
         let target_meta = target_debug_meta(target.info());
-        let overlay_rect = win_bridge::overlay_position_from_rect(target.rect());
+        let overlay_rect = input_target::overlay_position_from_rect(target.rect());
         {
             let mut inner = self.inner.lock();
             inner.session_id = session_id;
@@ -562,7 +563,7 @@ impl AppState {
         if text.trim().is_empty() {
             return Err(anyhow!("没有可复制的文本"));
         }
-        arboard::Clipboard::new()?.set_text(text)?;
+        clipboard::set_text(text)?;
         {
             let mut inner = self.inner.lock();
             inner.status = "已复制到剪贴板".into();

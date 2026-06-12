@@ -17,7 +17,6 @@ tauri-build = { version = "2", features = [] }
 
 [dependencies]
 anyhow = "1"
-arboard = "3"
 chrono = { version = "0.4", features = ["serde"] }
 cpal = "0.15"
 dirs = "6"
@@ -36,8 +35,14 @@ tauri-plugin-global-shortcut = "2.3.2"
 tauri-plugin-opener = "2"
 tempfile = "3"
 thiserror = "2"
-uiautomation = { version = "0.25.0", default-features = false, features = ["input", "pattern", "control"] }
 uuid = { version = "1", features = ["v4", "serde"] }
+zip = { version = "0.6", default-features = false, features = ["deflate"] }
+
+[target.'cfg(not(any(target_os = "android", target_os = "ios")))'.dependencies]
+arboard = "3"
+
+[target.'cfg(target_os = "windows")'.dependencies]
+uiautomation = { version = "0.25.0", default-features = false, features = ["input", "pattern", "control"] }
 windows = { version = "0.62.2", features = [
   "Win32_System_Com",
   "Win32_System_Ole",
@@ -52,7 +57,6 @@ windows-sys = { version = "0.59", features = [
   "Win32_UI_Input_KeyboardAndMouse",
   "Win32_UI_WindowsAndMessaging"
 ] }
-zip = { version = "0.6", default-features = false, features = ["deflate"] }
 
 [profile.release]
 panic = "unwind"

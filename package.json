@@ -8,6 +8,10 @@
     "build": "tsc && vite build",
     "preview": "vite preview --host 127.0.0.1",
     "tauri": "tauri",
+    "tauri:desktop": "tauri build",
+    "tauri:android:init": "tauri android init",
+    "tauri:android:build": "tauri android build --apk",
+    "tauri:ios:build": "node -e \"console.error('iOS/IPA build requires macOS, Xcode and a Tauri CLI that exposes the ios command. Use packaging/Build-CrossPlatform.ps1 -Platform ios on that host.'); process.exit(1)\"",
     "ui:smoke": "node scripts/ui-smoke.mjs"
   },
   "dependencies": {

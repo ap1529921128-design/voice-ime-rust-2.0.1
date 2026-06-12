@@ -1,4 +1,4 @@
-#![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
+#![cfg_attr(all(windows, not(debug_assertions)), windows_subsystem = "windows")]
 
 fn main() {
     if voice_ime_lib::run_cli_worker_if_requested() {

@@ -332,16 +332,16 @@ mod platform {
 use platform::spawn_hook_thread;
 
 mod vk {
-    pub const CAPS_LOCK: u32 = windows_sys::Win32::UI::Input::KeyboardAndMouse::VK_CAPITAL as u32;
-    pub const F8: u32 = windows_sys::Win32::UI::Input::KeyboardAndMouse::VK_F8 as u32;
-    pub const F9: u32 = windows_sys::Win32::UI::Input::KeyboardAndMouse::VK_F9 as u32;
-    pub const F10: u32 = windows_sys::Win32::UI::Input::KeyboardAndMouse::VK_F10 as u32;
-    pub const F13: u32 = windows_sys::Win32::UI::Input::KeyboardAndMouse::VK_F13 as u32;
+    pub const CAPS_LOCK: u32 = 0x14;
+    pub const F8: u32 = 0x77;
+    pub const F9: u32 = 0x78;
+    pub const F10: u32 = 0x79;
+    pub const F13: u32 = 0x7C;
 }
 
 mod mouse {
-    pub const X1: u16 = windows_sys::Win32::UI::WindowsAndMessaging::XBUTTON1;
-    pub const X2: u16 = windows_sys::Win32::UI::WindowsAndMessaging::XBUTTON2;
+    pub const X1: u16 = 0x0001;
+    pub const X2: u16 = 0x0002;
 }
 
 #[cfg(test)]

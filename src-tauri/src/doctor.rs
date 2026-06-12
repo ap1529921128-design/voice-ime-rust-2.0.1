@@ -1,5 +1,5 @@
 use crate::{
-    asr, audio,
+    asr, audio, clipboard,
     config::{AppConfig, Paths, DEFAULT_HOTWORDS, DEFAULT_HOT_RULES, DEFAULT_PERSONAL_PROMPT},
     llm, translation, translation_log,
 };
@@ -335,7 +335,7 @@ fn check_audio(checks: &mut Vec<DoctorCheck>) {
 }
 
 fn check_clipboard(checks: &mut Vec<DoctorCheck>) {
-    match arboard::Clipboard::new() {
+    match clipboard::check_available() {
         Ok(_) => push_check(checks, "剪贴板", DoctorStatus::Pass, "可打开"),
         Err(err) => push_check(checks, "剪贴板", DoctorStatus::Warn, err.to_string()),
     }

@@ -269,6 +269,8 @@ Model Pack Import 脚本会复制一份 core 包到临时目录，调用 `VoiceI
 
 ## 开发构建
 
+跨平台打包不是直接把 Windows 包换后缀。Mac、Linux、Android、iOS 的当前计划、宿主机要求和命令见 [docs/cross-platform-packaging.md](docs/cross-platform-packaging.md)。
+
 安装依赖：
 
 ```powershell

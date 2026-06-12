@@ -33,6 +33,96 @@ function Get-ResponseStatusCode {
     return $null
 }
 
+function Get-ResponseBodyMessage {
+    param([Parameter(Mandatory = $true)]$ErrorRecord)
+    if ($ErrorRecord.ErrorDetails -and -not [string]::IsNullOrWhiteSpace($ErrorRecord.ErrorDetails.Message)) {
+        try {
+            $json = $ErrorRecord.ErrorDetails.Message | ConvertFrom-Json -ErrorAction Stop
+            $parts = @()
+            if ($json.message) {
+                $parts += [string]$json.message
+            }
+            foreach ($errorItem in @($json.errors)) {
+                $detail = @(
+                    $errorItem.resource,
+                    $errorItem.field,
+                    $errorItem.code,
+                    $errorItem.message
+                ) | Where-Object { -not [string]::IsNullOrWhiteSpace([string]$_) }
+                if ($detail.Count -gt 0) {
+                    $parts += ($detail -join "/")
+                }
+            }
+            if ($parts.Count -gt 0) {
+                return ($parts -join " | ")
+            }
+        }
+        catch {
+            return [string]$ErrorRecord.ErrorDetails.Message
+        }
+    }
+    $response = $ErrorRecord.Exception.Response
+    if (-not $response) {
+        return ""
+    }
+    try {
+        $stream = $response.GetResponseStream()
+        if (-not $stream) {
+            return ""
+        }
+        $reader = [System.IO.StreamReader]::new($stream)
+        $body = $reader.ReadToEnd()
+        if ([string]::IsNullOrWhiteSpace($body)) {
+            return ""
+        }
+        $json = $body | ConvertFrom-Json -ErrorAction SilentlyContinue
+        if ($json -and $json.message) {
+            return [string]$json.message
+        }
+        return $body
+    }
+    catch {
+        return ""
+    }
+}
+
+function Format-GitHubAuthError {
+    param(
+        [Parameter(Mandatory = $true)]$ErrorRecord,
+        [Parameter(Mandatory = $true)][string]$Repo
+    )
+    $status = Get-ResponseStatusCode -ErrorRecord $ErrorRecord
+    $message = Get-ResponseBodyMessage -ErrorRecord $ErrorRecord
+    if ($status -eq 401) {
+        return @(
+            "GitHub rejected the token with 401 Unauthorized.",
+            "Check that you pasted the token value itself, not an SSH key, key fingerprint, token name, or token id.",
+            "A valid fine-grained token usually starts with github_pat_; a classic token usually starts with ghp_.",
+            "For fine-grained tokens, select repository '$Repo' and grant Contents: Read and write.",
+            "If the token was just created, copy the one-time token value again or create a new token."
+        ) -join " "
+    }
+    if ($status -eq 403) {
+        return @(
+            "GitHub accepted the token but refused this operation with 403 Forbidden.",
+            "Grant Contents: Read and write for repository '$Repo', or use a classic token with repo scope."
+        ) -join " "
+    }
+    if ($status -eq 404) {
+        return "GitHub returned 404. Check repository '$Repo', tag/release visibility, and whether the token has access to this repository."
+    }
+    if ($status -eq 422) {
+        if (-not [string]::IsNullOrWhiteSpace($message)) {
+            return "GitHub rejected the release request with 422 Validation Failed: $message"
+        }
+        return "GitHub rejected the release request with 422 Validation Failed. Check whether the release/tag already exists or whether target branch 'main' exists."
+    }
+    if (-not [string]::IsNullOrWhiteSpace($message)) {
+        return "GitHub API error ${status}: $message"
+    }
+    return $ErrorRecord.Exception.Message
+}
+
 function Get-AssetContentType {
     param([Parameter(Mandatory = $true)][string]$Path)
     switch -Regex ([System.IO.Path]::GetExtension($Path).ToLowerInvariant()) {
@@ -129,6 +219,56 @@ function Invoke-NativeExitCode {
     }
 }
 
+function Publish-WithGitHubCli {
+    param(
+        [Parameter(Mandatory = $true)][string]$GitHubCli,
+        [Parameter(Mandatory = $true)][string]$Repo,
+        [Parameter(Mandatory = $true)][string]$Tag,
+        [Parameter(Mandatory = $true)][string]$Title,
+        [Parameter(Mandatory = $true)][string]$NotesPath,
+        [Parameter(Mandatory = $true)]$Assets,
+        [string]$Token = "",
+        [switch]$Draft
+    )
+    $previousToken = $env:GH_TOKEN
+    $hadPreviousToken = Test-Path Env:\GH_TOKEN
+    if (-not [string]::IsNullOrWhiteSpace($Token)) {
+        $env:GH_TOKEN = $Token
+    }
+    try {
+        $releaseViewExitCode = Invoke-NativeExitCode -FilePath $GitHubCli -Arguments @("release", "view", $Tag, "--repo", $Repo)
+        if ($releaseViewExitCode -eq 0) {
+            & $GitHubCli release edit $Tag --repo $Repo --title $Title --notes-file $NotesPath
+            if ($LASTEXITCODE -ne 0) {
+                throw "gh release edit failed"
+            }
+            & $GitHubCli release upload $Tag @($Assets | ForEach-Object { $_.path }) --repo $Repo --clobber
+            if ($LASTEXITCODE -ne 0) {
+                throw "gh release upload failed"
+            }
+        }
+        else {
+            $ghArgs = @("release", "create", $Tag) + @($Assets | ForEach-Object { $_.path }) + @("--repo", $Repo, "--title", $Title, "--notes-file", $NotesPath, "--verify-tag")
+            if ($Draft) {
+                $ghArgs += "--draft"
+            }
+            & $GitHubCli @ghArgs
+            if ($LASTEXITCODE -ne 0) {
+                throw "gh release create failed"
+            }
+        }
+        Write-Host "GitHub release published with gh: https://github.com/$Repo/releases/tag/$Tag"
+    }
+    finally {
+        if ($hadPreviousToken) {
+            $env:GH_TOKEN = $previousToken
+        }
+        else {
+            Remove-Item Env:\GH_TOKEN -ErrorAction SilentlyContinue
+        }
+    }
+}
+
 $manifest = Get-Content -LiteralPath $AssetsManifest -Raw | ConvertFrom-Json
 $assets = @()
 foreach ($asset in @($manifest.assets)) {
@@ -196,28 +336,7 @@ if ($gh -and [string]::IsNullOrWhiteSpace($Token)) {
     }
 }
 if ($canUseGitHubCli -and [string]::IsNullOrWhiteSpace($Token)) {
-    $releaseViewExitCode = Invoke-NativeExitCode -FilePath $gh -Arguments @("release", "view", $Tag, "--repo", $Repo)
-    if ($releaseViewExitCode -eq 0) {
-        & $gh release edit $Tag --repo $Repo --title $Title --notes-file $NotesPath
-        if ($LASTEXITCODE -ne 0) {
-            throw "gh release edit failed"
-        }
-        & $gh release upload $Tag @($assets | ForEach-Object { $_.path }) --repo $Repo --clobber
-        if ($LASTEXITCODE -ne 0) {
-            throw "gh release upload failed"
-        }
-    }
-    else {
-        $ghArgs = @("release", "create", $Tag) + @($assets | ForEach-Object { $_.path }) + @("--repo", $Repo, "--title", $Title, "--notes-file", $NotesPath)
-        if ($Draft) {
-            $ghArgs += "--draft"
-        }
-        & $gh @ghArgs
-        if ($LASTEXITCODE -ne 0) {
-            throw "gh release create failed"
-        }
-    }
-    Write-Host "GitHub release published with gh: https://github.com/$Repo/releases/tag/$Tag"
+    Publish-WithGitHubCli -GitHubCli $gh -Repo $Repo -Tag $Tag -Title $Title -NotesPath $NotesPath -Assets $assets -Draft:$Draft
     exit 0
 }
 
@@ -225,8 +344,41 @@ if ([string]::IsNullOrWhiteSpace($Token) -and $PromptForToken) {
     $Token = Read-GitHubTokenFromConsole
 }
 
+function Invoke-GitHubRest {
+    param(
+        [Parameter(Mandatory = $true)][string]$Method,
+        [Parameter(Mandatory = $true)][string]$Uri,
+        [Parameter(Mandatory = $true)]$Headers,
+        [object]$Body = $null,
+        [string]$ContentType = ""
+    )
+    try {
+        $params = @{
+            Method  = $Method
+            Uri     = $Uri
+            Headers = $Headers
+        }
+        if ($null -ne $Body) {
+            $params.Body = $Body
+        }
+        if (-not [string]::IsNullOrWhiteSpace($ContentType)) {
+            $params.ContentType = $ContentType
+        }
+        return Invoke-RestMethod @params
+    }
+    catch {
+        throw (Format-GitHubAuthError -ErrorRecord $_ -Repo $Repo)
+    }
+}
+$Token = $Token.Trim().Trim('"').Trim("'")
+
 if ([string]::IsNullOrWhiteSpace($Token)) {
     throw "GitHub CLI is not installed/authenticated and no GH_TOKEN/GITHUB_TOKEN was provided. Install and authenticate gh, set `$env:GH_TOKEN, or rerun with -PromptForToken: powershell -NoProfile -ExecutionPolicy Bypass -File .\packaging\publish-github-release.ps1 -PromptForToken"
+}
+
+if ($gh) {
+    Publish-WithGitHubCli -GitHubCli $gh -Repo $Repo -Tag $Tag -Title $Title -NotesPath $NotesPath -Assets $assets -Token $Token -Draft:$Draft
+    exit 0
 }
 
 $headers = @{
@@ -248,6 +400,9 @@ try {
 }
 catch {
     $status = Get-ResponseStatusCode -ErrorRecord $_
+    if ($status -in 401, 403) {
+        throw (Format-GitHubAuthError -ErrorRecord $_ -Repo $Repo)
+    }
     if ($status -ne 404) {
         throw
     }
@@ -259,16 +414,16 @@ catch {
         draft      = [bool]$Draft
         prerelease = $false
     } | ConvertTo-Json -Depth 4
-    $release = Invoke-RestMethod -Method Post -Uri "$apiBase/releases" -Headers $headers -Body $body -ContentType "application/json"
+    $release = Invoke-GitHubRest -Method Post -Uri "$apiBase/releases" -Headers $headers -Body $body -ContentType "application/json"
 }
 
-$existingAssets = Invoke-RestMethod -Method Get -Uri $release.assets_url -Headers $headers
+$existingAssets = Invoke-GitHubRest -Method Get -Uri $release.assets_url -Headers $headers
 $uploadBase = $release.upload_url -replace "\{\?name,label\}$", ""
 
 foreach ($asset in $assets) {
     $existing = @($existingAssets | Where-Object { $_.name -eq $asset.name } | Select-Object -First 1)
     if ($existing.Count -gt 0) {
-        Invoke-RestMethod -Method Delete -Uri "$apiBase/releases/assets/$($existing[0].id)" -Headers $headers | Out-Null
+        Invoke-GitHubRest -Method Delete -Uri "$apiBase/releases/assets/$($existing[0].id)" -Headers $headers | Out-Null
     }
     $encodedName = [System.Uri]::EscapeDataString([string]$asset.name)
     Invoke-WithRetry -RetryCount $UploadRetryCount -Label "Upload $($asset.name)" -Action {
