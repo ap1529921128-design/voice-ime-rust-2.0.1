@@ -4,13 +4,14 @@ Voice IME Rust 2.0.1 is the first hardened portable release after the Rust/Tauri
 
 ## Which File To Download
 
-- `voice-ime-2.0.1-rust-portable.zip`: full test package with the current local model cache. Use this on the main test machine.
-- `voice-ime-2.0.1-rust-portable-core.zip`: light app body without large model binaries. Use this for removable-drive or clean-machine tests, then import model packs.
-- `voice-ime-model-pack-asr-balanced-sensevoice-int8.zip`: recommended default ASR model pack.
-- `voice-ime-model-pack-asr-fast-zipformer-ctc-int8.zip`: faster Chinese short-dictation ASR model pack.
-- `voice-ime-model-pack-asr-fallback-whisper-tiny-int8.zip`: small compatibility fallback ASR model pack.
-- `voice-ime-model-pack-llm-minicpm5-1b-q4.zip`: optional local correction/rewrite/temporary translation model pack.
-- `voice-ime-model-packs-2.0.1.json` / `.md`: checksum manifest for the model packs.
+Download `voice-ime-2.0.1-rust-portable-core.zip` first. It is the public app body and does not include large model binaries.
+
+After first launch, open Settings / Models and use `下载` to fetch the ASR/LLM models you need. The downloader tries `hf-mirror.com` first and then `huggingface.co`; existing `voice-ime-model-pack-*.zip` files can still be imported from Settings / Models / `导入包`.
+
+Optional local/testing assets:
+
+- `voice-ime-2.0.1-rust-portable.zip`: full test package with the current local model cache.
+- `voice-ime-model-pack-*.zip`: standalone model packs for offline transfer or manual import.
 
 ## How To Run
 

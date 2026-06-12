@@ -266,11 +266,12 @@
 ## Release Asset Packaging
 
 1. Run `powershell -NoProfile -ExecutionPolicy Bypass -File .\packaging\package-release-assets.ps1`.
-2. The script creates `voice-ime-2.0.1-rust-portable.zip` from the full package and `voice-ime-2.0.1-rust-portable-core.zip` from the core package.
+2. By default, the script creates only `voice-ime-2.0.1-rust-portable-core.zip` for the public release.
 3. It opens each zip and verifies required root entries, `app/VoiceIME.exe`, docs, `BUILD.txt`, model manifests, and forbidden runtime-data paths.
 4. For the core zip, it also verifies `app/models` contains only `MODELS.json` and `MODELS.md`.
-5. It writes `voice-ime-release-assets-2.0.1.json/.md` with every portable zip, model pack, model-pack manifest, byte size, and SHA-256.
-6. If `gh` or a GitHub API token is available, `packaging\publish-github-release.ps1` can publish those assets to `v2.0.1`.
+5. It writes `voice-ime-release-assets-2.0.1.json/.md` with byte size, SHA-256, and `release_profile=core`.
+6. To create a heavy local manifest with the full package and model packs, rerun with `-IncludeFullPackage -IncludeModelPacks`.
+7. If `gh` or a GitHub API token is available, `packaging\publish-github-release.ps1` can publish those assets to `v2.0.1`.
 
 ## Notepad Input Acceptance
 

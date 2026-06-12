@@ -3,6 +3,7 @@
 ## Unreleased
 
 - Added a persistent ASR worker mode that keeps a hidden subprocess alive and reuses the loaded recognizer for the same profile, reducing repeated model cold-start cost.
+- Changed public release asset packaging to default to the light core package only; full packages and model packs now require explicit packaging switches.
 - Added a local-token GitHub Release upload path and generated Chinese upload helper for networks where `gh auth login` device-code authentication times out.
 - Kept the previous isolated per-request ASR worker as a settings option and automatic fallback if the persistent worker fails.
 - Improved browser input acceptance verification by polling textarea value into the page title, covering UIA value writes that do not fire DOM `input`.

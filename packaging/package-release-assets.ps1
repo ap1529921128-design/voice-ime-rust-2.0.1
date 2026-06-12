@@ -3,7 +3,9 @@ param(
     [string]$CoreReleaseRoot = "D:\voice-ime-build-release\voice-ime-2.0.1-rust-portable-core",
     [string]$OutputRoot = "D:\voice-ime-build-release",
     [string]$Version = "",
-    [switch]$SkipModelPacks
+    [switch]$SkipModelPacks,
+    [switch]$IncludeFullPackage,
+    [switch]$IncludeModelPacks
 )
 
 $ErrorActionPreference = "Stop"
@@ -14,6 +16,10 @@ $LauncherName = ([string][char]21551 + [string][char]21160 + [string][char]35821
 if ([string]::IsNullOrWhiteSpace($Version)) {
     $packageJson = Get-Content -LiteralPath (Join-Path $Root "package.json") -Raw | ConvertFrom-Json
     $Version = [string]$packageJson.version
+}
+
+if ($SkipModelPacks -and $IncludeModelPacks) {
+    throw "Use either -IncludeModelPacks or -SkipModelPacks, not both."
 }
 
 Add-Type -AssemblyName System.IO.Compression
@@ -49,7 +55,7 @@ function Write-GitHubUploadHelper {
         "",
         "echo Voice IME Rust $Version - GitHub Release asset upload",
         "echo.",
-        "echo This helper uploads the prepared zip files and model packs to GitHub Release.",
+        "echo This helper uploads the prepared public core zip and checksum manifests to GitHub Release.",
         "echo.",
         "echo Supported paths:",
         "echo   1. If gh is installed and authenticated, it will be reused.",
@@ -240,7 +246,9 @@ if (-not (Test-Path -LiteralPath $OutputRoot -PathType Container)) {
     New-Item -ItemType Directory -Path $OutputRoot -Force | Out-Null
 }
 
-Assert-PortableSource -PackageRoot $ReleaseRoot
+if ($IncludeFullPackage) {
+    Assert-PortableSource -PackageRoot $ReleaseRoot
+}
 Assert-PortableSource -PackageRoot $CoreReleaseRoot -CorePackage
 
 $assets = @()
@@ -248,15 +256,17 @@ $assets = @()
 $fullZip = Join-Path $OutputRoot "voice-ime-$Version-rust-portable.zip"
 $coreZip = Join-Path $OutputRoot "voice-ime-$Version-rust-portable-core.zip"
 
-New-ZipFromDirectory -SourceRoot $ReleaseRoot -ZipPath $fullZip
-Assert-PortableZip -ZipPath $fullZip
-$assets += New-AssetRecord -Path $fullZip -Kind "portable" -Role "full"
-
 New-ZipFromDirectory -SourceRoot $CoreReleaseRoot -ZipPath $coreZip
 Assert-PortableZip -ZipPath $coreZip -CorePackage
 $assets += New-AssetRecord -Path $coreZip -Kind "portable" -Role "core"
 
-if (-not $SkipModelPacks) {
+if ($IncludeFullPackage) {
+    New-ZipFromDirectory -SourceRoot $ReleaseRoot -ZipPath $fullZip
+    Assert-PortableZip -ZipPath $fullZip
+    $assets += New-AssetRecord -Path $fullZip -Kind "portable" -Role "full"
+}
+
+if ($IncludeModelPacks -and -not $SkipModelPacks) {
     foreach ($modelPack in Get-ChildItem -LiteralPath $OutputRoot -Filter "voice-ime-model-pack-*.zip" -File | Sort-Object Name) {
         $assets += New-AssetRecord -Path $modelPack.FullName -Kind "model-pack"
     }
@@ -268,12 +278,21 @@ if (-not $SkipModelPacks) {
     }
 }
 
+$releaseProfileParts = @("core")
+if ($IncludeFullPackage) {
+    $releaseProfileParts += "full"
+}
+if ($IncludeModelPacks -and -not $SkipModelPacks) {
+    $releaseProfileParts += "model-packs"
+}
+
 $releaseManifest = [ordered]@{
     schema_version = 1
     app_version    = $Version
     tag            = "v$Version"
     repository     = "ap1529921128-design/voice-ime-rust-2.0.1"
     created_at     = (Get-Date).ToString("o")
+    release_profile = ($releaseProfileParts -join "+")
     source_root    = $Root.Path
     assets         = $assets
 }
@@ -288,6 +307,7 @@ $lines.Add("")
 $lines.Add("- Tag: ``v$Version``")
 $lines.Add("- Repository: ``ap1529921128-design/voice-ime-rust-2.0.1``")
 $lines.Add("- Created: $($releaseManifest.created_at)")
+$lines.Add("- Release profile: ``$($releaseManifest.release_profile)``")
 $lines.Add("")
 $lines.Add("| asset | kind | role | MB | sha256 |")
 $lines.Add("| --- | --- | --- | ---: | --- |")
@@ -296,6 +316,9 @@ foreach ($asset in $assets) {
     $sha = ([string]$asset.sha256).Substring(0, 16)
     $lines.Add("| ``$($asset.name)`` | $($asset.kind) | $($asset.role) | $mb | ``$sha...`` |")
 }
+$lines.Add("")
+$lines.Add("Default public release is intentionally small: upload the core package and let users download or import models from Settings / Models.")
+$lines.Add("To regenerate a heavy local manifest, run ``.\packaging\package-release-assets.ps1 -IncludeFullPackage -IncludeModelPacks``.")
 $lines.Add("")
 $lines.Add("Suggested validation and upload command after installing/authenticating GitHub CLI:")
 $lines.Add("")

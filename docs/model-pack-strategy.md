@@ -134,7 +134,7 @@ powershell -NoProfile -ExecutionPolicy Bypass -File .\app\tools\Model-Pack-Impor
 
 ## 生成 GitHub Release 资产
 
-full/core 目录通过验收后，运行：
+公开发行默认只上传轻主体包。full/core 目录通过验收后，运行：
 
 ```powershell
 powershell -NoProfile -ExecutionPolicy Bypass -File .\packaging\package-release-assets.ps1
@@ -143,13 +143,20 @@ powershell -NoProfile -ExecutionPolicy Bypass -File .\packaging\package-release-
 它会生成：
 
 ```text
-voice-ime-2.0.1-rust-portable.zip
 voice-ime-2.0.1-rust-portable-core.zip
 voice-ime-release-assets-2.0.1.json
 voice-ime-release-assets-2.0.1.md
 ```
 
-同时会把已有 `voice-ime-model-pack-*.zip` 和 `voice-ime-model-packs-2.0.1.json/.md` 写入发布资产清单，记录每个文件的大小和 SHA-256。需要自动上传 GitHub Release 时，在已安装 `gh` 或已配置 `GH_TOKEN/GITHUB_TOKEN` 的环境先校验、后上传：
+用户首次运行 core 包后，在“设置 / 模型”里点击 `下载` 获取模型；或者用“导入包”导入已下载的 `voice-ime-model-pack-*.zip`。这样公开 Release 不需要上传 1GB 以上的 full 包或模型集合。
+
+需要本地归档完整版或模型包时，显式运行：
+
+```powershell
+powershell -NoProfile -ExecutionPolicy Bypass -File .\packaging\package-release-assets.ps1 -IncludeFullPackage -IncludeModelPacks
+```
+
+需要自动上传 GitHub Release 时，在已安装 `gh` 或已配置 `GH_TOKEN/GITHUB_TOKEN` 的环境先校验、后上传：
 
 ```powershell
 powershell -NoProfile -ExecutionPolicy Bypass -File .\packaging\publish-github-release.ps1 -ValidateOnly

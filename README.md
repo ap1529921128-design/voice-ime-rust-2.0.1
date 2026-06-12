@@ -18,10 +18,12 @@ Voice IME 是一个 Windows 优先的本地语音输入工具，使用 Rust + Ta
 
 GitHub Release 推荐提供这些资产：
 
-- `voice-ime-2.0.1-rust-portable.zip`：完整测试包，包含当前本机模型缓存。
-- `voice-ime-2.0.1-rust-portable-core.zip`：轻主体包，不含大模型，适合拷到单位或移动硬盘测试。
-- `voice-ime-model-pack-*.zip`：单独模型包，可在“设置 / 模型 / 导入包”里导入。
+- `voice-ime-2.0.1-rust-portable-core.zip`：公开推荐下载，轻主体包，不含大模型。
 - `voice-ime-release-assets-2.0.1.json`：发布资产 SHA-256 清单。
+- 可选：`voice-ime-model-pack-*.zip` 单独模型包，可在“设置 / 模型 / 导入包”里导入。
+- 可选：`voice-ime-2.0.1-rust-portable.zip` 完整本机测试包，不建议作为默认公开下载。
+
+首次运行 core 包后，进入“设置 / 模型”，按需要点击 `下载`，程序会优先尝试 `hf-mirror.com`，失败后再尝试 `huggingface.co`。模型也可以放在移动硬盘或共享目录，通过“模型根目录”指向外部模型仓库。
 
 便携版解压后，双击根目录里的：
 
@@ -298,8 +300,14 @@ npm run ui:smoke
 
 ```powershell
 powershell -ExecutionPolicy Bypass -File .\packaging\package-portable.ps1
-powershell -ExecutionPolicy Bypass -File .\packaging\package-available-model-packs.ps1
 powershell -ExecutionPolicy Bypass -File .\packaging\package-release-assets.ps1
+```
+
+`package-release-assets.ps1` 默认只生成公开发行用的 core zip 和校验清单。需要本地归档完整版或模型包时，显式使用：
+
+```powershell
+powershell -ExecutionPolicy Bypass -File .\packaging\package-available-model-packs.ps1
+powershell -ExecutionPolicy Bypass -File .\packaging\package-release-assets.ps1 -IncludeFullPackage -IncludeModelPacks
 ```
 
 不要直接拿 `cargo build --release` 生成的 exe 打包；它可能仍然指向开发地址 `127.0.0.1:1420`。
